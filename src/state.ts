@@ -1,9 +1,74 @@
+export type PanelPage = {
+    lease: string;
+    partition: string;
+    url: string;
+    documentToken: string;
+    tabId?: string | undefined;
+    title?: string | undefined;
+};
+export type PanelConnection = {
+    instanceId: string;
+    generation: number;
+    sessionId: string;
+    pages: PanelPage[];
+    lastSeen: number;
+};
+export type CommandEntry = {
+    id: string;
+    op: PageOperation;
+    resolve: (value: Result<Record<string, unknown>>) => void;
+    signal: AbortSignal | undefined;
+    abortListener: (() => void) | undefined;
+    settled: boolean;
+    dispatched: boolean;
+    deadlineAt: number;
+    sequence: number;
+};
+export type InFlightRecord = {
+    entry: CommandEntry;
+    command: {
+        deadlineAt: number;
+        sequence: number;
+        budgetMs: number;
+    };
+    outcome: "pending" | "settled" | "unknown_outcome" | "dropped";
+    taken: boolean;
+    delivery: {
+        instanceId: string;
+        generation: number;
+        epoch: number;
+    } | undefined;
+};
+export type ControlLease = {
+    id: string;
+    task?: import("./task-scope.ts").RunScope | undefined;
+    sessionId: string;
+    agentInstanceToken: string;
+    agent: object;
+    connectionInstanceId: string;
+    connectionGeneration: number;
+    lease: string;
+    partition: string;
+    documentToken: string;
+    tabId: string;
+    epoch: number;
+    state: "active" | "revoked";
+    nextSequence: number;
+    abandoned: Set<string>;
+    queue: CommandEntry[];
+    inFlight: Map<string, InFlightRecord>;
+    lastCompletedCommandId: string | undefined;
+    revokedReason: string | undefined;
+    importKind?: import('./import-rules.js').BatchKind;
+    evidenceRoot?: string;
+};
+
 /**
  * Host-side control state: identity, binding, leases, sequencing and deadlines.
  *
  * The state machine is deliberately free of I/O and of Cordis so it can be
  * exercised directly: every security property this plugin claims is a decision
- * this module makes. The service in `lib/index.js` is a thin adapter over it.
+ * this module makes. The service in `src/index.ts` is a thin adapter over it.
  *
  * Invariants enforced here:
  *
@@ -25,82 +90,7 @@
  */
 
 import { sameRunScope, validRunScope } from './task-scope.ts'
-import { PROTOCOL_VERSION, ERROR_CODES, failure, success } from './protocol.ts'
-
-/**
- * One page the panel reports, as the Host remembers it.
- * @typedef {object} PanelPage
- * @property {string} lease - guest lease the webview carries as its `name`.
- * @property {string} partition - guest partition.
- * @property {string} url - redacted address, for display only.
- * @property {string} documentToken - page-minted document identity.
- * @property {string} [tabId] - plugin tab alias, for display only.
- * @property {string} [title] - page title, for display only.
- */
-
-/**
- * One registered panel connection (one live panel instance at one generation).
- * @typedef {object} PanelConnection
- * @property {string} instanceId - panel instance identity.
- * @property {number} generation - connection generation.
- * @property {string} sessionId - Session the panel belongs to.
- * @property {PanelPage[]} pages - pages the panel can see.
- * @property {number} lastSeen - monotonic time of the last poll.
- */
-
-/**
- * One queued or in-flight command.
- * @typedef {object} CommandEntry
- * @property {string} id - command identity.
- * @property {object} op - validated operation.
- * @property {(value: object) => void} resolve - settles the caller.
- * @property {AbortSignal | undefined} signal - caller cancellation.
- * @property {(() => void) | undefined} abortListener - registered abort listener.
- * @property {boolean} settled - whether the caller has been answered.
- * @property {boolean} dispatched - whether the panel took the command.
- * @property {number} deadlineAt - monotonic deadline.
- * @property {number} sequence - assigned on dispatch.
- */
-
-/**
- * One dispatched command awaiting its result.
- *
- * Keyed by command id. `command` is the wire envelope handed to the panel;
- * `entry` is the local caller's record.
- * @typedef {object} InFlightRecord
- * @property {CommandEntry} entry - the command.
- * @property {object} command - wire envelope for the panel.
- * @property {number} command.deadlineAt - monotonic deadline.
- * @property {number} command.sequence - the command's sequence.
- * @property {number} command.budgetMs - remaining execution budget at delivery.
- * @property {'pending' | 'settled' | 'unknown_outcome' | 'dropped'} outcome - result state.
- * @property {boolean} taken - whether the panel has taken it.
- * @property {{ instanceId: string, generation: number, epoch: number } | undefined} delivery - immutable recipient recorded on take.
- */
-
-/**
- * One control lease: the authorization to operate one page for one Agent.
- * @typedef {object} ControlLease
- * @property {string} id - control lease identity.
- * @property {import('./task-scope.ts').RunScope} [task] - verified immutable task/run binding.
- * @property {string} sessionId - authorized Session.
- * @property {string} agentInstanceToken - plugin-minted token of the exact Agent.
- * @property {object} agent - the exact live Agent object.
- * @property {string} connectionInstanceId - panel instance that authorized it.
- * @property {number} connectionGeneration - generation that authorized it.
- * @property {string} lease - guest lease.
- * @property {string} partition - guest partition.
- * @property {string} documentToken - document identity at authorization.
- * @property {string} tabId - plugin tab alias.
- * @property {number} epoch - observation epoch.
- * @property {'active' | 'revoked'} state - lease state.
- * @property {number} nextSequence - next accepted result sequence.
- * @property {Set<string>} abandoned - ids the Host settled without a result.
- * @property {CommandEntry[]} queue - commands waiting to dispatch.
- * @property {Map<string, InFlightRecord>} inFlight - dispatched commands by command id.
- * @property {string | undefined} lastCompletedCommandId - last settled command.
- * @property {string | undefined} revokedReason - why control ended, when revoked.
- */
+import { type Result, type PageOperation, PROTOCOL_VERSION, ERROR_CODES, failure, success } from './protocol.ts'
 
 /** Events that invalidate part of the binding. */
 /** How many revoked leases stay describable before the oldest are dropped. */
@@ -143,7 +133,7 @@ const INVALIDATION_EFFECTS = Object.freeze({
  * Monotonic clock used for deadlines.
  * @returns {number} milliseconds on a monotonic scale.
  */
-export function monotonicNow() {
+export function monotonicNow() : number {
   return performance.now()
 }
 
@@ -153,12 +143,12 @@ export function monotonicNow() {
  * @param {() => number} [options.now] - monotonic clock injection for tests.
  * @returns {object} the store.
  */
-export function createControlState(options = {}) {
+export function createControlState(options: { now?: (() => number) | undefined; } = {}) {
   const now = options.now ?? monotonicNow
-  /** @type {Map<string, ControlLease>} */
-  const leases = new Map()
-  /** @type {Map<string, PanelConnection>} */
-  const connections = new Map()
+
+  const leases: Map<string, ControlLease> = new Map()
+
+  const connections: Map<string, PanelConnection> = new Map()
   let nextLease = 1
   let nextCommand = 1
   let closed = false
@@ -174,7 +164,7 @@ export function createControlState(options = {}) {
    * @param {{ instanceId: string, pages: PanelPage[] }} hello.panel - panel identity and pages.
    * @returns {object} registration verdict.
    */
-  function registerConnection(hello) {
+  function registerConnection(hello: { connectionGeneration: number; sessionId: string; panel: { instanceId: string; pages: PanelPage[]; }; }) {
     if (closed) return failure('connection_stale', 'the browser control service was unloaded')
     const instanceId = hello.panel.instanceId
     const existing = connections.get(instanceId)
@@ -207,7 +197,7 @@ export function createControlState(options = {}) {
    * @param {string} sessionId - Session.
    * @returns {object[]} connections.
    */
-  function connectionsFor(sessionId) {
+  function connectionsFor(sessionId: string) {
     return [...connections.values()].filter(connection => connection.sessionId === sessionId)
   }
 
@@ -221,7 +211,7 @@ export function createControlState(options = {}) {
    * retained; oldest go first.
    * @returns {void}
    */
-  function pruneRevokedLeases() {
+  function pruneRevokedLeases() : void {
     let revoked = 0
     for (const lease of leases.values()) if (lease.state !== 'active') revoked += 1
     if (revoked <= REVOKED_RETENTION) return
@@ -239,7 +229,7 @@ export function createControlState(options = {}) {
    * @param {string} event - invalidation event.
    * @returns {void}
    */
-  function retireConnection(connection, event) {
+  function retireConnection(connection: PanelConnection, event: string) : void {
     connections.delete(connection.instanceId)
     for (const lease of leases.values()) {
       if (lease.connectionInstanceId !== connection.instanceId) continue
@@ -253,7 +243,7 @@ export function createControlState(options = {}) {
    * @param {number} idleMs - idle window in milliseconds.
    * @returns {string[]} instance ids that were dropped.
    */
-  function expireIdleConnections(idleMs) {
+  function expireIdleConnections(idleMs: number) : string[] {
     const expired = []
     const at = now()
     for (const connection of [...connections.values()]) {
@@ -279,7 +269,7 @@ export function createControlState(options = {}) {
    * @param {string} [input.tabId] - plugin tab alias.
    * @returns {object} binding verdict.
    */
-  function authorize(input) {
+  function authorize(input: { connectionInstanceId: string; connectionGeneration: number; task?: import("./task-scope.ts").RunScope | undefined; sessionId: string; agentInstanceToken: string; agent: object; lease: string; partition: string; documentToken: string; tabId?: string | undefined; }) {
     if (closed) return failure('connection_stale', 'the browser control service was unloaded')
     const connection = connections.get(input.connectionInstanceId)
     if (connection === undefined || connection.generation !== input.connectionGeneration) {
@@ -332,8 +322,8 @@ export function createControlState(options = {}) {
       })
     }
     const id = `lease-${nextLease++}`
-    /** @type {ControlLease} */
-    const lease = {
+
+    const lease: ControlLease = {
       id,
       sessionId: input.sessionId,
       ...(input.task ? {task:Object.freeze({...input.task})} : {}),
@@ -378,7 +368,7 @@ export function createControlState(options = {}) {
    * @param {object} liveAgent - the Session's current live Agent object.
    * @returns {string[]} ids of the leases retired.
    */
-  function retireLeasesOfReplacedAgents(sessionId, liveAgent) {
+  function retireLeasesOfReplacedAgents(sessionId: string, liveAgent: object) : string[] {
     const retired = []
     for (const lease of leases.values()) {
       if (lease.state !== 'active') continue
@@ -400,7 +390,7 @@ export function createControlState(options = {}) {
    * @param {string} sessionId - Session to inspect.
    * @returns {number} how many active leases the Session has.
    */
-  function leaseCountForSession(sessionId) {
+  function leaseCountForSession(sessionId: string) : number {
     let count = 0
     for (const lease of leases.values()) {
       if (lease.state === 'active' && lease.sessionId === sessionId) count += 1
@@ -414,7 +404,7 @@ export function createControlState(options = {}) {
    * @param {string} sessionId - caller Session.
    * @returns {object | undefined} the lease when it is still valid for that caller.
    */
-  function leaseFor(agent, agentInstanceToken, sessionId) {
+  function leaseFor(agent: object, agentInstanceToken: string, sessionId: string) : ControlLease | undefined {
     for (const lease of leases.values()) {
       if (lease.state !== 'active') continue
       if (lease.agent !== agent) continue
@@ -431,7 +421,7 @@ export function createControlState(options = {}) {
    * @param {number} generation - panel generation.
    * @returns {object} page list verdict.
    */
-  function listPages(instanceId, generation) {
+  function listPages(instanceId: string, generation: number) {
     const connection = connections.get(instanceId)
     if (connection === undefined) return failure('page_unavailable', 'the plugin panel is not connected')
     if (connection.generation !== generation) {
@@ -466,8 +456,8 @@ export function createControlState(options = {}) {
    * @param {string} [documentToken] - the document now in the guest, when known.
    * @returns {void}
    */
-  function applyInvalidation(lease, event, documentToken = undefined) {
-    const effect = /** @type {Record<string, string>} */ (INVALIDATION_EFFECTS)[event] ?? 'invalidate'
+  function applyInvalidation(lease: ControlLease, event: string, documentToken: string | undefined = undefined) : void {
+    const effect =  ((INVALIDATION_EFFECTS) as Record<string, string>)[event] ?? 'invalidate'
     if (effect === 'keep') {
       // The control survives, but every observation made before the change is
       // stale, so a command in flight has an unknowable outcome and a queued one
@@ -498,7 +488,7 @@ export function createControlState(options = {}) {
    * @param {string} reason - reason control or observations changed.
    * @returns {void}
    */
-  function endInFlight(lease, code, reason) {
+  function endInFlight(lease: ControlLease, code: string, reason: string) : void {
     for (const record of lease.inFlight.values()) {
       if (record.outcome !== 'pending') continue
       record.outcome = record.taken ? 'unknown_outcome' : 'dropped'
@@ -518,7 +508,7 @@ export function createControlState(options = {}) {
    * @param {string} [documentToken] - the document now in the guest, when the panel knows it.
    * @returns {object} applied invalidations.
    */
-  function reportInvalidation(instanceId, generation, guestLease, event, documentToken) {
+  function reportInvalidation(instanceId: string, generation: number, guestLease: string, event: string, documentToken?: string) {
     const connection = connections.get(instanceId)
     if (connection === undefined || connection.generation !== generation) {
       return failure('connection_stale', 'the panel connection is not the current generation')
@@ -545,7 +535,7 @@ export function createControlState(options = {}) {
    * @param {string} reason - why control ended.
    * @returns {object} revoked lease ids.
    */
-  function revoke(input, reason) {
+  function revoke(input: { controlLeaseId?: string | undefined; sessionId?: string | undefined; }, reason: string) {
     const revoked = []
     for (const lease of leases.values()) {
       if (lease.state !== 'active') continue
@@ -572,7 +562,7 @@ export function createControlState(options = {}) {
    * @param {AbortSignal} [signal] - caller cancellation.
    * @returns {Promise<object>} settled outcome.
    */
-  function run(lease, op, limits, signal) {
+  function run(lease: ControlLease, op: PageOperation, limits: import('./config.ts').BrowserFlowConfig, signal?: AbortSignal) : Promise<Result<Record<string, unknown>>> {
     if (lease.state !== 'active') {
       return Promise.resolve(failure('not_authorized', 'control for this page was revoked; authorize it again'))
     }
@@ -583,12 +573,12 @@ export function createControlState(options = {}) {
       return Promise.resolve(failure('queue_full', `this page already has ${String(limits.queueLimit)} pending operations`))
     }
     return new Promise(resolve => {
-      const entry = {
+      const entry: CommandEntry = {
         id: `cmd-${nextCommand++}`,
         op,
         resolve,
         signal,
-        /** @type {(() => void) | undefined} */
+
         abortListener: undefined,
         settled: false,
         dispatched: false,
@@ -611,7 +601,7 @@ export function createControlState(options = {}) {
    * @param {CommandEntry} entry - queued entry.
    * @returns {void}
    */
-  function settleCancelled(lease, entry) {
+  function settleCancelled(lease: ControlLease, entry: CommandEntry) : void {
     if (entry.settled) return
     const index = lease.queue.indexOf(entry)
     if (index >= 0) {
@@ -637,7 +627,7 @@ export function createControlState(options = {}) {
    * @param {object} outcome - settled value.
    * @returns {void}
    */
-  function finish(entry, outcome) {
+  function finish(entry: CommandEntry, outcome: Result<Record<string, unknown>>) : void {
     if (entry.settled) return
     entry.settled = true
     if (entry.signal !== undefined && entry.abortListener !== undefined) {
@@ -652,7 +642,7 @@ export function createControlState(options = {}) {
    * @param {import('./config.ts').BrowserFlowConfig} limits - resolved config.
    * @returns {void}
    */
-  function pump(lease, limits) {
+  function pump(lease: ControlLease, limits: import('./config.ts').BrowserFlowConfig) : void {
     if (lease.state !== 'active') return
     if (lease.inFlight.size > 0) return
     // Reauthorization explicitly selects the connection that may take work.
@@ -705,7 +695,7 @@ export function createControlState(options = {}) {
    * @param {ControlLease} lease - lease to deliver for.
    * @returns {PanelConnection | undefined} the connection that may carry it.
    */
-  function liveConnectionFor(lease) {
+  function liveConnectionFor(lease: ControlLease) : PanelConnection | undefined {
     const recorded = connections.get(lease.connectionInstanceId)
     if (recorded === undefined || recorded.sessionId !== lease.sessionId
       || recorded.generation !== lease.connectionGeneration) return undefined
@@ -717,7 +707,7 @@ export function createControlState(options = {}) {
    * @param {import('./config.ts').BrowserFlowConfig} limits - resolved config.
    * @returns {void}
    */
-  function pumpAll(limits) {
+  function pumpAll(limits: import('./config.ts').BrowserFlowConfig) : void {
     for (const lease of leases.values()) pump(lease, limits)
   }
 
@@ -731,7 +721,7 @@ export function createControlState(options = {}) {
    * @param {import('./config.ts').BrowserFlowConfig} limits - resolved config.
    * @returns {object} commands and dropped ids.
    */
-  function takeCommands(instanceId, generation, limits) {
+  function takeCommands(instanceId: string, generation: number, limits: import('./config.ts').BrowserFlowConfig) {
     const connection = connections.get(instanceId)
     if (connection === undefined) return failure('page_unavailable', 'the plugin panel is not connected')
     if (connection.generation !== generation) return failure('connection_stale', 'the panel connection is not the current generation')
@@ -778,7 +768,7 @@ export function createControlState(options = {}) {
    * as the panel kept polling, which is not the declared command budget.
    * @returns {string[]} ids settled this pass.
    */
-  function expireInFlight() {
+  function expireInFlight() : string[] {
     const settled = []
     for (const lease of leases.values()) {
       if (lease.state !== 'active') continue
@@ -798,7 +788,7 @@ export function createControlState(options = {}) {
    * @param {InFlightRecord} record - expired entry and delivery state.
    * @returns {void}
    */
-  function expireRecord(lease, id, record) {
+  function expireRecord(lease: ControlLease, id: string, record: InFlightRecord) : void {
     lease.inFlight.delete(id)
     lease.abandoned.add(id)
     if (lease.abandoned.size > ABANDONED_LIMIT) {
@@ -834,7 +824,7 @@ export function createControlState(options = {}) {
    * @param {import('./config.ts').BrowserFlowConfig} limits - resolved config.
    * @returns {object} settlement verdict.
    */
-  function settle(result, limits) {
+  function settle(result: Omit<import('./protocol.ts').ResultEnvelope, 'kind' | 'protocolVersion' | 'task'> & {task?: import('./task-scope.ts').RunScope}, limits: import('./config.ts').BrowserFlowConfig) {
     const lease = leases.get(result.leaseId)
     if (lease === undefined) return failure('stale_observation', 'the control lease no longer exists')
     if (lease.state !== 'active') return failure('revoked', 'control for this page was revoked')
@@ -882,7 +872,7 @@ export function createControlState(options = {}) {
     // naming a different document is therefore not a result for this
     // authorization: retire the lease rather than hand its content to the
     // caller under an authorization granted for the previous page.
-    /** @type {any} */
+
     const payload = result.payload
     const reportedToken = result.outcome === 'ok' ? payload?.documentToken : undefined
     // An empty lease token means the Host has not been told which document is
@@ -891,7 +881,9 @@ export function createControlState(options = {}) {
       && typeof lease.documentToken === 'string' && lease.documentToken.length > 0
       && reportedToken !== lease.documentToken) {
       applyInvalidation(lease, 'document_replaced')
-      finish(record.entry, failure(/** @type {{kind?:string}} */(record.entry.op).kind==='act' ? 'unknown_outcome' : 'stale_observation', 'the page navigated during the command; authorize it again'))
+      finish(record.entry, failure(((record.entry.op) as {
+    kind?: string;
+}).kind==='act' ? 'unknown_outcome' : 'stale_observation', 'the page navigated during the command; authorize it again'))
       pump(lease, limits)
       return success({ settled: result.id, outcome: 'document_replaced' })
     }
@@ -915,7 +907,7 @@ export function createControlState(options = {}) {
    * @param {string} controlLeaseId - lease id.
    * @returns {object | undefined} description.
    */
-  function describeLease(controlLeaseId) {
+  function describeLease(controlLeaseId: string) {
     const lease = leases.get(controlLeaseId)
     if (lease === undefined) return undefined
     return {
@@ -932,12 +924,12 @@ export function createControlState(options = {}) {
   }
 
   /** @returns {number} number of registered connections. */
-  function connectionCount() {
+  function connectionCount() : number {
     return connections.size
   }
 
   /** @returns {number} number of leases in any state. */
-  function leaseCount() {
+  function leaseCount() : number {
     return leases.size
   }
 
@@ -945,7 +937,7 @@ export function createControlState(options = {}) {
    * End all calls and permanently discard the store's panel and Agent bindings.
    * @returns {void}
    */
-  function close() {
+  function close() : void {
     closed = true
     for (const lease of leases.values()) {
       if (lease.state === 'active') applyInvalidation(lease, 'connection_lost')

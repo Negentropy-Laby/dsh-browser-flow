@@ -18,7 +18,7 @@ import { existsSync, readFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { describe, it, after } from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { apply, inject, name } from '../src/index.js'
+import { apply, inject, name } from '../src/index.ts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const evidence = join(root, '.evidence', 'installed-host')

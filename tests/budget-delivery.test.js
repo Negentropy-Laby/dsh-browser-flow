@@ -1,7 +1,7 @@
 /** The dispatch budget includes elapsed Host time before the panel takes work. */
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { createControlState } from '../src/state.js'
+import { createControlState } from '../src/state.ts'
 import { resolveConfig } from '../src/config.ts'
 
 function fixture() {

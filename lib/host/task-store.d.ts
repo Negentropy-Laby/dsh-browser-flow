@@ -49,12 +49,6 @@ export type TaskAccess = {
 };
 /** Profile-owned task store. Durable ownership never grants page control or replays commands. */
 import { taskView } from './task-projections.ts';
-/** @typedef {import('./task-scope.ts').TaskScope} TaskScope */
-/** @typedef {import('./task-scope.ts').RunScope} RunScope */
-/** @typedef {{ schemaVersion?: number, scope: TaskScope, runId: import('./task-scope.ts').RunId, workflowRef: string, goal: string, constraints: string[], criteria: string[], origins: string[], adapter: string, adapterVersion: number, definitionId?: string, definitionDigest?: string, definitionVersion?: string }} Manifest */
-/** @typedef {{ schemaVersion?: number, seq: number, prev: string, type: string, data: Record<string, unknown>, hash: string }} TaskEvent */
-/** @typedef {{ manifest: Manifest, snapshot?: import('./task-definitions.ts').DefinitionSnapshot, events: TaskEvent[], dir: string, blocked: boolean, unhealthy: boolean, state: string, pendingWrite?: string, readOnly?: boolean, storageIssue?: string, checkedProofs?: Map<string,import('./task-criteria.ts').CheckedProof>, evidenceIssues?: string[], liveDocumentToken?: string, waiting?: import('./task-wait.ts').UserWait, waitInput?: {kind:string,inputRef:string} }} TaskData */
-/** @typedef {{ readonly scope: TaskScope, readonly run: RunScope }} TaskAccess */
 /** Expected task failures are sanitized at the tool/HTTP boundary. */
 export declare class TaskError extends Error {
     code: string;
@@ -114,12 +108,12 @@ export declare class TaskStore {
     beginAttempt(access: TaskAccess, action: string): Promise<string>;
     /** @param {TaskAccess} access - original run. @param {string} attemptId - original attempt. @param {string} outcome - known result or unknown. @param {{fileGrantId?:string}} [details] - verified file acknowledgement binding. @returns {Promise<void>} durable settlement; unknown is sticky. */
     receipt(access: TaskAccess, attemptId: string, outcome: string, details?: {
-        fileGrantId?: string;
+        fileGrantId?: unknown;
     }): Promise<void>;
     /** @param {TaskAccess} access - current owner. @returns {void} page mutations require no outstanding human dependency. */
     assertReady(access: TaskAccess): void;
     /** @param {TaskAccess} access - owner. @param {import('./task-wait.ts').UserWaitRequest} request - model declaration. @returns {Promise<import('./task-wait.ts').UserWait>} synchronized wait; identical repeats do not append. */
-    declareWait(access: TaskAccess, request: import('./task-wait.ts').UserWaitRequest): Promise<import('./task-wait.ts').UserWait>;
+    declareWait(access: TaskAccess, request: unknown): Promise<import('./task-wait.ts').UserWait>;
     /** @param {TaskAccess} access - owner. @param {string} kind - actual prerequisite supplied through the panel. @param {string} inputRef - exact current capability or file fingerprint. @returns {Promise<void>} task-owned new input, never an authorization itself. */
     noteWaitInput(access: TaskAccess, kind: string, inputRef: string): Promise<void>;
     /** @param {TaskAccess} access - owner. @param {unknown} waitId - panel reference. @param {unknown} userInput - explicit human input for non-verifiable dependencies. @param {(kind:string,inputRef:string)=>boolean} current - Host rechecks current supplied capabilities. @returns {Promise<void>} records resolution without restoring page control. */

@@ -8,8 +8,6 @@ export type CheckedProof = {
     value: Record<string, unknown>;
     files: Map<string, Buffer>;
 };
-/** @typedef {{ role:string, path:string, sha256:string, bytes:number }} Artifact */
-/** @typedef {{ value:Record<string,unknown>, files:Map<string,Buffer> }} CheckedProof */
 /** @param {unknown} value - disk reference. @returns {value is Artifact} bounded, relative evidence file reference. */
 export declare function validArtifact(value: unknown): value is Artifact;
 /** @param {import('./task-store.ts').Manifest} manifest - current owner. @returns {{id:string,validatorId:string,version:number,label:string} | undefined} code-owned criterion. */

@@ -19,28 +19,6 @@ export type BrowserFlowConfig = {
     localTasksDir: string;
     importEvidenceDir: string;
 };
-/**
- * @typedef {object} BrowserFlowConfig
- * @property {number} commandBudgetMs - end-to-end deadline for one command, queueing included.
- * @property {number} observeMaxChars - character budget of one observation.
- * @property {number} observeMaxNodes - element budget of one observation.
- * @property {number} findMaxMatches - matches per find.
- * @property {number} waitMaxMs - longest accepted wait.
- * @property {number} queueLimit - pending operations per page.
- * @property {number} pollWaitMs - longest single panel poll.
- * @property {number} connectionIdleMs - idle window before a panel's leases expire.
- * @property {number} importWindowMs - relative lifetime for one passive import collection.
- * @property {number} graphMaxWorkers - graph worker deployment setting.
- * @property {number} graphIdleMs - graph worker deployment setting.
- * @property {number} graphRequestTimeoutMs - graph worker deployment setting.
- * @property {number} graphMaxFrameBytes - graph worker deployment setting.
- * @property {number} graphStderrBytes - graph worker deployment setting.
- * @property {number} graphTerminateGraceMs - graph worker deployment setting.
- * @property {number} graphColdRounds - graph worker deployment setting.
- * @property {number} graphMinGroup - graph worker deployment setting.
- * @property {string} localTasksDir - absolute local task directory; empty uses profileContext.home/browser-flow/tasks.
- * @property {string} importEvidenceDir - legacy configuration accepted for compatibility; new evidence is always under the bound task.
- */
 /** Defaults applied when a field is omitted. @type {Readonly<BrowserFlowConfig>} */
 export declare const DEFAULTS: Readonly<BrowserFlowConfig>;
 /**

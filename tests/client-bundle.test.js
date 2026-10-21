@@ -207,7 +207,7 @@ describe('package manifest and profile patch', () => {
   })
 
   it('ships every file the Host and Client entry points need', () => {
-    for (const file of ['lib/client.js', 'src/index.js', 'cordis.patch.yml']) {
+    for (const file of ['lib/client.js', 'src/index.ts', 'cordis.patch.yml']) {
       assert.ok(manifest.files.some(entry => file.startsWith(entry)), `${file} must be published`)
     }
   })

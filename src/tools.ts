@@ -1,3 +1,8 @@
+import type { BrowserFlowService, ToolExec } from './index.ts'
+export type { ToolExec } from './index.ts'
+export type ToolService = Pick<BrowserFlowService, 'annotate' | 'resolveCaller' | 'listTabs' | 'observe' | 'find' | 'act' | 'wait' | 'release'>
+export type ToolDefinition = ReturnType<typeof createTools>[number]
+
 /**
  * The six model-facing tools.
  *
@@ -20,43 +25,11 @@
 import { validUserWait, USER_WAIT_KINDS } from './task-wait.ts'
 import { failure, success } from './protocol.ts'
 
-/**
- * One tool call's execution context, as the Host supplies it.
- * @typedef {object} ToolExec
- * @property {object} [agent] - the live Agent making the call.
- * @property {AbortSignal} signal - caller cancellation.
- */
-
-/**
- * The Host service the tools call into.
- *
- * Declared structurally so this module stays independent of the service class.
- * @typedef {object} ToolService
- * @property {(caller: object, result: any) => any} [annotate] - bind canonical results to this task only.
- * @property {(exec: ToolExec) => { ok: true, value: object } | { ok: false, error: { code: string, message: string, details?: object } }} resolveCaller - resolve the calling Agent.
- * @property {(caller: object) => { ok: boolean, value?: object, error?: object }} listTabs - pages this Session may authorize.
- * @property {(caller: object, signal: AbortSignal, view?: string, detail?: {ref:string,offset:number}) => Promise<object>} observe - read the authorized page or import judgment.
- * @property {(caller: object, query: object, signal: AbortSignal) => Promise<object>} find - locate elements.
- * @property {(caller: object, action: object, signal: AbortSignal) => Promise<object>} act - run one action.
- * @property {(caller: object, input: object, signal: AbortSignal) => Promise<object>} wait - wait for a condition.
- * @property {(caller: object) => Promise<object>} release - detach control.
- */
-
-/**
- * The Host service the tools call into.
- *
- * Declared structurally so this module stays independent of the service class.
- * @typedef {object} ToolServiceOld
- * @property {(exec: object) => { ok: true, value: object } | { ok: false, error: object }} resolveCaller - resolve the calling Agent.
- * @property {(caller: object) => object} listTabs - pages this Session may authorize.
- * @property {(caller: object, signal: AbortSignal) => Promise<object>} observe - read the authorized page.
- * @property {(caller: object, query: object, signal: AbortSignal) => Promise<object>} find - locate elements.
- * @property {(caller: object, action: object, signal: AbortSignal) => Promise<object>} act - run one action.
- * @property {(caller: object, input: object, signal: AbortSignal) => Promise<object>} wait - wait for a condition.
- * @property {(caller: object) => Promise<object>} release - detach control.
- */
 /** Text block helper. @param {string} value - text. @returns {{ type: string, text: string }[]} content blocks. */
-const text = value => [{ type: 'text', text: value }]
+const text = (value: string) : {
+    type: string;
+    text: string;
+}[] => [{ type: 'text', text: value }]
 
 /** JSON output schema shared by every tool: the canonical value is an object. */
 const OBJECT_SCHEMA = { type: 'object', additionalProperties: true }
@@ -70,7 +43,7 @@ const LOG_NOTICE = 'Tool arguments the model already sent may already be in the 
  * @param {import('./config.ts').BrowserFlowConfig} config - resolved config.
  * @returns {object[]} tool definitions.
  */
-export function createTools(service, config) {
+export function createTools(service: ToolService, config: import('./config.ts').BrowserFlowConfig) {
   const definitions = [
     tabsTool(service),
     observeTool(service, config),
@@ -80,8 +53,8 @@ export function createTools(service, config) {
     releaseTool(service),
   ]
   return definitions.map(definition=>{
-    const execute=/** @type {{execute:(args:Record<string,unknown>,exec:ToolExec)=>Promise<object>|object}} */(definition).execute
-    return {...definition,async execute(/** @type {Record<string,unknown>} */ args,/** @type {ToolExec} */ exec){
+    const execute=definition.execute
+    return {...definition,async execute( args: Record<string, unknown>, exec: ToolExec){
       const result=await execute(args,exec)
       if(!service.annotate)return result
       const caller=service.resolveCaller(exec)
@@ -95,16 +68,16 @@ export function createTools(service, config) {
  * @param {string} name - tool name for the presentation metadata.
  * @returns {object} output definition.
  */
-function outputOf(name) {
+function outputOf(name: string) {
   return {
     schema: OBJECT_SCHEMA,
-    render: (/** @type {object} */ _args, /** @type {unknown} */ value) => text(JSON.stringify(value, undefined, 2)),
-    presentationMeta: (/** @type {object} */ _args, /** @type {unknown} */ value) => ({ tool: name }),
+    render: ( _args: object,  value: unknown) => text(JSON.stringify(value, undefined, 2)),
+    presentationMeta: ( _args: object,  value: unknown) => ({ tool: name }),
   }
 }
 
 /** @param {ToolService} service - Host service. @returns {object} `browser_tabs`. */
-function tabsTool(service) {
+function tabsTool(service: ToolService) {
   return {
     name: 'browser_tabs',
     description: 'List the pages of the current Session\'s Browser panel that this Agent may be authorized for. '
@@ -114,7 +87,7 @@ function tabsTool(service) {
       + LOG_NOTICE,
     parameters: { type: 'object', properties: {}, required: [], additionalProperties: false },
     output: outputOf('browser_tabs'),
-    async execute(/** @type {Record<string, unknown>} */ _args, /** @type {ToolExec} */ exec) {
+    async execute( _args: Record<string, unknown>,  exec: ToolExec) {
       const resolved = service.resolveCaller(exec)
       if (!resolved.ok) return resolved
       const listed = service.listTabs(resolved.value)
@@ -125,7 +98,7 @@ function tabsTool(service) {
 }
 
 /** @param {ToolService} service - Host service. @param {import('./config.ts').BrowserFlowConfig} config - config. @returns {object} `browser_observe`. */
-function observeTool(service, config) {
+function observeTool(service: ToolService, config: import('./config.ts').BrowserFlowConfig) {
   return {
     name: 'browser_observe',
     description: 'Read a bounded text view of the authorized page: redacted address, title, visible text, and a list of '
@@ -137,19 +110,19 @@ function observeTool(service, config) {
       + LOG_NOTICE,
     parameters: { type: 'object', properties: { view: { type: 'string', enum: ['page','bjrsj_import','task'], description: 'Default page, scoped Beijing import verifier, or the current task.' }, ref:{type:'string',description:'Task-local resource or asset reference from view=task.'},offset:{type:'integer',minimum:0,description:'Task detail continuation character offset.'} }, required: [], additionalProperties: false },
     output: outputOf('browser_observe'),
-    async execute(/** @type {Record<string, unknown>} */ args, /** @type {ToolExec} */ exec) {
+    async execute( args: Record<string, unknown>,  exec: ToolExec) {
       if (args.view !== undefined && args.view !== 'page' && args.view !== 'bjrsj_import' && args.view !== 'task') return failure('invalid_request', 'view must be page, bjrsj_import or task')
       if((args.ref!==undefined&&(args.view!=='task'||typeof args.ref!=='string'||!args.ref||args.ref.length>240)) || (args.offset!==undefined&&(args.ref===undefined||typeof args.offset!=='number'||!Number.isSafeInteger(args.offset)||args.offset<0||args.offset>2_000_000)))return failure('invalid_request','task detail requires a bounded reference and nonnegative offset')
       const resolved = service.resolveCaller(exec)
       if (!resolved.ok) return resolved
-      const observed = await service.observe(resolved.value, exec.signal, /** @type {string | undefined} */ (args.view),args.ref===undefined ? undefined : {ref:/** @type {string} */(args.ref),offset:/** @type {number} */(args.offset ?? 0)})
+      const observed = await service.observe(resolved.value, exec.signal,  ((args.view) as string | undefined),args.ref===undefined ? undefined : {ref:((args.ref) as string),offset:((args.offset ?? 0) as number)})
       return observed
     },
   }
 }
 
 /** @param {ToolService} service - Host service. @param {import('./config.ts').BrowserFlowConfig} config - config. @returns {object} `browser_find`. */
-function findTool(service, config) {
+function findTool(service: ToolService, config: import('./config.ts').BrowserFlowConfig) {
   return {
     name: 'browser_find',
     description: 'Locate elements on the authorized page by visible text, by an explicit DOM attribute value, or by ARIA role. '
@@ -169,7 +142,7 @@ function findTool(service, config) {
       additionalProperties: false,
     },
     output: outputOf('browser_find'),
-    async execute(/** @type {Record<string, unknown>} */ args, /** @type {ToolExec} */ exec) {
+    async execute( args: Record<string, unknown>,  exec: ToolExec) {
       const by = args.by
       const value = args.value
       const name = args.name
@@ -189,7 +162,7 @@ function findTool(service, config) {
 }
 
 /** @param {ToolService} service - Host service. @returns {object} `browser_act`. */
-function actTool(service) {
+function actTool(service: ToolService) {
   return {
     name: 'browser_act',
     description: 'Operate one element of the authorized page. Actions: click; type (replaces the whole value of an input, '
@@ -216,7 +189,7 @@ function actTool(service) {
       additionalProperties: false,
     },
     output: outputOf('browser_act'),
-    async execute(/** @type {Record<string, unknown>} */ args, /** @type {ToolExec} */ exec) {
+    async execute( args: Record<string, unknown>,  exec: ToolExec) {
       if(args.action==='await_user'){
         if(Object.keys(args).some(key=>!['action','wait'].includes(key))||!validUserWait(args.wait))return failure('invalid_request','await_user takes only a user dependency, reason and resumeCondition')
         const caller=service.resolveCaller(exec)
@@ -257,7 +230,7 @@ function actTool(service) {
 }
 
 /** @param {ToolService} service - Host service. @param {import('./config.ts').BrowserFlowConfig} config - config. @returns {object} `browser_wait`. */
-function waitTool(service, config) {
+function waitTool(service: ToolService, config: import('./config.ts').BrowserFlowConfig) {
   return {
     name: 'browser_wait',
     description: 'Wait for one listed DOM condition on the authorized page: present (element visible), absent (element gone '
@@ -278,7 +251,7 @@ function waitTool(service, config) {
       additionalProperties: false,
     },
     output: outputOf('browser_wait'),
-    async execute(/** @type {Record<string, unknown>} */ args, /** @type {ToolExec} */ exec) {
+    async execute( args: Record<string, unknown>,  exec: ToolExec) {
       const documentToken = args.documentToken
       const elementRef = args.elementRef
       const condition = args.condition
@@ -305,7 +278,7 @@ function waitTool(service, config) {
 }
 
 /** @param {ToolService} service - Host service. @returns {object} `browser_release`. */
-function releaseTool(service) {
+function releaseTool(service: ToolService) {
   return {
     name: 'browser_release',
     description: 'Detach this Agent\'s control from the authorized page and end the authorization. The page stays open, '
@@ -315,7 +288,7 @@ function releaseTool(service) {
       + LOG_NOTICE,
     parameters: { type: 'object', properties: {}, required: [], additionalProperties: false },
     output: outputOf('browser_release'),
-    async execute(/** @type {Record<string, unknown>} */ _args, /** @type {ToolExec} */ exec) {
+    async execute( _args: Record<string, unknown>,  exec: ToolExec) {
       const resolved = service.resolveCaller(exec)
       if (!resolved.ok) return resolved
       return service.release(resolved.value)

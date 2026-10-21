@@ -13,7 +13,7 @@
 
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { createTools } from '../src/tools.js'
+import { createTools } from '../src/tools.ts'
 import { resolveConfig } from '../src/config.ts'
 import { failure, success } from '../src/protocol.ts'
 

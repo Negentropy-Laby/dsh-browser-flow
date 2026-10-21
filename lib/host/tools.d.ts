@@ -1,117 +1,307 @@
+import type { BrowserFlowService, ToolExec } from './index.ts';
+export type { ToolExec } from './index.ts';
+export type ToolService = Pick<BrowserFlowService, 'annotate' | 'resolveCaller' | 'listTabs' | 'observe' | 'find' | 'act' | 'wait' | 'release'>;
+export type ToolDefinition = ReturnType<typeof createTools>[number];
 /**
  * Build every tool definition bound to one service instance.
  * @param {ToolService} service - the browser-flow Host service.
  * @param {import('./config.ts').BrowserFlowConfig} config - resolved config.
  * @returns {object[]} tool definitions.
  */
-export function createTools(service: ToolService, config: import("./config.ts").BrowserFlowConfig): object[];
-/**
- * One tool call's execution context, as the Host supplies it.
- */
-export type ToolExec = {
-    /**
-     * - the live Agent making the call.
-     */
-    agent?: object | undefined;
-    /**
-     * - caller cancellation.
-     */
-    signal: AbortSignal;
-};
-/**
- * The Host service the tools call into.
- *
- * Declared structurally so this module stays independent of the service class.
- */
-export type ToolService = {
-    /**
-     * - bind canonical results to this task only.
-     */
-    annotate?: ((caller: object, result: any) => any) | undefined;
-    /**
-     * - resolve the calling Agent.
-     */
-    resolveCaller: (exec: ToolExec) => {
-        ok: true;
-        value: object;
-    } | {
+export declare function createTools(service: ToolService, config: import('./config.ts').BrowserFlowConfig): ({
+    execute(args: Record<string, unknown>, exec: ToolExec): Promise<{
         ok: false;
         error: {
             code: string;
             message: string;
-            details?: object;
+            details?: Record<string, unknown>;
         };
-    };
-    /**
-     * - pages this Session may authorize.
-     */
-    listTabs: (caller: object) => {
-        ok: boolean;
-        value?: object;
-        error?: object;
-    };
-    /**
-     * - read the authorized page or import judgment.
-     */
-    observe: (caller: object, signal: AbortSignal, view?: string, detail?: {
-        ref: string;
-        offset: number;
-    }) => Promise<object>;
-    /**
-     * - locate elements.
-     */
-    find: (caller: object, query: object, signal: AbortSignal) => Promise<object>;
-    /**
-     * - run one action.
-     */
-    act: (caller: object, action: object, signal: AbortSignal) => Promise<object>;
-    /**
-     * - wait for a condition.
-     */
-    wait: (caller: object, input: object, signal: AbortSignal) => Promise<object>;
-    /**
-     * - detach control.
-     */
-    release: (caller: object) => Promise<object>;
-};
-/**
- * The Host service the tools call into.
- *
- * Declared structurally so this module stays independent of the service class.
- */
-export type ToolServiceOld = {
-    /**
-     * - resolve the calling Agent.
-     */
-    resolveCaller: (exec: object) => {
+    } | {
         ok: true;
         value: object;
-    } | {
-        ok: false;
-        error: object;
+    }>;
+    name: string;
+    description: string;
+    parameters: {
+        type: string;
+        properties: {};
+        required: never[];
+        additionalProperties: boolean;
     };
-    /**
-     * - pages this Session may authorize.
-     */
-    listTabs: (caller: object) => object;
-    /**
-     * - read the authorized page.
-     */
-    observe: (caller: object, signal: AbortSignal) => Promise<object>;
-    /**
-     * - locate elements.
-     */
-    find: (caller: object, query: object, signal: AbortSignal) => Promise<object>;
-    /**
-     * - run one action.
-     */
-    act: (caller: object, action: object, signal: AbortSignal) => Promise<object>;
-    /**
-     * - wait for a condition.
-     */
-    wait: (caller: object, input: object, signal: AbortSignal) => Promise<object>;
-    /**
-     * - detach control.
-     */
-    release: (caller: object) => Promise<object>;
-};
+    output: {
+        schema: {
+            type: string;
+            additionalProperties: boolean;
+        };
+        render: (_args: object, value: unknown) => {
+            type: string;
+            text: string;
+        }[];
+        presentationMeta: (_args: object, value: unknown) => {
+            tool: string;
+        };
+    };
+} | {
+    execute(args: Record<string, unknown>, exec: ToolExec): Promise<{
+        ok: false;
+        error: {
+            code: string;
+            message: string;
+            details?: Record<string, unknown>;
+        };
+    } | {
+        ok: true;
+        value: object;
+    }>;
+    name: string;
+    description: string;
+    parameters: {
+        type: string;
+        properties: {
+            view: {
+                type: string;
+                enum: string[];
+                description: string;
+            };
+            ref: {
+                type: string;
+                description: string;
+            };
+            offset: {
+                type: string;
+                minimum: number;
+                description: string;
+            };
+        };
+        required: never[];
+        additionalProperties: boolean;
+    };
+    output: {
+        schema: {
+            type: string;
+            additionalProperties: boolean;
+        };
+        render: (_args: object, value: unknown) => {
+            type: string;
+            text: string;
+        }[];
+        presentationMeta: (_args: object, value: unknown) => {
+            tool: string;
+        };
+    };
+} | {
+    execute(args: Record<string, unknown>, exec: ToolExec): Promise<{
+        ok: false;
+        error: {
+            code: string;
+            message: string;
+            details?: Record<string, unknown>;
+        };
+    } | {
+        ok: true;
+        value: object;
+    }>;
+    name: string;
+    description: string;
+    parameters: {
+        type: string;
+        properties: {
+            by: {
+                type: string;
+                enum: string[];
+                description: string;
+            };
+            value: {
+                type: string;
+                description: string;
+            };
+            name: {
+                type: string;
+                description: string;
+            };
+        };
+        required: string[];
+        additionalProperties: boolean;
+    };
+    output: {
+        schema: {
+            type: string;
+            additionalProperties: boolean;
+        };
+        render: (_args: object, value: unknown) => {
+            type: string;
+            text: string;
+        }[];
+        presentationMeta: (_args: object, value: unknown) => {
+            tool: string;
+        };
+    };
+} | {
+    execute(args: Record<string, unknown>, exec: ToolExec): Promise<{
+        ok: false;
+        error: {
+            code: string;
+            message: string;
+            details?: Record<string, unknown>;
+        };
+    } | {
+        ok: true;
+        value: object;
+    }>;
+    name: string;
+    description: string;
+    parameters: {
+        type: string;
+        properties: {
+            documentToken: {
+                type: string;
+                description: string;
+            };
+            elementRef: {
+                type: string;
+                description: string;
+            };
+            action: {
+                type: string;
+                enum: string[];
+                description: string;
+            };
+            fileGrantId: {
+                type: string;
+                description: string;
+            };
+            value: {
+                type: string;
+                description: string;
+            };
+            checked: {
+                type: string;
+                description: string;
+            };
+            wait: {
+                type: string;
+                properties: {
+                    kind: {
+                        type: string;
+                        enum: string[];
+                    };
+                    reason: {
+                        type: string;
+                        minLength: number;
+                        maxLength: number;
+                    };
+                    resumeCondition: {
+                        type: string;
+                        minLength: number;
+                        maxLength: number;
+                    };
+                };
+                required: string[];
+                additionalProperties: boolean;
+            };
+        };
+        required: string[];
+        additionalProperties: boolean;
+    };
+    output: {
+        schema: {
+            type: string;
+            additionalProperties: boolean;
+        };
+        render: (_args: object, value: unknown) => {
+            type: string;
+            text: string;
+        }[];
+        presentationMeta: (_args: object, value: unknown) => {
+            tool: string;
+        };
+    };
+} | {
+    execute(args: Record<string, unknown>, exec: ToolExec): Promise<{
+        ok: false;
+        error: {
+            code: string;
+            message: string;
+            details?: Record<string, unknown>;
+        };
+    } | {
+        ok: true;
+        value: object;
+    }>;
+    name: string;
+    description: string;
+    parameters: {
+        type: string;
+        properties: {
+            documentToken: {
+                type: string;
+                description: string;
+            };
+            elementRef: {
+                type: string;
+                description: string;
+            };
+            condition: {
+                type: string;
+                enum: string[];
+                description: string;
+            };
+            text: {
+                type: string;
+                description: string;
+            };
+            timeoutMs: {
+                type: string;
+                description: string;
+            };
+        };
+        required: string[];
+        additionalProperties: boolean;
+    };
+    output: {
+        schema: {
+            type: string;
+            additionalProperties: boolean;
+        };
+        render: (_args: object, value: unknown) => {
+            type: string;
+            text: string;
+        }[];
+        presentationMeta: (_args: object, value: unknown) => {
+            tool: string;
+        };
+    };
+} | {
+    execute(args: Record<string, unknown>, exec: ToolExec): Promise<{
+        ok: false;
+        error: {
+            code: string;
+            message: string;
+            details?: Record<string, unknown>;
+        };
+    } | {
+        ok: true;
+        value: object;
+    }>;
+    name: string;
+    description: string;
+    parameters: {
+        type: string;
+        properties: {};
+        required: never[];
+        additionalProperties: boolean;
+    };
+    output: {
+        schema: {
+            type: string;
+            additionalProperties: boolean;
+        };
+        render: (_args: object, value: unknown) => {
+            type: string;
+            text: string;
+        }[];
+        presentationMeta: (_args: object, value: unknown) => {
+            tool: string;
+        };
+    };
+})[];

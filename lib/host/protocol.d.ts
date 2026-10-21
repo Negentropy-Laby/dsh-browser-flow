@@ -1,4 +1,56 @@
 export type ErrorCode = (typeof ERROR_CODES)[number];
+/** Canonical success/failure union used inside the Host. */
+export type Result<T> = {
+    ok: true;
+    value: T;
+} | ReturnType<typeof failure>;
+/** A document-scoped reference from the fixed page programs. */
+export interface ElementTarget {
+    documentToken: string;
+    elementRef: string;
+}
+/** A locator accepted by the model-facing parser. */
+export interface FindQuery {
+    by: string;
+    value: string;
+    name?: string;
+}
+/** Validated page action arguments; user waits never enter the page queue. */
+export interface ActionInput {
+    action: string;
+    wait?: unknown;
+    documentToken?: string;
+    elementRef?: string;
+    fileGrantId?: unknown;
+    value?: unknown;
+    checked?: unknown;
+}
+/** Validated wait arguments. */
+export interface WaitInput {
+    condition: string;
+    documentToken: string;
+    elementRef: string;
+    timeoutMs?: number;
+    text?: unknown;
+}
+/** Internal page operation, including code-owned import restrictions. */
+export interface PageOperation extends Record<string, unknown> {
+    kind: 'observe' | 'find' | 'act' | 'wait';
+    action?: string;
+    view?: string;
+    maxChars?: number;
+    maxNodes?: number;
+    query?: FindQuery;
+    limit?: number;
+    target?: {
+        documentToken?: string;
+        elementRef?: string;
+    };
+    condition?: string;
+    timeoutMs?: number;
+    value?: unknown;
+    checked?: unknown;
+}
 /** A page identity validated during the panel handshake. */
 export interface PanelPage {
     lease: string;
@@ -33,13 +85,30 @@ export interface CommandEnvelope {
     deadlineAt: number;
     op: Record<string, unknown>;
 }
+/** Terminal result identity and bounded optional diagnostic from a panel. */
+export interface ResultEnvelope {
+    kind: 'result';
+    protocolVersion: 3;
+    task: import('./task-scope.ts').RunScope;
+    id: string;
+    leaseId: string;
+    instanceId: string;
+    connectionGeneration: number;
+    epoch: number;
+    sequence: number;
+    outcome: 'ok' | 'failed' | 'dropped' | 'unknown_outcome';
+    payload?: Record<string, unknown>;
+    error?: Record<string, unknown> & {
+        code?: unknown;
+        message?: string;
+    };
+}
 /** Protocol revision. A mismatch fails the handshake loudly instead of guessing. */
 export declare const PROTOCOL_VERSION = 3;
 /** Base path of this plugin's Host routes on the existing `/api` connection. */
 export declare const ROUTE_PREFIX = "/api/browser-flow";
 /** Errors this plugin reports to the model and the panel. */
 export declare const ERROR_CODES: readonly string[];
-/** @typedef {typeof ERROR_CODES[number]} ErrorCode */
 /** Error codes that mean "the action did not run and can be retried after re-observing". */
 export declare const RETRYABLE_CODES: readonly string[];
 /**
@@ -141,7 +210,7 @@ export declare function validateCommand(value: unknown): {
  */
 export declare function validateResult(value: unknown): {
     ok: true;
-    result: Record<string, unknown>;
+    result: ResultEnvelope;
 } | {
     ok: false;
     reason: string;

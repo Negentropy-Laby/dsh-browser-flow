@@ -124,6 +124,11 @@ describe('validateCommand', () => {
 })
 
 describe('validateResult', () => {
+  it('refuses non-string optional diagnostics before accepting a terminal result', () => {
+    for (const error of [42, {message: 42}, {message: 'x'.repeat(4001)}]) {
+      assert.equal(validateResult(result({outcome:'unknown_outcome',error})).ok,false)
+    }
+  })
   it('requires a nonempty panel instance id', () => {
     for (const instanceId of [undefined, '', 42]) {
       const verdict = validateResult(result({ instanceId }))

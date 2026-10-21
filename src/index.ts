@@ -1,3 +1,50 @@
+export type LiveAgent = {
+    id: string;
+    session?: { vars?: Record<string, unknown> };
+};
+export type ToolExec = {
+    agent?: LiveAgent | undefined;
+    signal: AbortSignal;
+};
+export type FetchRoute = {
+    path: string;
+    methods: string[];
+    requestBody?: "buffered" | undefined;
+    fetch: (request: Request) => Promise<Response>;
+};
+export type HostContext = {
+    get?: ((name: string, strict: boolean) => import("./task-definitions.ts").Profile | undefined) | undefined;
+    profileContext?: import("./task-definitions.ts").Profile | undefined;
+    tools?: {
+        register: (definition: object) => () => void;
+    } | undefined;
+    agents?: {
+        get: (id: string) => LiveAgent | undefined;
+    } | undefined;
+    skills?: {
+        register: (skill: import("./task-definitions.ts").LocalSkill) => () => void;
+    } | undefined;
+    subprocess?: import("./graph/protocol.ts").SubprocessPort | undefined;
+    connection?: {
+        fetch: {
+            register: (route: FetchRoute) => () => void;
+        };
+    } | undefined;
+    inject?: ((dependencies: string[], callback: (scope: HostContext) => void) => void) | undefined;
+    effect?: ((callback: () => (() => void | Promise<void>), label?: string) => void) | undefined;
+    logger?: {
+        info: (message: string) => void;
+        warn: (message: string) => void;
+        error: (message: string) => void;
+    } | undefined;
+};
+export type ResolvedCaller = {
+    agent: LiveAgent;
+    sessionId: string;
+    agentInstanceToken: string;
+};
+export type ControlStore = ReturnType<typeof createControlState>;
+
 /**
  * The browser-flow Host service and plugin entry.
  *
@@ -6,7 +53,7 @@
  * - Mint a non-persistent `agentInstanceToken` for every live Agent object the
  *   plugin sees, so two Agents of the same Session are distinguishable (E06:
  *   the Harness exposes no `runId`).
- * - Own the control state machine (`lib/state.js`).
+ * - Own the control state machine (`src/state.ts`).
  * - Serve the panel channel as exact routes on the existing authenticated
  *   `/api` connection (`ctx.connection.fetch.register`), which is the mechanism
  *   this Host version actually loads for external plugins.
@@ -28,9 +75,11 @@ import { join } from 'node:path'
 import { ImportFiles } from './import-files.js'
 import { importScope, extractIdentity, judgeIdentity, judgeImport } from './import-rules.js'
 import { decodeImportEvidence } from './import-evidence.js'
-import { createControlState, monotonicNow } from './state.js'
+import { createControlState, monotonicNow } from './state.ts'
 import { redactUrl } from './pagecode.js'
-import { createTools } from './tools.js'
+import { createTools, type ToolDefinition } from './tools.ts'
+import { type ControlLease } from './state.ts'
+import { type Result, type PageOperation, type FindQuery, type ActionInput, type WaitInput, isRecord } from './protocol.ts'
 import { GraphWorkers } from './graph/worker.ts'
 import { taskFacts } from './task-facts.ts'
 import { taskView } from './task-projections.ts'
@@ -42,46 +91,6 @@ export const name = 'browser-flow'
 export const inject = ['tools', 'agents']
 
 /**
- * The live Agent object the Host hands to a tool call.
- * @typedef {object} LiveAgent
- * @property {string} id - Session identity.
- */
-
-/**
- * One tool call's execution context, as the Host supplies it.
- * @typedef {object} ToolExec
- * @property {LiveAgent} [agent] - the live Agent making the call.
- * @property {AbortSignal} signal - caller cancellation.
- */
-
-/**
- * One exact Fetch route, as the authenticated connection accepts it.
- * @typedef {object} FetchRoute
- * @property {string} path - exact pathname.
- * @property {string[]} methods - accepted methods.
- * @property {'buffered'} [requestBody] - body handling.
- * @property {(request: Request) => Promise<Response>} fetch - handler.
- */
-
-/**
- * The Host services this plugin reads off its context.
- *
- * Declared structurally so the plugin stays a plain Cordis plugin: it needs no
- * import from the Host to be typechecked.
- * @typedef {object} HostContext
- * @property {(name: string, strict: boolean) => import('./task-definitions.ts').Profile | undefined} [get] - optional launcher context lookup.
- * @property {import('./task-definitions.ts').Profile} [profileContext] - actual dsh profile identity and home.
- * @property {{ register: (definition: object) => () => void }} [tools] - tool registry.
- * @property {{ get: (id: string) => LiveAgent | undefined }} [agents] - Agent registry.
- * @property {{ register: (skill: import('./task-definitions.ts').LocalSkill) => () => void }} [skills] - Optional existing skill registry; its registrations are Cordis effects.
- * @property {import('./graph/protocol.ts').SubprocessPort} [subprocess] - optional managed process provider.
- * @property {{ fetch: { register: (route: FetchRoute) => () => void } }} [connection] - authenticated connection.
- * @property {(dependencies: string[], callback: (scope: HostContext) => void) => void} [inject] - deferred injection.
- * @property {(callback: () => (() => void | Promise<void>), label?: string) => void} [effect] - effect-scoped registration.
- * @property {{ info: (message: string) => void, warn: (message: string) => void, error: (message: string) => void }} [logger] - Host logger.
- */
-
-/**
  * A short stable digest of one instance token.
  *
  * The panel shows this so the user can confirm which live Agent instance would
@@ -90,7 +99,7 @@ export const inject = ['tools', 'agents']
  * @param {string} token - the plugin-minted instance token.
  * @returns {string} eight hexadecimal characters.
  */
-function instanceDigest(token) {
+function instanceDigest(token: string) : string {
   let hash = 0x811c9dc5
   for (let index = 0; index < token.length; index += 1) {
     hash ^= token.charCodeAt(index)
@@ -98,95 +107,77 @@ function instanceDigest(token) {
   }
   return hash.toString(16).padStart(8, '0')
 }
-/**
- * A resolved caller: the exact live Agent plus its plugin-minted token.
- * @typedef {object} ResolvedCaller
- * @property {LiveAgent} agent - the exact live Agent object.
- * @property {string} sessionId - its Session.
- * @property {string} agentInstanceToken - its plugin-minted token.
- */
-
-/**
- * The control-state store this service adapts.
- *
- * Declared structurally so the service can be tested with a stand-in and stays
- * independent of the state module's internals.
- * @typedef {object} ControlStore
- * @property {() => void} close - end calls and discard every binding.
- * @property {(hello: object) => any} registerConnection - register a panel connection.
- * @property {(sessionId: string) => any[]} connectionsFor - connections of one Session.
- * @property {(idleMs: number) => string[]} expireIdleConnections - drop idle connections.
- * @property {(input: object) => any} authorize - bind an authorization.
- * @property {(agent: LiveAgent, token: string, sessionId: string) => any} leaseFor - resolve a caller's lease.
- * @property {(sessionId: string) => number} leaseCountForSession - active leases of one Session, whoever holds them.
- * @property {(sessionId: string, liveAgent: object) => string[]} retireLeasesOfReplacedAgents - retire leases a replaced Agent holds.
- * @property {(instanceId: string, generation: number) => any} listPages - pages visible to one connection.
- * @property {(instanceId: string, generation: number, guestLease: string, event: string, documentToken?: string) => any} reportInvalidation - apply a page event.
- * @property {(input: object, reason: string) => any} revoke - detach control.
- * @property {(lease: any, op: object, limits: object, signal?: AbortSignal) => Promise<any>} run - enqueue an operation.
- * @property {(limits: object) => void} pumpAll - dispatch what the leases can take.
- * @property {(instanceId: string, generation: number, limits: object) => any} takeCommands - hand commands to a panel.
- * @property {(result: object, limits: object) => any} settle - accept a result.
- * @property {(leaseId: string) => any} describeLease - describe one lease.
- * @property {() => number} connectionCount - live connections.
- * @property {() => number} leaseCount - leases.
- */
 
 /** The Host service: control state plus the panel channel. */
 export class BrowserFlowService {
+graph: GraphWorkers;
+ctx: HostContext;
+config: import("./config.ts").BrowserFlowConfig;
+tasks: TaskStore;
+importFiles: ImportFiles;
+instanceTokens: WeakMap<object, string>;
+now: typeof monotonicNow;
+state: ControlStore;
+tools: Map<string, ToolDefinition>;
+disposers: (() => void | Promise<void>)[];
+idleTimer: (() => Promise<void>) | undefined;
+closed: boolean;
+pending: Set<Promise<object>>;
+closing: Promise<void> | undefined;
+
   /**
    * @param {HostContext} ctx - Host plugin context.
    * @param {import('./config.ts').BrowserFlowConfig} config - resolved config.
    * @param {GraphWorkers} [graph] - derived graph service; defaults to the packaged helper.
    */
-  constructor(ctx, config, graph=new GraphWorkers(config)) {
+  constructor(ctx: HostContext, config: import('./config.ts').BrowserFlowConfig, graph: GraphWorkers=new GraphWorkers(config)) {
     this.graph=graph
     this.ctx = ctx
     this.config = config
     const profile=ctx.get ? ctx.get('profileContext',false) : ctx.profileContext
     this.tasks=new TaskStore(tasksRoot(config.localTasksDir,profile),profile,config.commandBudgetMs,graph,config)
     this.importFiles = new ImportFiles(undefined)
-    /** @type {WeakMap<object,string>} */ this.instanceTokens=new WeakMap()
+     this.instanceTokens=new WeakMap()
     this.now=monotonicNow
-    this.state = /** @type {ControlStore} */ (createControlState({now:()=>this.now()}))
+    this.state =  createControlState({now:()=>this.now()})
     this.tasks.controlDocument=access=>{
       const agent=this.ctx.agents?.get(access.scope.ownerSessionId),lease=agent?this.state.leaseFor(agent,this.tokenOf(agent),access.scope.ownerSessionId):undefined
       return lease?.state==='active'&&lease.task&&sameRunScope(lease.task,access.run)?lease.documentToken:undefined
     }
-    /** @type {Map<string, object>} */
+
     this.tools = new Map()
-    /** @type {(() => void | Promise<void>)[]} */
+
     this.disposers = []
-    /** @type {(() => Promise<void>) | undefined} */
+
     this.idleTimer = undefined
     this.closed = false
-    /** @type {Set<Promise<object>>} */
+
     this.pending = new Set()
-    /** @type {Promise<void> | undefined} */
+
     this.closing = undefined
   }
 
-  /** @param {() => Promise<object>} operation - admitted operation including its final durable record. @returns {Promise<any>} terminal result; shutdown drains it before storage closes. */
-  own(operation) {
+  /** @param {() => Promise<object>} operation - admitted operation including its final durable record. @returns  terminal result; shutdown drains it before storage closes. */
+  own<T extends object>(operation: () => Promise<T>) {
     if(this.closed)return Promise.resolve(failure('connection_stale','the service was unloaded; control is suspended'))
     let pending
     try{pending=operation()}catch(error){pending=Promise.reject(error)}
     this.pending.add(pending)
     return pending.finally(()=>this.pending.delete(pending))
   }
-  /** @param {any} lease - live lease. @returns {string} immutable comparison for every asynchronous resumption. */
-  leaseStamp(lease) {return JSON.stringify([lease.task,lease.id,lease.epoch,lease.documentToken,lease.connectionInstanceId,lease.connectionGeneration])}
-  /** @param {ResolvedCaller} caller - original Agent. @param {import('./task-store.ts').TaskAccess} access - original task/run. @param {any} lease - original lease. @param {string} stamp - captured binding. @param {boolean} [write] - enforce task write admission. @returns {void} no changed authorization is allowed to reach a guest. */
-  assertCurrent(caller,access,lease,stamp,write=true) {
+  /** @param  lease - live lease. @returns {string} immutable comparison for every asynchronous resumption. */
+  leaseStamp(lease: ControlLease) : string {return JSON.stringify([lease.task,lease.id,lease.epoch,lease.documentToken,lease.connectionInstanceId,lease.connectionGeneration])}
+  /** @param {ResolvedCaller} caller - original Agent. @param {import('./task-store.ts').TaskAccess} access - original task/run. @param  lease - original lease. @param {string} stamp - captured binding. @param {boolean} [write] - enforce task write admission. @returns {void} no changed authorization is allowed to reach a guest. */
+  assertCurrent(caller: ResolvedCaller,access: import('./task-store.ts').TaskAccess,lease: ControlLease,stamp: string,write: boolean=true) : void {
     this.tasks.openTask(access,write)
-    if(this.closed || this.ctx.agents?.get(caller.sessionId)!==caller.agent || lease.state!=='active' || this.leaseOf(caller).value!==lease || this.leaseStamp(lease)!==stamp)throw new TaskError('revoked','authorization changed during the operation; no new page dispatch is permitted')
+    if(this.closed || this.ctx.agents?.get(caller.sessionId)!==caller.agent || lease.state!=='active' || this.state.leaseFor(caller.agent,caller.agentInstanceToken,caller.sessionId)!==lease || this.leaseStamp(lease)!==stamp)throw new TaskError('revoked','authorization changed during the operation; no new page dispatch is permitted')
   }
   /**
    * Token for one live Agent object, minted on first sight.
    * @param {object} agent - live Agent object.
    * @returns {string} opaque token; never persisted.
    */
-  tokenOf(agent) {
+  tokenOf(agent: object) : string {
     let token = this.instanceTokens.get(agent)
     if (token === undefined) {
       token = `agent-${randomUUID()}`
@@ -201,9 +192,9 @@ export class BrowserFlowService {
    * The registered object must be the calling object and the Session must
    * match; comparing Session ids alone is not enough (E06).
    * @param {ToolExec} exec - tool execution context.
-   * @returns {any} caller verdict.
+   * @returns  caller verdict.
    */
-  resolveCaller(exec) {
+  resolveCaller(exec: ToolExec) {
     const agent = exec?.agent
     if (agent === undefined || agent === null) {
       return failure('no_live_agent', 'this tool runs only inside an Agent turn; start the Session\'s Agent first')
@@ -220,20 +211,20 @@ export class BrowserFlowService {
   }
 
   /** @param {ResolvedCaller} caller - exact live caller. @param {boolean} [write] - page mutation or file grant. @returns {import('./task-store.ts').TaskAccess} current task capability. */
-  taskOf(caller,write=false) {
+  taskOf(caller: ResolvedCaller,write: boolean=false) : import('./task-store.ts').TaskAccess {
     const access=this.tasks.current(caller.sessionId)
     if(!access)throw new TaskError('task_not_bound','bind a task in Browser Flow or open view=task to recover this Session’s binding')
     this.tasks.openTask(access,write)
     return access
   }
   /** @param {unknown} error - expected task failure or unexpected defect. @returns {ReturnType<typeof failure>} sanitized failure. */
-  taskFailure(error) {
+  taskFailure(error: unknown) : ReturnType<typeof failure> {
     if(error instanceof TaskError)return failure(error.code,error.message)
     this.ctx.logger?.error?.('browser-flow: task operation failed; dependent writes remain disabled')
     return failure('task_storage_failed','task operation could not be recorded; revoke and hand off')
   }
   /** @param {import('./task-store.ts').TaskAccess} access - verified task. @param {boolean} [withGraph] - explicitly request derived graph computation. @param {AbortSignal} [signal] - caller cancellation. @returns {Promise<object>} logged task summary. */
-  async taskSummary(access,withGraph=false,signal=undefined) {
+  async taskSummary(access: import('./task-store.ts').TaskAccess,withGraph: boolean=false,signal: AbortSignal | undefined=undefined) {
     const data=this.tasks.openTask(access)
     data.liveDocumentToken=this.tasks.controlDocument?.(access)
     const budget=Math.max(1800,Math.floor(this.config.observeMaxChars*3/4))
@@ -251,8 +242,8 @@ export class BrowserFlowService {
       writeBlocked:!!data.readOnly||data.blocked||data.unhealthy||!this.tasks.writable,logHealthy:!data.unhealthy}
   }
 
-  /** @param {ResolvedCaller} caller - tool caller. @param {any} result - owned canonical result. @returns {any} task identity/state attached without reading any other task. */
-  annotate(caller,result) {
+  /** @param {ResolvedCaller} caller - tool caller. @param  result - owned canonical result. @returns  task identity/state attached without reading any other task. */
+  annotate<T extends object>(caller: ResolvedCaller,result: Result<T>) {
     try {
       const access=this.taskOf(caller)
       const data=this.tasks.openTask(access)
@@ -264,9 +255,9 @@ export class BrowserFlowService {
   /**
    * Resolve the control lease of one caller.
    * @param {ResolvedCaller} caller - resolved caller.
-   * @returns {any} lease verdict.
+   * @returns  lease verdict.
    */
-  leaseOf(caller) {
+  leaseOf(caller: ResolvedCaller) {
     const lease = this.state.leaseFor(caller.agent, caller.agentInstanceToken, caller.sessionId)
     if (lease === undefined) {
       // Distinguish "nothing was authorized" from "it was authorized for a
@@ -284,9 +275,9 @@ export class BrowserFlowService {
   /**
    * List the pages this caller could be authorized for.
    * @param {ResolvedCaller} caller - resolved caller.
-   * @returns {any} page list.
+   * @returns  page list.
    */
-  listTabs(caller) {
+  listTabs(caller: ResolvedCaller) {
     try{this.taskOf(caller)}catch(error){return this.taskFailure(error)}
     const connections = this.state.connectionsFor(caller.sessionId)
     if (connections.length === 0) {
@@ -296,8 +287,8 @@ export class BrowserFlowService {
     // reopened tab, a second window), and each reports the same guests, so the
     // list is keyed by lease rather than concatenated: a duplicate entry would
     // present the same physical page twice with different control leases.
-    /** @type {Map<string, any>} */
-    const byLease = new Map()
+
+    const byLease: Map<string, Extract<ReturnType<ControlStore['listPages']>, {ok:true}>['value']['pages'][number]> = new Map()
     for (const connection of connections) {
       const listed = this.state.listPages(connection.instanceId, connection.generation)
       if (!listed.ok) continue
@@ -317,13 +308,13 @@ export class BrowserFlowService {
   /**
    * Dispatch one page operation through the caller's lease.
    * @param {ResolvedCaller} caller - resolved caller.
-   * @param {any} op - validated operation payload.
+   * @param  op - validated operation payload.
    * @param {AbortSignal} signal - caller cancellation.
    * @param {number} [startedAt] - original Host monotonic admission time, before durable/file work.
    * @param {string} [writeAttemptId] - internal task-owned durable attempt required for writes.
-   * @returns {Promise<any>} validated dynamic page result or structured refusal.
+   * @returns  validated dynamic page result or structured refusal.
    */
-  async dispatch(/** @type {ResolvedCaller} */ caller, /** @type {any} */ op, /** @type {AbortSignal} */ signal, startedAt=this.now(), writeAttemptId=undefined) {
+  async dispatch( caller: ResolvedCaller,  op: PageOperation,  signal: AbortSignal, startedAt: number=this.now(), writeAttemptId: string | undefined=undefined): Promise<Result<Record<string, unknown>>> {
     if (this.closed) return failure('connection_stale', 'the browser control service was unloaded')
     let access
     try {access=this.taskOf(caller,op.kind==='act')}catch(error){return this.taskFailure(error)}
@@ -337,8 +328,8 @@ export class BrowserFlowService {
     if(remaining<=0||signal?.aborted)return failure('deadline_exceeded','the total command budget expired before delivery')
     const deadline = new AbortController()
     const timer = setTimeout(() => deadline.abort(), remaining)
-    /** @type {Promise<object> | undefined} */
-    let completion
+
+    let completion: Promise<object> | undefined
     try {
       const cancellation = signal === undefined ? deadline.signal : AbortSignal.any([signal, deadline.signal])
       const policy=pagePolicy(this.tasks.openTask(access).manifest,lease.value.importKind)
@@ -371,10 +362,10 @@ export class BrowserFlowService {
 
   /**
    * Redact URLs inside one page result before it reaches a model.
-   * @param {any} value - page result.
-   * @returns {any} redacted copy.
+   * @param  value - page result.
+   * @returns  redacted copy.
    */
-  redactResult(value) {
+  redactResult(value: Record<string, unknown>) {
     const copy = { ...value }
     delete copy.privateImport
     delete copy.file
@@ -392,11 +383,17 @@ export class BrowserFlowService {
    * @param {AbortSignal} signal - cancellation.
    * @param {string} [view] - page, scoped import evidence or task.
    * @param {{ref:string,offset:number}} [detail] - task detail only.
-   * @returns {Promise<any>} observation.
+   * @returns  observation.
    */
-  observe(caller,signal,view,detail) {return this.own(()=>this.observeOwned(caller,signal,view,detail))}
-  /** @param {ResolvedCaller} caller - actual caller. @param {AbortSignal} signal - cancellation. @param {string} [view] - fixed view. @param {{ref:string,offset:number}} [detail] - task-local continuation. @returns {Promise<any>} owned observation. */
-  async observeOwned(caller, signal, view, detail) {
+  observe(caller: ResolvedCaller,signal: AbortSignal,view?: string,detail?: {
+    ref: string;
+    offset: number;
+}) {return this.own(()=>this.observeOwned(caller,signal,view,detail))}
+  /** @param {ResolvedCaller} caller - actual caller. @param {AbortSignal} signal - cancellation. @param {string} [view] - fixed view. @param {{ref:string,offset:number}} [detail] - task-local continuation. @returns  owned observation. */
+  async observeOwned(caller: ResolvedCaller, signal: AbortSignal, view?: string, detail?: {
+    ref: string;
+    offset: number;
+}) {
     if(view==='task'){
       try{const access=await this.tasks.forSession(caller.sessionId);await this.tasks.refreshEvidence(access);return success(detail ? await this.tasks.detail(access,detail.ref,detail.offset,this.config.observeMaxChars) : await this.taskSummary(access,true,signal))}catch(error){return this.taskFailure(error)}
     }
@@ -415,12 +412,12 @@ export class BrowserFlowService {
   /**
    * Locate elements on the authorized page.
    * @param {ResolvedCaller} caller - resolved caller.
-   * @param {any} query - `{ by, value, name? }`.
+   * @param  query - `{ by, value, name? }`.
    * @param {AbortSignal} signal - cancellation.
-   * @returns {Promise<any>} single match or structured ambiguity.
+   * @returns  single match or structured ambiguity.
    */
-  async find(caller, query, signal) {
-    /** @type {any} */
+  async find(caller: ResolvedCaller, query: FindQuery, signal: AbortSignal) {
+
     const outcome = await this.dispatch(caller, { kind: 'find', query, limit: this.config.findMaxMatches }, signal)
     if (!outcome.ok) return outcome
     const value = outcome.value
@@ -429,7 +426,7 @@ export class BrowserFlowService {
       const count = matches.length > 1 ? String(matches.length) : 'multiple'
       return failure('ambiguous_match', `${count} elements match this query; narrow it`, {
         documentToken: value.documentToken,
-        matches: matches.map((/** @type {any} */ match) => ({
+        matches: matches.map(( match: Record<string, unknown>) => ({
           elementRef: match.elementRef, tag: match.tag, label: match.label, text: match.text,
         })),
       })
@@ -443,13 +440,13 @@ export class BrowserFlowService {
   /**
    * Dispatch one action on one element.
    * @param {ResolvedCaller} caller - resolved caller.
-   * @param {any} input - action input.
+   * @param  input - action input.
    * @param {AbortSignal} signal - cancellation.
-   * @returns {Promise<any>} dispatch receipt.
+   * @returns  dispatch receipt.
    */
-  act(caller,input,signal){return this.own(()=>this.actOwned(caller,input,signal))}
-  /** @param {ResolvedCaller} caller - live caller. @param {any} input - validated action. @param {AbortSignal} signal - cancellation. @returns {Promise<any>} durable write result, with unknowns latched before returning. */
-  async actOwned(caller,input,signal){
+  act(caller: ResolvedCaller,input: ActionInput,signal: AbortSignal): Promise<Result<Record<string, unknown>>> {return this.own(()=>this.actOwned(caller,input,signal))}
+  /** @param {ResolvedCaller} caller - live caller. @param  input - validated action. @param {AbortSignal} signal - cancellation. @returns  durable write result, with unknowns latched before returning. */
+  async actOwned(caller: ResolvedCaller,input: ActionInput,signal: AbortSignal): Promise<Result<Record<string, unknown>>> {
     const startedAt=this.now()
     let access
     try{access=this.taskOf(caller,true)}catch(error){return this.taskFailure(error)}
@@ -492,25 +489,25 @@ export class BrowserFlowService {
       result=dispatched
     }catch(error){result=dispatchEntered ? failure('unknown_outcome','write completion could not be established; do not retry') : this.taskFailure(error)}
     if(attempt){
-      try{await this.tasks.receipt(access,attempt,result?.error?.code==='unknown_outcome'?'unknown_outcome':result?.ok?'executed':'not_executed',input.action==='set_file'?{fileGrantId:input.fileGrantId}:{})}catch(error){return this.taskFailure(error)}
+      try{await this.tasks.receipt(access,attempt,(result && !result.ok && result.error.code==='unknown_outcome')?'unknown_outcome':result?.ok?'executed':'not_executed',input.action==='set_file'?{fileGrantId:input.fileGrantId}:{})}catch(error){return this.taskFailure(error)}
     }
     return result
   }
 
-  /** @param {any} lease - exact live lease; the control store owns its dynamic metadata. @returns {object} fixed scope and lifetime for the Client. */
-  importMetadata(lease) {
+  /** @param  lease - exact live lease; the control store owns its dynamic metadata. @returns {object} fixed scope and lifetime for the Client. */
+  importMetadata(lease: ControlLease) {
     return {importScope:{kind:lease.importKind},importOwner:JSON.stringify([lease.task,lease.id,lease.epoch,lease.connectionInstanceId,lease.connectionGeneration]),windowMs:this.config.importWindowMs}
   }
 
-  /** @param {ResolvedCaller} caller - original caller. @param {any} lease - exact lease. @param {any} value - wire value validated below. @returns {Promise<object>} safe domain judgment; raw evidence stays private. */
-  async importObservation(caller,lease,value) {
+  /** @param {ResolvedCaller} caller - original caller. @param  lease - exact lease. @param  value - wire value validated below. @returns {Promise<object>} safe domain judgment; raw evidence stays private. */
+  async importObservation(caller: ResolvedCaller,lease: ControlLease,value: Record<string, unknown>) {
     const entry=this.importFiles.current(lease)
     if(!entry||this.ctx.agents?.get(caller.sessionId)!==caller.agent)return failure('revoked','import binding changed during observation')
     try {
       this.importFiles.assertLive(entry,lease)
       if(value?.documentToken!==lease.documentToken)throw new Error('document-mismatch')
       const evidence=decodeImportEvidence(value.privateImport)
-      const anchors={unitIds:new Set(),legalIdentities:new Set()}
+      const anchors={unitIds:new Set<string>(),legalIdentities:new Set<string>()}
       for(const body of evidence.unitBodies){const actual=extractIdentity(JSON.parse(body));for(const id of actual.unitIds)anchors.unitIds.add(id);for(const id of actual.legalIdentities)anchors.legalIdentities.add(id)}
       const identity=judgeIdentity({unitIds:[...anchors.unitIds],legalIdentities:[...anchors.legalIdentities]},entry.scope)
       entry.identityVerified=identity==='verified'&&evidence.coverage&&!evidence.closed&&evidence.unitPending===0
@@ -542,10 +539,10 @@ export class BrowserFlowService {
    * @param {ResolvedCaller} caller - resolved caller.
    * @param {object} input - wait input.
    * @param {AbortSignal} signal - cancellation.
-   * @returns {Promise<any>} wait result.
+   * @returns  wait result.
    */
-  wait(caller, input, signal) {
-    /** @type {any} */
+  wait(caller: ResolvedCaller, input: WaitInput, signal: AbortSignal) {
+
     const fields = input
     return this.own(async()=>{
       try{const access=this.taskOf(caller);const data=this.tasks.openTask(access);if(!data.unhealthy&&this.tasks.writable)await this.tasks.append(access,'waiting',{condition:fields.condition,source:'host',run:access.run})}catch(error){return this.taskFailure(error)}
@@ -564,7 +561,7 @@ export class BrowserFlowService {
    * @param {ResolvedCaller} caller - resolved caller.
    * @returns {object} release receipt.
    */
-  release(caller) {
+  release(caller: ResolvedCaller) {
     const lease = this.state.leaseFor(caller.agent, caller.agentInstanceToken, caller.sessionId)
     if (lease === undefined) return failure('not_authorized', 'no page is authorized for this Agent')
     const revoked = this.state.revoke({ controlLeaseId: lease.id }, 'released by the Agent')
@@ -583,11 +580,13 @@ export class BrowserFlowService {
    * defers registration until the service exists and withdraws it with it.
    * @returns {void}
    */
-  start() {
-    for (const definition of createTools(/** @type {any} */ (this), this.config)) {
-      const named = /** @type {{ name: string }} */ (definition)
+  start() : void {
+    for (const definition of createTools(this, this.config)) {
+      const named =  ((definition) as {
+    name: string;
+})
       this.tools.set(named.name, definition)
-      this.disposers.push(/** @type {() => void} */ (this.ctx.tools?.register(definition)))
+      this.disposers.push( ((this.ctx.tools?.register(definition)) as () => void))
     }
     this.ctx.inject?.(['connection'], scope => this.registerRoutes(scope))
     this.ctx.inject?.(['subprocess'], scope => {
@@ -600,7 +599,7 @@ export class BrowserFlowService {
    * @param {HostContext} scope - the context carrying the `connection` service.
    * @returns {void}
    */
-  registerRoutes(scope) {
+  registerRoutes(scope: HostContext) : void {
     const connection = scope.connection
     const fetch = connection?.fetch
     if (fetch === undefined || typeof fetch.register !== 'function') {
@@ -608,13 +607,13 @@ export class BrowserFlowService {
       return
     }
     const routes = [
-      { path: `${ROUTE_PREFIX}/hello`, method: 'POST', handler: (/** @type {Request} */ request) => this.handleHello(request) },
-      { path: `${ROUTE_PREFIX}/poll`, method: 'POST', handler: (/** @type {Request} */ request) => this.handlePoll(request) },
-      { path: `${ROUTE_PREFIX}/result`, method: 'POST', handler: (/** @type {Request} */ request) => this.handleResult(request) },
-      { path: `${ROUTE_PREFIX}/invalidate`, method: 'POST', handler: (/** @type {Request} */ request) => this.handleInvalidate(request) },
-      { path: `${ROUTE_PREFIX}/authorize`, method: 'POST', handler: (/** @type {Request} */ request) => this.handleAuthorize(request) },
-      { path: `${ROUTE_PREFIX}/revoke`, method: 'POST', handler: (/** @type {Request} */ request) => this.handleRevoke(request) },
-      { path: `${ROUTE_PREFIX}/status`, method: 'GET', handler: (/** @type {Request} */ request) => this.handleStatus(request) },
+      { path: `${ROUTE_PREFIX}/hello`, method: 'POST', handler: ( request: Request) => this.handleHello(request) },
+      { path: `${ROUTE_PREFIX}/poll`, method: 'POST', handler: ( request: Request) => this.handlePoll(request) },
+      { path: `${ROUTE_PREFIX}/result`, method: 'POST', handler: ( request: Request) => this.handleResult(request) },
+      { path: `${ROUTE_PREFIX}/invalidate`, method: 'POST', handler: ( request: Request) => this.handleInvalidate(request) },
+      { path: `${ROUTE_PREFIX}/authorize`, method: 'POST', handler: ( request: Request) => this.handleAuthorize(request) },
+      { path: `${ROUTE_PREFIX}/revoke`, method: 'POST', handler: ( request: Request) => this.handleRevoke(request) },
+      { path: `${ROUTE_PREFIX}/status`, method: 'GET', handler: ( request: Request) => this.handleStatus(request) },
     ]
     for (const route of routes) {
       const registered = fetch.register({
@@ -641,7 +640,7 @@ export class BrowserFlowService {
    * @param {Request} request - request.
    * @returns {Promise<unknown>} parsed body, or undefined when unparseable.
    */
-  async bodyOf(request) {
+  async bodyOf(request: Request) : Promise<unknown> {
     try {
       return await request.json()
     } catch {
@@ -654,7 +653,7 @@ export class BrowserFlowService {
    * @param {Request} request - request.
    * @returns {Promise<Response>} verdict.
    */
-  async handleHello(request) {
+  async handleHello(request: Request) : Promise<Response> {
     const hello = validateHello(await this.bodyOf(request))
     if (!hello.ok) return Response.json(failure('protocol_violation', hello.reason), { status: 400 })
     const registered = this.state.registerConnection(hello.hello)
@@ -676,16 +675,16 @@ export class BrowserFlowService {
    * @param {Request} request - request.
    * @returns {Promise<Response>} commands.
    */
-  async handlePoll(request) {
+  async handlePoll(request: Request) : Promise<Response> {
     const raw = await this.bodyOf(request)
     if (typeof raw !== 'object' || raw === null) {
       return Response.json(failure('protocol_violation', 'poll body must be an object'), { status: 400 })
     }
-    /** @type {any} */
-    const body = raw
+
+    const body = raw as Record<string, unknown>
     if(body.protocolVersion!==PROTOCOL_VERSION)return Response.json(failure('protocol_violation','Host and Client must both reload with protocol v3'),{status:400})
     const { instanceId, connectionGeneration, sessionId, pages } = body
-    if (typeof instanceId !== 'string' || typeof sessionId !== 'string' || !Number.isSafeInteger(connectionGeneration)) {
+    if (typeof instanceId !== 'string' || typeof sessionId !== 'string' || !(typeof connectionGeneration === 'number' && Number.isSafeInteger(connectionGeneration))) {
       return Response.json(failure('protocol_violation', 'poll requires instanceId, sessionId and connectionGeneration'), { status: 400 })
     }
     const hello = validateHello({
@@ -697,7 +696,7 @@ export class BrowserFlowService {
     if (!registered.ok) return Response.json(registered, { status: 409 })
     const taken = this.state.takeCommands(instanceId, connectionGeneration, this.config)
     if (!taken.ok) return Response.json(taken, { status: 409 })
-    const live = /** @type {any} */ (this.ctx.agents?.get(sessionId))
+    const live = this.ctx.agents?.get(sessionId)
     // The plan requires the panel to show the Session and an instance summary,
     // so the user grants control to a named live Agent rather than to whatever
     // caller arrives next.
@@ -706,7 +705,7 @@ export class BrowserFlowService {
       : { id: sessionId, instance: instanceDigest(this.tokenOf(live)) }
     this.importFiles.prune()
     const listed=this.state.listPages(instanceId,connectionGeneration)
-    const controls=listed.ok?listed.value.pages.filter((/** @type {any} */ page)=>page.authorized).map((/** @type {any} */ page)=>page.controlLeaseId):[]
+    const controls=listed.ok?listed.value.pages.filter(( page: { authorized: boolean; controlLeaseId?: string })=>page.authorized).map(( page: { authorized: boolean; controlLeaseId?: string })=>page.controlLeaseId):[]
     const task=this.tasks.current(sessionId)
     return Response.json(success({ task:task ? await this.taskSummary(task) : null,
       definitions:listDefinitions(this.tasks.root).map(item=>({id:item.definition.id,workflows:item.definition.workflows.map(row=>({id:row.id,description:row.description}))})),
@@ -718,7 +717,7 @@ export class BrowserFlowService {
    * @param {Request} request - request.
    * @returns {Promise<Response>} settlement.
    */
-  async handleResult(request) {
+  async handleResult(request: Request) : Promise<Response> {
     const result = validateResult(await this.bodyOf(request))
     if (!result.ok) return Response.json(failure('protocol_violation', result.reason), { status: 400 })
     const settled = this.state.settle(result.result, this.config)
@@ -730,16 +729,16 @@ export class BrowserFlowService {
    * @param {Request} request - request.
    * @returns {Promise<Response>} applied invalidations.
    */
-  async handleInvalidate(request) {
+  async handleInvalidate(request: Request) : Promise<Response> {
     const raw = await this.bodyOf(request)
     if (typeof raw !== 'object' || raw === null) {
       return Response.json(failure('protocol_violation', 'invalidate body must be an object'), { status: 400 })
     }
-    /** @type {any} */
-    const body = raw
+
+    const body = raw as Record<string, unknown>
     const { instanceId, connectionGeneration, lease, event, documentToken } = body
     if (typeof instanceId !== 'string' || typeof lease !== 'string' || typeof event !== 'string'
-      || !Number.isSafeInteger(connectionGeneration)) {
+      || !(typeof connectionGeneration === 'number' && Number.isSafeInteger(connectionGeneration))) {
       return Response.json(failure('protocol_violation', 'invalidate requires instanceId, connectionGeneration, lease and event'), { status: 400 })
     }
     if (documentToken !== undefined && typeof documentToken !== 'string') {
@@ -759,36 +758,39 @@ export class BrowserFlowService {
    * @param {Request} request - request.
    * @returns {Promise<Response>} authorization receipt.
    */
-  handleAuthorize(request) {return this.own(()=>this.authorizeOwned(request))}
+  async handleAuthorize(request: Request): Promise<Response> {
+    const result=await this.own(()=>this.authorizeOwned(request))
+    return result instanceof Response ? result : Response.json(result,{status:409})
+  }
   /** @param {Request} request - existing authenticated authorize route. @returns {Promise<Response>} owned task/page/file operation. */
-  async authorizeOwned(request) {
+  async authorizeOwned(request: Request) : Promise<Response> {
     const raw = await this.bodyOf(request)
     if (typeof raw !== 'object' || raw === null) {
       return Response.json(failure('protocol_violation', 'authorize body must be an object'), { status: 400 })
     }
-    /** @type {any} */
-    const body = raw
+
+    const body = raw as Record<string, unknown>
     const { instanceId, connectionGeneration, sessionId, lease, partition, documentToken, tabId } = body
     if(body.protocolVersion!==PROTOCOL_VERSION)return Response.json(failure('protocol_violation','reload Host and Client together with protocol v3'),{status:400})
     if(body.taskOperation!==undefined){
-      if(body.fileOperation!==undefined || body.lease!==undefined || typeof sessionId!=='string' || typeof instanceId!=='string' || !Number.isSafeInteger(connectionGeneration))return Response.json(failure('invalid_request','task and page/file authorization are distinct operations'),{status:400})
-      const connected=this.state.connectionsFor(sessionId).some((/** @type {any} */ connection)=>connection.instanceId===instanceId&&connection.generation===connectionGeneration)
+      if(body.fileOperation!==undefined || body.lease!==undefined || typeof sessionId!=='string' || typeof instanceId!=='string' || !(typeof connectionGeneration === 'number' && Number.isSafeInteger(connectionGeneration)))return Response.json(failure('invalid_request','task and page/file authorization are distinct operations'),{status:400})
+      const connected=this.state.connectionsFor(sessionId).some(( connection: import('./state.ts').PanelConnection)=>connection.instanceId===instanceId&&connection.generation===connectionGeneration)
       if(!connected)return Response.json(failure('connection_stale','task operation requires the current authenticated panel connection'),{status:409})
       // Permission withdrawal precedes disk access, including when the task scope is stale.
-      if(['revise','cancel','finish'].includes(body.taskOperation)){this.state.revoke({sessionId},'task scope or lifecycle changed');this.importFiles.prune()}
+      if(typeof body.taskOperation==='string'&&['revise','cancel','finish'].includes(body.taskOperation)){this.state.revoke({sessionId},'task scope or lifecycle changed');this.importFiles.prune()}
       try {
         const access=body.taskOperation==='create' ? await this.tasks.create(sessionId,body.spec) : await this.tasks.forSession(sessionId,body.task)
         let current=access
         if(body.taskOperation==='revise')current=await this.tasks.revise(access,body.spec)
         else if(body.taskOperation==='cancel'||body.taskOperation==='finish'){await this.tasks.end(access,body.taskOperation==='cancel'?'cancelled':'handed_off');if(this.tasks.openTask(access).readOnly)return Response.json(success({...await this.taskSummary(access),handoff:'read_only',historicalLifecycleUnchanged:true}))}
         else if(body.taskOperation==='resume')await this.tasks.resumeWait(access,body.waitId,body.userInput,(kind,inputRef)=>{const agent=this.ctx.agents?.get(sessionId);if(!agent)return false;const held=this.state.leaseFor(agent,this.tokenOf(agent),sessionId);if(!held||held.state!=='active'||!held.task||!sameRunScope(held.task,access.run))return false;if(kind==='page_authorization')return this.leaseStamp(held)===inputRef;const entry=this.importFiles.current(held);return !!entry&&entry.id===inputRef&&(kind!=='file_confirmation'||entry.state==='confirmed')})
-        else if(!['create','open'].includes(body.taskOperation))throw new TaskError('invalid_request','unsupported task operation')
+        else if(typeof body.taskOperation!=='string'||!['create','open'].includes(body.taskOperation))throw new TaskError('invalid_request','unsupported task operation')
         return Response.json(success(await this.taskSummary(current)))
       }catch(error){return Response.json(this.taskFailure(error),{status:409})}
     }
 
     if (typeof instanceId !== 'string' || typeof sessionId !== 'string' || typeof lease !== 'string'
-      || typeof partition !== 'string' || typeof documentToken !== 'string' || !Number.isSafeInteger(connectionGeneration)) {
+      || typeof partition !== 'string' || typeof documentToken !== 'string' || !(typeof connectionGeneration === 'number' && Number.isSafeInteger(connectionGeneration))) {
       return Response.json(failure('invalid_request', 'authorize requires instanceId, connectionGeneration, sessionId, lease, partition and documentToken'), { status: 400 })
     }
     const agent = this.ctx.agents?.get(sessionId)
@@ -798,7 +800,7 @@ export class BrowserFlowService {
     const access=await this.tasks.forSession(sessionId,body.task)
     this.tasks.openTask(access,body.fileOperation!==undefined)
     if(body.fileOperation!==undefined){
-      const held=/** @type {any} */ (this.state.leaseFor(agent,this.tokenOf(agent),sessionId))
+      const held=this.state.leaseFor(agent,this.tokenOf(agent),sessionId)
       if(!held||held.connectionInstanceId!==instanceId||held.connectionGeneration!==connectionGeneration||held.lease!==lease||held.partition!==partition||held.documentToken!==documentToken)return Response.json(failure('not_authorized','the current page must be explicitly authorized first'),{status:409})
       if(!held.task||!sameRunScope(held.task,access.run)||(this.tasks.openTask(access).manifest.adapter!=='bjrsj'||this.tasks.openTask(access).manifest.workflowRef!=='import'))return Response.json(failure('task_scope_mismatch','file preparation requires the current Beijing task/run'),{status:409})
       try {
@@ -830,7 +832,7 @@ export class BrowserFlowService {
     // A replaced Agent object can never use its leases again, so retire them
     // first: otherwise they occupy the page and refuse the re-authorization the
     // plan requires.
-    const page=this.state.connectionsFor(sessionId).find((/** @type {any} */ connection)=>connection.instanceId===instanceId&&connection.generation===connectionGeneration)?.pages.find((/** @type {any} */ page)=>page.lease===lease&&page.partition===partition&&page.documentToken===documentToken)
+    const page=this.state.connectionsFor(sessionId).find(( connection: import('./state.ts').PanelConnection)=>connection.instanceId===instanceId&&connection.generation===connectionGeneration)?.pages.find(( page: import('./state.ts').PanelPage)=>page.lease===lease&&page.partition===partition&&page.documentToken===documentToken)
     if(!page)return Response.json(failure('page_unavailable','the reported page is no longer current'),{status:409})
     const taskData=this.tasks.openTask(access)
     if(taskData.state!=='active')throw new TaskError('task_write_blocked','the task is ended; only read its task view, revoke and hand off')
@@ -849,7 +851,7 @@ export class BrowserFlowService {
       ...(typeof tabId === 'string' ? { tabId } : {}),
     })
     this.importFiles.prune()
-    if(authorized.ok){const selected=/** @type {any} */ (this.state.leaseFor(agent,this.tokenOf(agent),sessionId));if(selected){delete selected.importKind;selected.evidenceRoot=join(this.tasks.openTask(access).dir,'evidence',access.run.runId);await this.tasks.noteWaitInput(access,'page_authorization',this.leaseStamp(selected))}}
+    if(authorized.ok){const selected=this.state.leaseFor(agent,this.tokenOf(agent),sessionId);if(selected){delete selected.importKind;selected.evidenceRoot=join(this.tasks.openTask(access).dir,'evidence',access.run.runId);await this.tasks.noteWaitInput(access,'page_authorization',this.leaseStamp(selected))}}
     return Response.json(authorized.ok ? success({...authorized.value,task:access.run,origins:taskData.manifest.origins,...(pagePolicy(taskData.manifest)?{pagePolicy:pagePolicy(taskData.manifest)}:{})}) : authorized, { status: authorized.ok ? 200 : 409 })
   }
 
@@ -858,13 +860,13 @@ export class BrowserFlowService {
    * @param {Request} request - request.
    * @returns {Promise<Response>} revocation receipt.
    */
-  async handleRevoke(request) {
+  async handleRevoke(request: Request) : Promise<Response> {
     const raw = await this.bodyOf(request)
     if (typeof raw !== 'object' || raw === null) {
       return Response.json(failure('protocol_violation', 'revoke body must be an object'), { status: 400 })
     }
-    /** @type {any} */
-    const body = raw
+
+    const body = raw as Record<string, unknown>
     const controlLeaseId = typeof body.controlLeaseId === 'string' ? body.controlLeaseId : undefined
     const sessionId = typeof body.sessionId === 'string' ? body.sessionId : undefined
     if (controlLeaseId === undefined && sessionId === undefined) {
@@ -883,7 +885,7 @@ export class BrowserFlowService {
    * @param {Request} request - request.
    * @returns {Promise<Response>} status.
    */
-  async handleStatus(request) {
+  async handleStatus(request: Request) : Promise<Response> {
     const url = new URL(request.url)
     const instanceId = url.searchParams.get('instanceId')
     const generation = Number(url.searchParams.get('connectionGeneration'))
@@ -903,9 +905,9 @@ export class BrowserFlowService {
    * Expire abandoned panel connections so a closed panel cannot hold a lease.
    * @returns {void}
    */
-  startIdleSweep() {
+  startIdleSweep() : void {
     const interval = Math.max(1_000, Math.floor(this.config.connectionIdleMs / 4))
-    /** @type {any} */
+
     const timer = setInterval(() => {
       if (this.closed) return
       this.state.expireIdleConnections(this.config.connectionIdleMs)
@@ -922,7 +924,7 @@ export class BrowserFlowService {
    * Release everything this plugin acquired.
    * @returns {Promise<void>} completion.
    */
-  close() {
+  close() : Promise<void> {
     if (this.closing !== undefined) return this.closing
     this.closed = true
     this.closing = (async () => {
@@ -954,7 +956,7 @@ export class BrowserFlowService {
  * @param {unknown} config - raw plugin config.
  * @returns {Promise<void>} after registration.
  */
-export async function apply(/** @type {HostContext} */ ctx, /** @type {unknown} */ config) {
+export async function apply( ctx: HostContext,  config: unknown) : Promise<void> {
   const resolved = resolveConfig(config)
   const service = new BrowserFlowService(ctx, resolved)
   service.start()

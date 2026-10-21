@@ -66,13 +66,6 @@ import { withFileLock } from '@deepseek-ai/dsh-atomic-write'
 import { privateDirectory } from './import-files.js'
 import { loadDefinition, noLinks, validOrigins, validateDefinition } from './task-definitions.ts'
 
-/** @typedef {import('./task-scope.ts').TaskScope} TaskScope */
-/** @typedef {import('./task-scope.ts').RunScope} RunScope */
-/** @typedef {{ schemaVersion?: number, scope: TaskScope, runId: import('./task-scope.ts').RunId, workflowRef: string, goal: string, constraints: string[], criteria: string[], origins: string[], adapter: string, adapterVersion: number, definitionId?: string, definitionDigest?: string, definitionVersion?: string }} Manifest */
-/** @typedef {{ schemaVersion?: number, seq: number, prev: string, type: string, data: Record<string, unknown>, hash: string }} TaskEvent */
-/** @typedef {{ manifest: Manifest, snapshot?: import('./task-definitions.ts').DefinitionSnapshot, events: TaskEvent[], dir: string, blocked: boolean, unhealthy: boolean, state: string, pendingWrite?: string, readOnly?: boolean, storageIssue?: string, checkedProofs?: Map<string,import('./task-criteria.ts').CheckedProof>, evidenceIssues?: string[], liveDocumentToken?: string, waiting?: import('./task-wait.ts').UserWait, waitInput?: {kind:string,inputRef:string} }} TaskData */
-/** @typedef {{ readonly scope: TaskScope, readonly run: RunScope }} TaskAccess */
-
 /** Expected task failures are sanitized at the tool/HTTP boundary. */
 export class TaskError extends Error {
 code: string;
@@ -112,17 +105,17 @@ tail: Promise<void>;
   /** @param {string | undefined} root - localTasksDir. @param {import('./task-definitions.ts').Profile | undefined} profile - actual dsh profile. @param {number} waitMs - bounded writer acquisition. @param {import('./graph/worker.ts').GraphWorkers|undefined} [graph] - optional derived view service. @param {import('./graph/protocol.ts').GraphConfig} [graphConfig] - resolved limits. */
   constructor(root: string | undefined, profile: import('./task-definitions.ts').Profile | undefined, waitMs: number, graph: import('./graph/worker.ts').GraphWorkers | undefined=undefined, graphConfig: import('./graph/protocol.ts').GraphConfig=resolveConfig(undefined)) {
     this.graph=graph;this.graphConfig=graphConfig
-    /** @type {((access:TaskAccess)=>string|undefined)|undefined} */ this.controlDocument=undefined
+     this.controlDocument=undefined
     this.root = root
-    this.profileId = profile ? /** @type {import('./task-scope.ts').ProfileId} */('profile-'+hash(JSON.stringify([profile.name,resolve(profile.home)])).slice(0,32) as import('./task-scope.ts').ProfileId) : undefined
+    this.profileId = profile ? ('profile-'+hash(JSON.stringify([profile.name,resolve(profile.home)])).slice(0,32) as import('./task-scope.ts').ProfileId) : undefined
     this.runtime = root && this.profileId ? join(root,'.runtime',this.profileId) : undefined
     this.waitMs = waitMs
-    /** @type {Map<string, TaskData>} */ this.tasks = new Map()
-    /** @type {Map<string, string>} */ this.bindings = new Map()
-    /** @type {WeakMap<TaskAccess, TaskData>} */ this.handles = new WeakMap()
-    /** @type {Promise<void> | undefined} */ this.ready = undefined
-    /** @type {Promise<unknown> | undefined} */ this.writer = undefined
-    /** @type {(() => void) | undefined} */ this.releaseWriter = undefined
+     this.tasks = new Map()
+     this.bindings = new Map()
+     this.handles = new WeakMap()
+     this.ready = undefined
+     this.writer = undefined
+     this.releaseWriter = undefined
     this.abort = new AbortController()
     this.closed = false
     this.writable = false
@@ -162,7 +155,7 @@ tail: Promise<void>;
       const host=JSON.parse(await readFile(namespace,'utf8'))
       if (host.platform !== process.platform || host.hostname !== hostname()) throw new Error('task-writer-host-mismatch')
       let readyResolve=()=>{}
-      /** @type {(reason: unknown) => void} */ let readyReject: (reason: unknown) => void=(): void =>{}
+       let readyReject: (reason: unknown) => void=(): void =>{}
       const ready=new Promise((resolve,reject)=>{readyResolve=()=>resolve(undefined);readyReject=reject})
       const lifetime=new Promise(resolve=>{this.releaseWriter=()=>resolve(undefined)})
       this.writer=withFileLock(join(runtime,'writer'),async()=>{
@@ -209,13 +202,13 @@ tail: Promise<void>;
       if (snapshot && !workflow) throw new TaskError('definition_unavailable','select an available workflow in this definition')
       const origins=snapshot?.definition.origins ?? raw.origins
       if (!validOrigins(origins) || (snapshot && raw.origins !== undefined)) throw new TaskError('invalid_request','supply exact allowed origins for a generic task')
-      const taskId=/** @type {import('./task-scope.ts').TaskId} */('task-'+randomUUID() as import('./task-scope.ts').TaskId)
+      const taskId=('task-'+randomUUID() as import('./task-scope.ts').TaskId)
       const scope={profileId:this.profileId,taskId,ownerSessionId:sessionId,scopeRevision:1}
-      /** @type {Manifest} */ const manifest: Manifest={schemaVersion:TASK_FORMAT_VERSION,scope,runId:/** @type {import('./task-scope.ts').RunId} */('run-'+randomUUID() as import('./task-scope.ts').RunId),workflowRef:workflow?.id ?? 'generic',goal:raw.goal,constraints:/** @type {string[]} */((raw.constraints ?? []) as string[]),criteria:/** @type {string[]} */((raw.criteria ?? []) as string[]),origins:[...origins],adapter:snapshot?.definition.adapter ?? 'generic',adapterVersion:1,
+       const manifest: Manifest={schemaVersion:TASK_FORMAT_VERSION,scope,runId:('run-'+randomUUID() as import('./task-scope.ts').RunId),workflowRef:workflow?.id ?? 'generic',goal:raw.goal,constraints:((raw.constraints ?? []) as string[]),criteria:((raw.criteria ?? []) as string[]),origins:[...origins],adapter:snapshot?.definition.adapter ?? 'generic',adapterVersion:1,
         ...(snapshot?{definitionId:snapshot.definition.id,definitionDigest:snapshot.digest,definitionVersion:snapshot.definition.version}:{})}
       const dir=join(this.runtime,'tasks',taskId)
       await this.directory(dir)
-      /** @type {TaskData} */ const data: TaskData={manifest,snapshot,dir,events:[],blocked:false,unhealthy:false,state:'active'}
+       const data: TaskData={manifest,snapshot,dir,events:[],blocked:false,unhealthy:false,state:'active'}
       if(snapshot)for(const [name,body] of Object.entries(snapshot.files)){
         const file=join(dir,'definition-snapshot',name)
         await mkdir(dirname(file),{recursive:true,mode:0o700})
@@ -293,7 +286,7 @@ tail: Promise<void>;
   }
   /** @param {TaskData} data - recovered or live task. @param {TaskEvent} event - validated event. @returns {void} monotonic state projection. */
   reduce(data: TaskData,event: TaskEvent) : void {
-    if(event.type==='wait_requested'){data.waiting=/** @type {import('./task-wait.ts').UserWait} */(event.data as import('./task-wait.ts').UserWait);delete data.waitInput}
+    if(event.type==='wait_requested'){data.waiting=(event.data as import('./task-wait.ts').UserWait);delete data.waitInput}
     if(event.type==='wait_input')data.waitInput={kind:String(event.data.kind),inputRef:String(event.data.inputRef)}
     if(event.type==='wait_resolved'){delete data.waiting;delete data.waitInput}
     if(event.type==='attempt')data.pendingWrite=String(event.data.attemptId)
@@ -301,7 +294,7 @@ tail: Promise<void>;
       if(event.data.outcome==='unknown_outcome')data.blocked=true
       if(data.pendingWrite===event.data.attemptId)delete data.pendingWrite
     }
-    if(event.type==='revise' && record(event.data.manifest))data.manifest=/** @type {Manifest} */(event.data.manifest as Manifest)
+    if(event.type==='revise' && record(event.data.manifest))data.manifest=(event.data.manifest as Manifest)
     if(event.type==='status' && typeof event.data.state==='string')data.state=event.data.state
   }
   /** @param {TaskAccess} access - capability. @param {string} type - event. @param {Record<string,unknown>} payload - facts. @returns {Promise<TaskEvent>} appended event. */
@@ -319,7 +312,7 @@ tail: Promise<void>;
   }
   /** @param {TaskAccess} access - original run. @param {string} attemptId - original attempt. @param {string} outcome - known result or unknown. @param {{fileGrantId?:string}} [details] - verified file acknowledgement binding. @returns {Promise<void>} durable settlement; unknown is sticky. */
   async receipt(access: TaskAccess,attemptId: string,outcome: string,details: {
-    fileGrantId?: string;
+    fileGrantId?: unknown;
 }={}) : Promise<void> {
     const data=this.openTask(access)
     if(outcome==='unknown_outcome')data.blocked=true
@@ -330,13 +323,13 @@ tail: Promise<void>;
     if(this.openTask(access,true).waiting)throw new TaskError('awaiting_user','this task awaits user input; inspect view=task, read safely, revoke or hand off')
   }
   /** @param {TaskAccess} access - owner. @param {import('./task-wait.ts').UserWaitRequest} request - model declaration. @returns {Promise<import('./task-wait.ts').UserWait>} synchronized wait; identical repeats do not append. */
-  declareWait(access: TaskAccess,request: import('./task-wait.ts').UserWaitRequest) : Promise<import('./task-wait.ts').UserWait> {
+  declareWait(access: TaskAccess,request: unknown) : Promise<import('./task-wait.ts').UserWait> {
     return this.serial(async()=>{
       const data=this.openTask(access,true)
       if(!validUserWait(request))throw new TaskError('invalid_request','provide a bounded user dependency, reason and resume condition')
       if(data.pendingWrite)throw new TaskError('task_busy','settle the pending write before declaring a user dependency')
       if(data.waiting){if(data.waiting.kind===request.kind&&data.waiting.reason===request.reason&&data.waiting.resumeCondition===request.resumeCondition)return data.waiting;throw new TaskError('task_busy','resolve or hand off the existing user dependency first')}
-      const waiting={...request,id:'wait-'+randomUUID(),owner:/** @type {const} */('user' as const),source:/** @type {const} */('model_declared' as const),run:access.run}
+      const waiting={...request,id:'wait-'+randomUUID(),owner:('user' as const),source:('model_declared' as const),run:access.run}
       await this.appendOwned(data,'wait_requested',waiting)
       return waiting
     })
@@ -376,8 +369,8 @@ tail: Promise<void>;
       if(data.pendingWrite)throw new TaskError('task_busy','a write is pending; revoke control and hand off before revising')
       if(!record(raw)||Object.keys(raw).some(key=>!['goal','constraints','criteria','origins','newRun'].includes(key)) || (raw.goal!==undefined&&!text(raw.goal,2000))
         || (raw.constraints!==undefined&&!conditions(raw.constraints)) || (raw.criteria!==undefined&&!conditions(raw.criteria)) || (raw.origins!==undefined&&(!validOrigins(raw.origins)||data.manifest.adapter!=='generic')))throw new TaskError('invalid_request','task revision must be bounded and cannot change its adapter or definition')
-      const manifest={...data.manifest,scope:{...data.manifest.scope,scopeRevision:data.manifest.scope.scopeRevision+1},runId:/** @type {import('./task-scope.ts').RunId} */('run-'+randomUUID() as import('./task-scope.ts').RunId),
-        ...(raw.goal===undefined?{}:{goal:raw.goal}),...(raw.constraints===undefined?{}:{constraints:/** @type {string[]} */(raw.constraints as string[])}),...(raw.criteria===undefined?{}:{criteria:/** @type {string[]} */(raw.criteria as string[])}),...(raw.origins===undefined?{}:{origins:/** @type {string[]} */(raw.origins as string[])})}
+      const manifest={...data.manifest,scope:{...data.manifest.scope,scopeRevision:data.manifest.scope.scopeRevision+1},runId:('run-'+randomUUID() as import('./task-scope.ts').RunId),
+        ...(raw.goal===undefined?{}:{goal:raw.goal}),...(raw.constraints===undefined?{}:{constraints:(raw.constraints as string[])}),...(raw.criteria===undefined?{}:{criteria:(raw.criteria as string[])}),...(raw.origins===undefined?{}:{origins:(raw.origins as string[])})}
       await this.appendOwned(data,'revise',{manifest})
       await this.graph?.retire(access.scope.taskId)
       return this.access(data)
@@ -469,7 +462,7 @@ tail: Promise<void>;
   async detail(access: TaskAccess,id: string,offset: number,budget: number) : Promise<object> {
     const data=this.openTask(access)
     const row=data.events.findLast(event=>event.type==='asset'&&event.data.id===id)
-    const asset=row?{id,taskId:data.manifest.scope.taskId,kind:row.data.kind,source:row.data.source,sourceSeq:row.seq,data:/** @type {Record<string,unknown>} */(row.data.data as Record<string, unknown>)}:undefined
+    const asset=row?{id,taskId:data.manifest.scope.taskId,kind:row.data.kind,source:row.data.source,sourceSeq:row.seq,data:(row.data.data as Record<string, unknown>)}:undefined
     const criterion=taskFacts(data).criteria.find(item=>item.id===id)
     let value
     if(asset)value=asset.kind==='evidence'?{...asset,data:{sha256:asset.data.sha256,bytes:asset.data.bytes,originalAvailable:data.checkedProofs?.has(asset.id)??false}}:asset
@@ -505,7 +498,7 @@ tail: Promise<void>;
         const manifest=JSON.parse(await readFile(join(dir,'manifest.json'),'utf8'))
         if(!validTaskManifest(manifest,true)||manifest.scope.ownerSessionId!==row.sessionId||manifest.scope.taskId!==row.taskId||manifest.scope.profileId!==this.profileId
           || !validOrigins(manifest.origins)||!text(manifest.goal,2000)||!conditions(manifest.constraints)||!conditions(manifest.criteria))throw new Error('task-manifest-invalid')
-        /** @type {TaskData} */ const data: TaskData={manifest:/** @type {Manifest} */(manifest as Manifest),dir,events:[],blocked:false,unhealthy:false,state:'active',readOnly:manifest.schemaVersion!==TASK_FORMAT_VERSION || row.schemaVersion!==TASK_FORMAT_VERSION,storageIssue:manifest.schemaVersion===undefined?'legacy_unversioned':manifest.schemaVersion!==TASK_FORMAT_VERSION?'unsupported_manifest_version':row.schemaVersion!==TASK_FORMAT_VERSION?'unsupported_ownership_version':undefined}
+         const data: TaskData={manifest:(manifest as Manifest),dir,events:[],blocked:false,unhealthy:false,state:'active',readOnly:manifest.schemaVersion!==TASK_FORMAT_VERSION || row.schemaVersion!==TASK_FORMAT_VERSION,storageIssue:manifest.schemaVersion===undefined?'legacy_unversioned':manifest.schemaVersion!==TASK_FORMAT_VERSION?'unsupported_manifest_version':row.schemaVersion!==TASK_FORMAT_VERSION?'unsupported_ownership_version':undefined}
         if(manifest.definitionId){
           const snapshot=loadDefinition(dir, 'definition-snapshot', String(manifest.definitionId))
           if(snapshot.digest!==manifest.definitionDigest || snapshot.definition.version!==manifest.definitionVersion)throw new Error('task-snapshot-changed')
@@ -538,7 +531,7 @@ tail: Promise<void>;
           const payload={...event.data,...(event.data.manifest && record(event.data.manifest)?{manifest:{...event.data.manifest,schemaVersion:TASK_FORMAT_VERSION}}:{}),...(event.type==='status'&&event.data.run===undefined?{run:{...data.manifest.scope,runId:data.manifest.runId,workflowRef:data.manifest.workflowRef}}:{})}
           if(!validTaskEvent(event.type,payload,{...data.manifest,schemaVersion:TASK_FORMAT_VERSION},data.pendingWrite,data.waiting,data.waitInput))throw new Error('legacy-journal-unsupported-semantics')
         }
-        const accepted=/** @type {TaskEvent} */(event as TaskEvent)
+        const accepted=(event as TaskEvent)
         data.events.push(accepted);this.reduce(data,accepted)
       }
       if(tail!=='')throw new Error('task-journal-tail')

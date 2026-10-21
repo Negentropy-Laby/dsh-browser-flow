@@ -17,8 +17,6 @@ import { decodeImportEvidence } from './import-evidence.js'
 import { importScope, extractIdentity, judgeIdentity, judgeImport } from './import-rules.js'
 import { parseWorkbook } from './import-workbook.js'
 
-/** @typedef {{ role:string, path:string, sha256:string, bytes:number }} Artifact */
-/** @typedef {{ value:Record<string,unknown>, files:Map<string,Buffer> }} CheckedProof */
 /** @param {unknown} value - disk reference. @returns {value is Artifact} bounded, relative evidence file reference. */
 export function validArtifact(value: unknown) : value is Artifact {
   return taskRecord(value)&&typeof value.role==='string'&&typeof value.path==='string'&&value.path.length<512

@@ -19,8 +19,8 @@ export class ImportFiles {
     prune(): void;
     /** @param {FileLease} lease - current lease. @returns {Prepared | undefined} same-document preparation. */
     current(lease: FileLease): Prepared | undefined;
-    /** @param {FileLease} lease - exact page grant. @param {string} path - panel-supplied path. @param {unknown} rawScope - panel scope. @returns {Promise<{ fileGrantId: string, path: string, name: string, sha256: string, bytes: number, rows: number, kind: string, boundary: string }>} private panel preview. */
-    prepare(lease: FileLease, path: string, rawScope: unknown): Promise<{
+    /** @param {FileLease} lease - exact page grant. @param {unknown} path - panel-supplied path. @param {unknown} rawScope - panel scope. @returns {Promise<{ fileGrantId: string, path: string, name: string, sha256: string, bytes: number, rows: number, kind: string, boundary: string }>} private panel preview. */
+    prepare(lease: FileLease, path: unknown, rawScope: unknown): Promise<{
         fileGrantId: string;
         path: string;
         name: string;
@@ -30,8 +30,8 @@ export class ImportFiles {
         kind: string;
         boundary: string;
     }>;
-    /** @param {FileLease} lease - exact page grant. @param {string} path - panel path. @param {unknown} rawScope - raw scope. @returns {Promise<{fileGrantId:string,path:string,name:string,sha256:string,bytes:number,rows:number,kind:string,boundary:string}>} owned preparation. */
-    prepareOwned(lease: FileLease, path: string, rawScope: unknown): Promise<{
+    /** @param {FileLease} lease - exact page grant. @param {unknown} path - panel path. @param {unknown} rawScope - raw scope. @returns {Promise<{fileGrantId:string,path:string,name:string,sha256:string,bytes:number,rows:number,kind:string,boundary:string}>} owned preparation. */
+    prepareOwned(lease: FileLease, path: unknown, rawScope: unknown): Promise<{
         fileGrantId: string;
         path: string;
         name: string;

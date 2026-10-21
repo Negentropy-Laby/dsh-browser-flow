@@ -2,7 +2,7 @@ import { bindTestTask } from './helpers/bind-task.js'
 /** Host deadlines and unload complete calls even when the panel stops polling. */
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { BrowserFlowService } from '../src/index.js'
+import { BrowserFlowService } from '../src/index.ts'
 import { resolveConfig } from '../src/config.ts'
 
 async function fixture() {

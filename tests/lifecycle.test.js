@@ -10,7 +10,7 @@
 
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { createControlState } from '../src/state.js'
+import { createControlState } from '../src/state.ts'
 import { resolveConfig } from '../src/config.ts'
 import { navigationEvent } from '../src/clientcore.js'
 

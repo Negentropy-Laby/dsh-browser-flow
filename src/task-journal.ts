@@ -26,7 +26,7 @@ export function validTaskEvent(type: string,row: Record<string, unknown>,manifes
     inputRef: string;
 }) : boolean {
   const fields={wait_requested:['id','kind','reason','resumeCondition','owner','source','run'],wait_input:['waitId','kind','inputRef','source','run'],wait_resolved:['waitId','source','inputRef','userInput','run'],created:['manifest'],revise:['manifest'],attempt:['attemptId','action','run'],receipt:['attemptId','outcome','run','fileGrantId'],status:['state','run'],asset:['id','kind','data','source','run'],edge:['id','from','to','relation','run'],waiting:['condition','for','source','run'],business_verdict:['verdict','qualified','source','run','pageRef','resultRef','reason','proofRef','criterionId','validatorId','validatorVersion']}
-  const allowed=/** @type {Record<string,string[]>} */(fields as Record<string, string[]>)[type]
+  const allowed=(fields as Record<string, string[]>)[type]
   if(!allowed || Object.keys(row).some(key=>!allowed.includes(key)))return false
   if(type==='created')return validTaskManifest(row.manifest) && JSON.stringify(row.manifest)===JSON.stringify(manifest)
   if(type==='revise'){

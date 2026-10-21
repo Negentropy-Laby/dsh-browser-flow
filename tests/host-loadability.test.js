@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
  *
  * It boots the real `@deepseek-ai/cordis` Context and the real
  * `@deepseek-ai/dsh-tools` `ToolRuntime` from this checkout's built `lib/`
- * artifacts, then loads `src/index.js` exactly as the Loader would. The
+ * artifacts, then loads `src/index.ts` exactly as the Loader would. The
  * checkout is located by `DSH_CHECKOUT` (default: the sibling
  * `deepseek-harness` directory); when its build artifacts are absent the test
  * skips with an explicit reason instead of silently passing.
@@ -20,7 +20,7 @@ import { existsSync, rmSync, mkdtempSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, it, after } from 'node:test'
 import { pathToFileURL } from 'node:url'
-import { apply, inject, name } from '../src/index.js'
+import { apply, inject, name } from '../src/index.ts'
 import { listDefinitions, definitionSkills } from '../src/task-definitions.ts'
 import { syntheticDefinition } from './helpers/task-definition.js'
 

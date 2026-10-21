@@ -11,7 +11,7 @@ import { bindTestTask } from './helpers/bind-task.js'
 
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { BrowserFlowService, apply, inject, name } from '../src/index.js'
+import { BrowserFlowService, apply, inject, name } from '../src/index.ts'
 import { resolveConfig } from '../src/config.ts'
 
 /** Build a fake Host context with one live Agent and a captured route table. */

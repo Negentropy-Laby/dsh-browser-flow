@@ -11,7 +11,7 @@
 
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { createControlState } from '../src/state.js'
+import { createControlState } from '../src/state.ts'
 
 /** Deterministic clock for deadline tests. */
 function clock(start = 0) {

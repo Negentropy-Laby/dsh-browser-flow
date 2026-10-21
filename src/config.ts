@@ -35,29 +35,6 @@ export type BrowserFlowConfig = {
  */
 import { isAbsolute } from 'node:path'
 
-/**
- * @typedef {object} BrowserFlowConfig
- * @property {number} commandBudgetMs - end-to-end deadline for one command, queueing included.
- * @property {number} observeMaxChars - character budget of one observation.
- * @property {number} observeMaxNodes - element budget of one observation.
- * @property {number} findMaxMatches - matches per find.
- * @property {number} waitMaxMs - longest accepted wait.
- * @property {number} queueLimit - pending operations per page.
- * @property {number} pollWaitMs - longest single panel poll.
- * @property {number} connectionIdleMs - idle window before a panel's leases expire.
- * @property {number} importWindowMs - relative lifetime for one passive import collection.
- * @property {number} graphMaxWorkers - graph worker deployment setting.
- * @property {number} graphIdleMs - graph worker deployment setting.
- * @property {number} graphRequestTimeoutMs - graph worker deployment setting.
- * @property {number} graphMaxFrameBytes - graph worker deployment setting.
- * @property {number} graphStderrBytes - graph worker deployment setting.
- * @property {number} graphTerminateGraceMs - graph worker deployment setting.
- * @property {number} graphColdRounds - graph worker deployment setting.
- * @property {number} graphMinGroup - graph worker deployment setting.
- * @property {string} localTasksDir - absolute local task directory; empty uses profileContext.home/browser-flow/tasks.
- * @property {string} importEvidenceDir - legacy configuration accepted for compatibility; new evidence is always under the bound task.
- */
-
 /** Defaults applied when a field is omitted. @type {Readonly<BrowserFlowConfig>} */
 export const DEFAULTS: Readonly<BrowserFlowConfig> = Object.freeze({
   graphMaxWorkers: 4,
@@ -115,15 +92,15 @@ export function resolveConfig(input: unknown) : Readonly<BrowserFlowConfig> {
   if (input !== undefined && (typeof input !== 'object' || input === null || Array.isArray(input))) {
     throw new Error('browser-flow: config must be an object')
   }
-  /** @type {Record<string, unknown>} */
+
   const raw: Record<string, unknown> = input === undefined || input === null ? {} : { ...input }
   const unknown = Object.keys(raw).filter(key => !(key in RANGES) && !['importEvidenceDir','localTasksDir'].includes(key))
   if (unknown.length > 0) throw new Error(`browser-flow: unknown config field(s): ${unknown.join(', ')}`)
-  /** @type {Record<string, number>} */
+
   const resolved: Record<string, number> = {}
   for (const [key, range] of Object.entries(RANGES)) {
     const [min, max] = range
-    const value = raw[key] ?? /** @type {Record<string, number|string>} */ (DEFAULTS as Record<string, number | string>)[key]
+    const value = raw[key] ??  (DEFAULTS as Record<string, number | string>)[key]
     if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < min || value > max) {
       throw new Error(`browser-flow: config ${key} must be an integer from ${min} through ${max}, received ${String(value)}`)
     }
@@ -143,7 +120,7 @@ export function resolveConfig(input: unknown) : Readonly<BrowserFlowConfig> {
       throw new Error(`browser-flow: ${key} must be a local absolute path or empty`)
     }
   }
-  return Object.freeze({ .../** @type {Omit<BrowserFlowConfig,'importEvidenceDir'|'localTasksDir'>} */ (resolved as Omit<BrowserFlowConfig, 'importEvidenceDir' | 'localTasksDir'>), .../** @type {{importEvidenceDir:string,localTasksDir:string}} */ (paths as {
+  return Object.freeze({ ... (resolved as Omit<BrowserFlowConfig, 'importEvidenceDir' | 'localTasksDir'>), ... (paths as {
     importEvidenceDir: string;
     localTasksDir: string;
 }) })

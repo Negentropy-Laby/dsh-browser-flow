@@ -1,4 +1,24 @@
 export type ErrorCode = (typeof ERROR_CODES)[number];
+/** Canonical success/failure union used inside the Host. */
+export type Result<T> = { ok: true; value: T } | ReturnType<typeof failure>
+/** A document-scoped reference from the fixed page programs. */
+export interface ElementTarget { documentToken: string; elementRef: string }
+/** A locator accepted by the model-facing parser. */
+export interface FindQuery { by: string; value: string; name?: string }
+/** Validated page action arguments; user waits never enter the page queue. */
+export interface ActionInput {
+  action: string; wait?: unknown
+  documentToken?: string; elementRef?: string; fileGrantId?: unknown; value?: unknown; checked?: unknown
+}
+/** Validated wait arguments. */
+export interface WaitInput { condition: string; documentToken: string; elementRef: string; timeoutMs?: number; text?: unknown }
+/** Internal page operation, including code-owned import restrictions. */
+export interface PageOperation extends Record<string, unknown> {
+  kind: 'observe' | 'find' | 'act' | 'wait'; action?: string; view?: string
+  maxChars?: number; maxNodes?: number; query?: FindQuery; limit?: number
+  target?: { documentToken?: string; elementRef?: string }; condition?: string; timeoutMs?: number
+  value?: unknown; checked?: unknown
+}
 /** A page identity validated during the panel handshake. */
 export interface PanelPage {
   lease: string; partition: string; url: string; documentToken: string
@@ -14,6 +34,14 @@ export interface CommandEnvelope {
   kind: 'command'; protocolVersion: 3; task: import('./task-scope.ts').RunScope
   id: string; leaseId: string; connectionGeneration: number; epoch: number
   sequence: number; deadlineAt: number; op: Record<string, unknown>
+}
+/** Terminal result identity and bounded optional diagnostic from a panel. */
+export interface ResultEnvelope {
+  kind: 'result'; protocolVersion: 3; task: import('./task-scope.ts').RunScope
+  id: string; leaseId: string; instanceId: string; connectionGeneration: number
+  epoch: number; sequence: number; outcome: 'ok' | 'failed' | 'dropped' | 'unknown_outcome'
+  payload?: Record<string, unknown>
+  error?: Record<string, unknown> & { code?: unknown; message?: string }
 }
 
 /**
@@ -80,8 +108,6 @@ export const ERROR_CODES = Object.freeze([
   'internal',
 ])
 
-/** @typedef {typeof ERROR_CODES[number]} ErrorCode */
-
 /** Error codes that mean "the action did not run and can be retried after re-observing". */
 export const RETRYABLE_CODES = Object.freeze([
   'stale_observation',
@@ -119,7 +145,7 @@ export function failure(code: ErrorCode, message: string, details?: Record<strin
         details?: Record<string, unknown>;
     };
 } {
-  /** @type {{ code: string, message: string, details?: Record<string, unknown> }} */
+
   const error: {
     code: string;
     message: string;
@@ -262,7 +288,7 @@ function validateImportExtension(op: Record<string, unknown>) : {
     ok: false;
     reason: string;
 } {
-  /** @type {Record<string,unknown>} */ const fields: Record<string, unknown> = {}
+   const fields: Record<string, unknown> = {}
   if(op.pagePolicy!==undefined){
     const policy=op.pagePolicy
     if(!isRecord(policy)||policy.adapter!=='bjrsj'||!['navigation','import'].includes(String(policy.workflow))||Object.keys(policy).some(key=>!['adapter','workflow','kind'].includes(key))||(policy.kind!==undefined&&!['add','modify','reduce'].includes(String(policy.kind))))return {ok:false,reason:'unsupported site action policy'}
@@ -290,7 +316,7 @@ function validateImportExtension(op: Record<string, unknown>) : {
       || typeof file.expectedIdentity.legalIdentity !== 'string' || !/^[A-Z0-9]{18}$/.test(file.expectedIdentity.legalIdentity)
       || typeof file.bytes !== 'number' || !Number.isSafeInteger(file.bytes) || file.bytes < 1 || file.bytes > 10*1024*1024
       || typeof file.base64 !== 'string' || file.base64.length !== 4*Math.ceil(file.bytes/3) || !/^[A-Za-z0-9+/]+={0,2}$/.test(file.base64)
-      || file.kind !== /** @type {Record<string,unknown>} */ (fields.importScope as Record<string, unknown>).kind) return {ok:false,reason:'file envelope is invalid or exceeds its own limit'}
+      || file.kind !==  (fields.importScope as Record<string, unknown>).kind) return {ok:false,reason:'file envelope is invalid or exceeds its own limit'}
     const padding = file.bytes % 3 === 1 ? '==' : file.bytes % 3 === 2 ? '=' : ''
     if ((file.base64.match(/=*$/)?.[0] ?? '') !== padding) return {ok:false,reason:'file encoding length mismatch'}
     fields.file = { ...file }
@@ -360,7 +386,7 @@ function validateOp(kind: string, op: Record<string, unknown>) : {
     if (action === 'click' && (value !== undefined || op.checked !== undefined)) {
       return { ok: false, reason: 'click takes no value or checked' }
     }
-    /** @type {Record<string, unknown>} */
+
     const result: Record<string, unknown> = { kind, action, target: target.target }
     if (value !== undefined && action !== 'click') result.value = value
     if (action === 'check') result.checked = op.checked
@@ -400,7 +426,7 @@ function validateTarget(value: unknown) : {
  */
 export function validateResult(value: unknown) : {
     ok: true;
-    result: Record<string, unknown>;
+    result: ResultEnvelope;
 } | {
     ok: false;
     reason: string;
@@ -430,6 +456,13 @@ export function validateResult(value: unknown) : {
     if (code === undefined || !ERROR_CODES.includes(code)) return { ok: false, reason: 'failed result has unknown code' }
     if (message === undefined) return { ok: false, reason: 'failed result requires message' }
   }
+  let diagnostic: ResultEnvelope['error']
+  if (value.error !== undefined) {
+    if (!isRecord(value.error)) return {ok:false,reason:'result error must be an object'}
+    const message = readOptionalString(value.error, 'message', MAX_TEXT)
+    if (value.error.message !== undefined && message === undefined) return {ok:false,reason:'result error message must be a bounded string'}
+    diagnostic = {...value.error,...(message === undefined ? {} : {message})}
+  }
   const payload = value.payload
   if (payload !== undefined && !isRecord(payload)) return { ok: false, reason: 'payload must be an object' }
   if (payload !== undefined && JSON.stringify(payload).length > MAX_PAYLOAD) {
@@ -442,7 +475,7 @@ export function validateResult(value: unknown) : {
     result: {
       kind: 'result', protocolVersion: PROTOCOL_VERSION, task: {...value.task}, id, leaseId, connectionGeneration, epoch, sequence, outcome,
       instanceId,
-      ...(value.error === undefined ? {} : { error: value.error }),
+      ...(diagnostic === undefined ? {} : { error: diagnostic }),
       ...(payload === undefined ? {} : { payload }),
     },
   }

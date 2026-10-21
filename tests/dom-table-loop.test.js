@@ -24,7 +24,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { describe, it } from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { BrowserFlowService } from '../src/index.js'
+import { BrowserFlowService } from '../src/index.ts'
 import { resolveConfig } from '../src/config.ts'
 import { actProgram, findProgram, identityProgram, observeProgram, waitProgram } from '../src/pagecode.js'
 

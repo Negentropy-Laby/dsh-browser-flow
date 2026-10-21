@@ -42,12 +42,6 @@ import { lstatSync, readFileSync, realpathSync, readdirSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { IMPORT_ORIGIN } from './import-rules.js'
 
-/** @typedef {{ id: string, skill: string, description: string, instructions: string[], resources: string[], stopBoundary: string }} Workflow */
-/** @typedef {{ schemaVersion: 1, id: string, version: string, adapter: string, adapterVersion: number, origins: string[], resources: string[], workflows: Workflow[] }} Definition */
-/** @typedef {{ definition: Definition, files: Record<string, string>, digest: string }} DefinitionSnapshot */
-/** @typedef {{ name: string, description: string, source: 'runtime', invocation: { modelInvocable: false, userInvocable: true }, content: string }} LocalSkill */
-/** @typedef {{ name: string, home: string }} Profile */
-
 /** @param {unknown} value - JSON value. @returns {value is Record<string, unknown>} object. */
 const object = (value: unknown) : value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value)
 /** @param {unknown} value - identifier. @returns {value is string} bounded portable identifier. */
@@ -79,11 +73,11 @@ export function validateDefinition(raw: unknown) : Definition {
       || !Array.isArray(row.instructions) || row.instructions.length === 0 || !Array.isArray(row.resources)
       || ![...row.instructions,...row.resources].every(path => resourcePath(path) && resources.includes(path))
       || typeof row.stopBoundary !== 'string' || row.stopBoundary.length > 200) throw new Error('task-workflow-invalid')
-    return /** @type {Workflow} */ (row as Workflow)
+    return  (row as Workflow)
   })
   if(raw.adapter==='bjrsj' && workflows.some(row=>!['navigation','import'].includes(row.id) || row.stopBoundary!==(row.id==='navigation'?'before_file_selection':'import_confirmed')))throw new Error('task-adapter-workflow-mismatch')
   if (new Set(workflows.map(row => row.id)).size !== workflows.length || new Set(workflows.map(row => row.skill)).size !== workflows.length) throw new Error('task-workflow-duplicate')
-  return /** @type {Definition} */ ({...raw, workflows} as Definition)
+  return  ({...raw, workflows} as Definition)
 }
 /** @param {string} configured - absolute config or empty. @param {Profile | undefined} profile - actual dsh profile. @returns {string | undefined} root independent of CWD and package location. */
 export function tasksRoot(configured: string, profile: Profile | undefined) : string | undefined {
@@ -121,7 +115,7 @@ export function loadDefinition(root: string, id: string, expectedId: string = id
   const definitionText = readLocal(root, join(dir, 'definition.json'), 64_000)
   const definition = validateDefinition(JSON.parse(definitionText))
   if (definition.id !== expectedId) throw new Error('task-definition-id-mismatch')
-  /** @type {Record<string, string>} */ const files: Record<string, string> = { 'definition.json': definitionText }
+   const files: Record<string, string> = { 'definition.json': definitionText }
   let total = Buffer.byteLength(definitionText)
   for (const resource of definition.resources) {
     files[resource] = readLocal(dir, join(dir, resource), 200_000)

@@ -6,9 +6,9 @@ import { validRunScope } from './task-scope.ts'
 export function graphInput(task: import('./task-store.ts').TaskData,config: import('./graph/protocol.ts').GraphConfig) : import('./graph/protocol.ts').GraphInput {
   const run={...task.manifest.scope,runId:task.manifest.runId,workflowRef:task.manifest.workflowRef},facts=taskFacts(task)
   const events=task.events.map(event=>{
-    const row=event.data,declared=(event.type==='created'||event.type==='revise')&&row.manifest&&typeof row.manifest==='object'?/** @type {import('./task-store.ts').Manifest} */(row.manifest as import('./task-store.ts').Manifest):undefined
+    const row=event.data,declared=(event.type==='created'||event.type==='revise')&&row.manifest&&typeof row.manifest==='object'?(row.manifest as import('./task-store.ts').Manifest):undefined
     const scope=declared?{...declared.scope,runId:declared.runId,workflowRef:declared.workflowRef}:validRunScope(row.run)?row.run:run
-    /** @type {import('./graph/protocol.ts').GraphEvent} */ const safe: import('./graph/protocol.ts').GraphEvent={seq:event.seq,hash:event.hash,type:event.type,run:scope}
+     const safe: import('./graph/protocol.ts').GraphEvent={seq:event.seq,hash:event.hash,type:event.type,run:scope}
     if(declared)safe.goal=declared.goal.slice(0,4000)
     if(event.type==='asset'){safe.id=String(row.id);safe.kind=String(row.kind);safe.source=String(row.source);if(row.kind==='page'&&row.data&&typeof row.data==='object'&&'documentToken' in row.data&&typeof row.data.documentToken==='string')safe.documentToken=row.data.documentToken.slice(0,200)}
     if(event.type==='attempt'){safe.id=String(row.attemptId);safe.action=String(row.action)}
@@ -31,7 +31,7 @@ export function taskView(task: import('./task-store.ts').TaskData,budget: number
   const active={pageControl:task.liveDocumentToken?'authorized':'unavailable',waiting,waitingRef:waiting?'waiting':null,taskId:scope.taskId,contextVersion:task.events.length,state,goal:task.manifest.goal.slice(0,1000),writeBlocked:!!task.readOnly||task.blocked||task.unhealthy||!writable,logHealthy:!task.unhealthy,businessVerdict:facts.verdict,sourceSeq:facts.sourceSeq,
     storage:{schemaVersion:task.manifest.schemaVersion??null,readOnly:!!task.readOnly,issue:task.storageIssue??null},evidenceIssues:task.evidenceIssues??[],unmetCriteria:facts.criteria.filter(row=>row.status!=='passed').map(row=>row.id),criteriaRef:'criteria',currentRun:task.manifest.runId,pendingAttempts:task.pendingWrite?[task.pendingWrite]:[],unknownOutcomes:unknown,sources,
     graph:{status:derived?'ready':'unavailable',reason,...(projectionId?{projectionId}:{}),kernelVersion:'1'},complete:false}
-  const procedural=/** @type {Record<string,unknown>} */((derived?.procedural_law_index??{}) as Record<string, unknown>),technical=/** @type {Record<string,unknown>} */((derived?.technical_law_index??{}) as Record<string, unknown>),graph=/** @type {Record<string,unknown>} */((derived?.knowledge_graph??{}) as Record<string, unknown>),selection=/** @type {Record<string,unknown>} */((derived?.active_context??{}) as Record<string, unknown>)
+  const procedural=((derived?.procedural_law_index??{}) as Record<string, unknown>),technical=((derived?.technical_law_index??{}) as Record<string, unknown>),graph=((derived?.knowledge_graph??{}) as Record<string, unknown>),selection=((derived?.active_context??{}) as Record<string, unknown>)
   const history=task.events.filter(event=>['waiting','wait_requested','wait_resolved'].includes(event.type)).slice(-4).map(event=>({sourceSeq:event.seq,type:event.type}))
   const value={basic_law_index:{events:task.events.length,healthy:!task.unhealthy,recent:sources},procedural_law_index:{...procedural,goal:{text:task.manifest.goal,source:'user_declared'},constraints:task.manifest.constraints,criteria:facts.criteria,waiting:waiting?[waiting]:[],historicalWaiting:history},technical_law_index:technical,knowledge_graph:graph,active_context:{...selection,...active,complete:!!derived&&selection.complete===true}}
   if(JSON.stringify(value).length<=budget)return value

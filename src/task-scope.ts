@@ -19,11 +19,7 @@ export type RunScope = TaskScope & {
 };
 
 /** Browser Flow v3 task and run identifiers, shared by Host and Client. */
-/** @typedef {string & {readonly __browserTaskId:'TaskId'}} TaskId */
-/** @typedef {string & {readonly __browserProfileId:'ProfileId'}} ProfileId */
-/** @typedef {string & {readonly __browserRunId:'RunId'}} RunId */
-/** @typedef {{ profileId: ProfileId, taskId: TaskId, ownerSessionId: string, scopeRevision: number }} TaskScope */
-/** @typedef {TaskScope & { runId: RunId, workflowRef: string }} RunScope */
+
 /** @param {unknown} value - JSON value. @returns {value is Record<string, unknown>} object. */
 const scopeRecord = (value: unknown) : value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value)
 /** @param {unknown} value - scope from disk/wire. @returns {value is TaskScope} validated public identifiers. */

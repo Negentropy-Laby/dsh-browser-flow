@@ -9,8 +9,8 @@ import { bindTestTask } from './helpers/bind-task.js'
 
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { BrowserFlowService } from '../src/index.js'
-import { createControlState } from '../src/state.js'
+import { BrowserFlowService } from '../src/index.ts'
+import { createControlState } from '../src/state.ts'
 import { resolveConfig } from '../src/config.ts'
 
 /**

@@ -2,7 +2,7 @@ import { TASK, TASK_VIEW } from './helpers/task-scope.ts'
 import assert from 'node:assert/strict'
 import { describe,it } from 'node:test'
 import { PROTOCOL_VERSION,validateCommand } from '../src/protocol.ts'
-import { createTools } from '../src/tools.js'
+import { createTools } from '../src/tools.ts'
 import { resolveConfig } from '../src/config.ts'
 import { resolve } from 'node:path'
 

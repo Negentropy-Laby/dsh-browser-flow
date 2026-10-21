@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { BrowserFlowService } from '../../src/index.js'
+import { BrowserFlowService } from '../../src/index.ts'
 import { GraphWorkers } from '../../src/graph/worker.ts'
 import { graphRuntime, graphBinary } from './graph-process.js'
 import { resolveConfig } from '../../src/config.ts'
