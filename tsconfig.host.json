@@ -7,10 +7,15 @@
     "outDir": "lib/host",
     "declaration": true,
     "composite": true,
-    "tsBuildInfoFile": ".cache/host.tsbuildinfo"
+    "tsBuildInfoFile": ".cache/host.tsbuildinfo",
+    "lib": [
+      "es2023"
+    ],
+    "types": [
+      "node"
+    ]
   },
   "include": [
-    "src/**/*.js",
     "src/**/*.ts"
   ],
   "exclude": [
@@ -21,6 +26,7 @@
     "src/page/operations.ts",
     "src/page/policy.ts",
     "src/page/import.ts",
-    "src/client-wire.ts"
+    "src/client-wire.ts",
+    "src/page/types.ts"
   ]
 }

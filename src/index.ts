@@ -421,12 +421,13 @@ closing: Promise<void> | undefined;
     const outcome = await this.dispatch(caller, { kind: 'find', query, limit: this.config.findMaxMatches }, signal)
     if (!outcome.ok) return outcome
     const value = outcome.value
-    const matches = Array.isArray(value.matches) ? value.matches : []
+    const matches: unknown[] = Array.isArray(value.matches) ? value.matches : []
+    if (!matches.every(isRecord)) return failure('internal', 'page find returned malformed matches')
     if (value.ambiguous === true || matches.length > 1) {
       const count = matches.length > 1 ? String(matches.length) : 'multiple'
       return failure('ambiguous_match', `${count} elements match this query; narrow it`, {
         documentToken: value.documentToken,
-        matches: matches.map(( match: Record<string, unknown>) => ({
+        matches: matches.map(match => ({
           elementRef: match.elementRef, tag: match.tag, label: match.label, text: match.text,
         })),
       })

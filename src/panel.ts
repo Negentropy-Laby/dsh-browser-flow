@@ -1,5 +1,5 @@
 import type {RunScope} from './task-scope.ts'
-import type {PagePolicy} from './page/types.ts'
+import type {PagePolicy} from './page/input.ts'
 interface GuestElement extends HTMLElement {executeJavaScript(source:string,userGesture?:boolean):Promise<unknown>}
 interface PanelBinding {task:RunScope;lease:string;partition:string;tabId:string;controlLeaseId:string;epoch:number;documentToken:string;url?:string;expectedSequence:number;element?:GuestElement;pagePolicy?:PagePolicy;origins?:string[];importOwner?:string}
 import {decodePanelReply,isTaskSummary,isFilePreview,type TaskSummary,type AgentSummary,type DefinitionOption,type FilePreview,type PanelError,type PanelReply,type PanelCommand} from './client-wire.ts'
@@ -81,15 +81,15 @@ export const POLL_INTERVAL_MS = 700
 /** Page-program builders, as the panel consumes them. @type {PagePrograms} */
 export const PAGE_CODE: PagePrograms = Object.freeze({
   identity: identityProgram(),
-  import: input => importProgram(((input) as import('./page/types.ts').ImportInput)),
+  import: input => importProgram(((input) as import('./page/input.ts').ImportInput)),
   observe: (maxChars, maxNodes) => observeProgram(maxChars, maxNodes),
   find: (query, limit) => findProgram(((query) as {
     by: 'text' | 'attr' | 'role';
     value: string;
     name?: string;
 }), limit),
-  act: input => actProgram(((input) as import('./page/types.ts').PageActionInput)),
-  wait: input => waitProgram(((input) as import('./page/types.ts').PageWaitInput)),
+  act: input => actProgram(((input) as import('./page/input.ts').PageActionInput)),
+  wait: input => waitProgram(((input) as import('./page/input.ts').PageWaitInput)),
 })
 
 

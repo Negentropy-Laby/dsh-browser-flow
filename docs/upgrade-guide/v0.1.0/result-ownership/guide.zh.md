@@ -14,6 +14,6 @@ description: "Browser Flow 回执必须提供面板身份，Host 与 Client 必�
 
 ## 迁移
 
-1. 完全退出 Desktop，用 `node scripts/build-client.mjs` 构建链接的插件，再通过现有 Desktop profile 重启，确保 Host 与 Client 加载同一候选。
+1. 完全退出 Desktop，用 `npm run build` 构建链接的插件，再通过现有 Desktop profile 重启，确保 Host 与 Client 加载同一候选。
 2. 自定义回执发送方必须携带注册时的面板 `instanceId`，并回传已交付命令的租约、代次、epoch、ID 和 sequence。重新授权必须由用户再次显式操作。
 3. 运行协议和控制归属测试，再验证撤销后拒绝新动作且页面仍保留。本地测试不能替代真实 Desktop 验证。

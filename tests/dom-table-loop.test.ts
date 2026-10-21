@@ -1,3 +1,4 @@
+import {fixtureProgram} from './helpers/fixture-program.ts'
 import {expectRecord,present,expectSized,expectList,expectString} from './helpers/assertions.ts'
 import {hostPort} from './helpers/ports.ts'
 import {programFor,classifyResult} from '../src/clientcore.ts'
@@ -172,18 +173,13 @@ const tableHtml = `<!doctype html><html><body>
 </table>
 <button id="save">Save</button>
 <p id="status">unsaved</p>
-<script>
-  document.getElementById('save').addEventListener('click', () => {
-    const values = [...document.querySelectorAll('#inv input')].map(input => input.value)
-    document.getElementById('status').textContent = 'saved:' + values.join(',')
-  })
-</script>
+<!-- browser-flow fixture script -->
 </body></html>`
 
 describe('six-tool DOM table closed loop', { skip: jsdomEntry === undefined ? 'jsdom is unavailable' : false }, () => {
   it('locates a cell, edits it, saves, and re-reads the saved value', async () => {
     const { JSDOM } = await import(pathToFileURL(entryOf(present(jsdomEntry))).href)
-    const dom = new JSDOM(tableHtml, { url: 'https://sample.test/inventory', runScripts: 'dangerously' })
+    const dom = new JSDOM(tableHtml.replace('<!-- browser-flow fixture script -->',`<script>${fixtureProgram('installTableLoop')}</script>`), { url: 'https://sample.test/inventory', runScripts: 'dangerously' })
     const window = dom.window
     // jsdom has no layout engine, so `getBoundingClientRect` reports a zero-size
     // box and the shipped visibility check would reject every element. Supply a

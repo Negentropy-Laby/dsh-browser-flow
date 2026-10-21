@@ -2,7 +2,7 @@
 import {isRecord,validateCommand,type CommandEnvelope} from './protocol.ts'
 import type {PageOperation} from './clientcore.ts'
 import {validRunScope,type RunScope} from './task-scope.ts'
-import type {PagePolicy} from './page/types.ts'
+import type {PagePolicy} from './page/input.ts'
 
 export interface PanelError {code:string;message:string}
 export interface TaskSummary extends Record<string,unknown> {
@@ -33,7 +33,7 @@ export function isTaskSummary(value:unknown):value is TaskSummary {
 }
 /** @param value - private panel preview. @returns Whether all displayed file fields are present. */
 export function isFilePreview(value:unknown):value is FilePreview {
-  return isRecord(value)&&['fileGrantId','path','sha256','kind'].every(key=>typeof value[key]==='string')&&typeof value.bytes==='number'&&typeof value.rows==='number'
+  return isRecord(value)&&['fileGrantId','path','sha256','kind'].every(key=>typeof value[key]==='string')&&typeof value.bytes==='number'&&typeof value.rows==='number'&&(value.confirmed===undefined||typeof value.confirmed==='boolean')
 }
 /** @param raw - untrusted response JSON. @returns A decoded reply or a visible protocol refusal. */
 export function decodePanelReply(raw:unknown):PanelReply {
@@ -49,7 +49,7 @@ export function decodePanelReply(raw:unknown):PanelReply {
   if(value.commands!==undefined&&(!Array.isArray(value.commands)||!value.commands.every(command=>isRecord(command)&&validateCommand({...command,kind:'command'}).ok&&(command.budgetMs===undefined||(typeof command.budgetMs==='number'&&Number.isFinite(command.budgetMs)&&command.budgetMs>=0)))))return invalid
   if(value.definitions!==undefined&&(!Array.isArray(value.definitions)||!value.definitions.every(row=>isRecord(row)&&typeof row.id==='string'&&Array.isArray(row.workflows)&&row.workflows.every(workflow=>isRecord(workflow)&&typeof workflow.id==='string'&&typeof workflow.description==='string'))))return invalid
   if(value.affected!==undefined&&(!Array.isArray(value.affected)||!value.affected.every(row=>isRecord(row)&&typeof row.controlLeaseId==='string'&&typeof row.state==='string'&&typeof row.epoch==='number')))return invalid
-  if(value.agent!==undefined&&value.agent!==null&&(!isRecord(value.agent)||typeof value.agent.instance!=='string'||typeof value.agent.id!=='string'||(value.agent.controlLeaseIds!==undefined&&!strings(value.agent.controlLeaseIds))))return invalid
-  if(value.pagePolicy!==undefined&&(!isRecord(value.pagePolicy)||typeof value.pagePolicy.adapter!=='string'||typeof value.pagePolicy.workflow!=='string'||(value.pagePolicy.kind!==undefined&&!['add','modify','reduce'].includes(String(value.pagePolicy.kind)))))return invalid
+  if(value.agent!==undefined&&value.agent!==null&&(!isRecord(value.agent)||typeof value.agent.instance!=='string'||typeof value.agent.id!=='string'||(value.agent.authorizedLeaseCount!==undefined&&(typeof value.agent.authorizedLeaseCount!=='number'||!Number.isSafeInteger(value.agent.authorizedLeaseCount)||value.agent.authorizedLeaseCount<0))||(value.agent.controlLeaseIds!==undefined&&!strings(value.agent.controlLeaseIds))))return invalid
+  if(value.pagePolicy!==undefined&&(!isRecord(value.pagePolicy)||typeof value.pagePolicy.adapter!=='string'||typeof value.pagePolicy.workflow!=='string'||(value.pagePolicy.kind!==undefined&&(typeof value.pagePolicy.kind!=='string'||!['add','modify','reduce'].includes(value.pagePolicy.kind)))))return invalid
   return {ok:true,value:value as PanelValue}
 }

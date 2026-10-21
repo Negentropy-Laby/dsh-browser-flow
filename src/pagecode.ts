@@ -1,6 +1,6 @@
 /** Fixed program builders serialize only JSON arguments into compiled TypeScript functions. */
 import { PAGE_RUNTIME_SOURCE, PAGE_IDENTITY_SOURCE, PAGE_OBSERVE_SOURCE, PAGE_FIND_SOURCE, PAGE_ACTION_SOURCE, PAGE_WAIT_SOURCE, PAGE_POLICY_SOURCE } from '#browser-flow/page-programs'
-import type { PageActionInput, PageWaitInput } from './page/types.ts'
+import type { PageActionInput, PageWaitInput } from './page/input.ts'
 
 const SENSITIVE_QUERY_NAMES = Object.freeze([
   'token', 'access_token', 'id_token', 'refresh_token', 'code', 'key', 'api_key',

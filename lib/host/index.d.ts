@@ -466,7 +466,7 @@ export declare class BrowserFlowService {
         ok: true;
         value: {
             documentToken: unknown;
-            match: any;
+            match: Record<string, unknown>;
         };
     }>;
     /**

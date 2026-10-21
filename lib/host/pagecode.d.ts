@@ -1,4 +1,4 @@
-import type { PageActionInput, PageWaitInput } from './page/types.ts';
+import type { PageActionInput, PageWaitInput } from './page/input.ts';
 /** @returns Shared runtime initialization for fixed program consumers. */
 export declare function prelude(): string;
 /** @returns Identity program for the current document. */

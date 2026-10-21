@@ -117,7 +117,8 @@ export function stripModuleSyntax({ file, source }: ModuleSource) {
   if (leftover !== null) throw new Error(`${file}: unsupported export form near "${leftover[0]}"`)
   const leftoverImport = body.match(/^import\s+/m)
   if (leftoverImport !== null) throw new Error(`${file}: unsupported import form near "${leftoverImport[0]}"`)
-  const original = file.endsWith('.js') && existsSync(join(root,'src',file.slice(0,-3)+'.ts')) ? file.slice(0,-3)+'.ts' : file
+  const original=file.startsWith('generated/')?file:file.replace(/\.js$/,'.ts')
+  if(!file.startsWith('generated/')&&!existsSync(join(root,'src',original)))throw new Error('Client module has no TypeScript source: '+file)
   return `// ---- ${file.startsWith('generated/') ? file : 'src/'+original} ----\n${body.trim()}\n`
 }
 

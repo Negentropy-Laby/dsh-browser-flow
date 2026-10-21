@@ -32,5 +32,9 @@ it('packs and installs without task data and loads six tools/seven routes under 
   const loaded=spawnSync(process.execPath,[probe],{cwd:scratch,env:{...process.env,NODE_OPTIONS:''},encoding:'utf8',timeout:15000})
   assert.equal(loaded.error,undefined);assert.equal(loaded.status,0,loaded.stderr)
   assert.equal(JSON.parse(loaded.stdout).plainNode,true)
+  const consumer=join(scratch,'consumer.ts')
+  writeFileSync(consumer,readFileSync(join(root,'tests/fixtures/package-consumer.ts')))
+  const checked=spawnSync(process.execPath,[join(root,'node_modules/typescript/bin/tsc'),'--noEmit','--strict','--module','nodenext','--moduleResolution','nodenext','--target','es2022','--lib','es2023','--types','node','--typeRoots',join(root,'node_modules/@types'),consumer],{cwd:scratch,encoding:'utf8',timeout:20000})
+  assert.equal(checked.error,undefined);assert.equal(checked.status,0,checked.stdout+checked.stderr)
  }finally{rmSync(scratch,{recursive:true,force:true})}
 })

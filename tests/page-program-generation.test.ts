@@ -33,6 +33,16 @@ it('keeps tracked synthetic HTML static and assembles its compiled behavior priv
     assert.match(compiled,/<script>/)
     assert.doesNotMatch(compiled,/__name|__awaiter/)
   }
+  for(const name of ['actions-and-refusals','dom-table-loop']){
+    const text=readFileSync(new URL('./'+name+'.test.ts',import.meta.url),'utf8')
+    const file=ts.createSourceFile(name+'.ts',text,ts.ScriptTarget.ES2022,true)
+    const inspect=(node:ts.Node):void=>{
+      if(ts.isStringLiteralLike(node))assert.doesNotMatch(node.text,/<script\b/i,'fixture behavior must come from compiled TypeScript')
+      ts.forEachChild(node,inspect)
+    }
+    inspect(file)
+  }
+
 })
 
 it('serialization refuses a compiler helper captured outside the fixed function',async()=>{

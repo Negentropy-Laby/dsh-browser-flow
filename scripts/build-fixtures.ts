@@ -17,7 +17,7 @@ export function buildFixtures(): void {
   }
   mkdirSync(join(root,'.cache','fixtures'),{recursive:true})
   const programs:Record<string,string>={}
-  for(const [file,symbols] of [['desktop-js/programs',['desktopIdentity','createImportFixture','executeFixturePage','fixtureRequests','destroyFixture','qualifyInstalledPackage']],['fixture-js/native-probes',['fixtureState','fixtureResponse','fixtureRestored']]] as const){
+  for(const [file,symbols] of [['desktop-js/programs',['desktopIdentity','createImportFixture','executeFixturePage','fixtureRequests','destroyFixture','qualifyInstalledPackage']],['fixture-js/native-probes',['fixtureState','fixtureResponse','fixtureRestored']],['fixture-js/tool-fixtures',['installActionForm','installTableLoop']]] as const){
     for(const symbol of symbols)programs[symbol]=compiledFunction(join(root,'.cache',file+'.js'),symbol)
   }
   writeFileSync(join(root,'.cache','fixtures','programs.json'),JSON.stringify(programs)+'\n')

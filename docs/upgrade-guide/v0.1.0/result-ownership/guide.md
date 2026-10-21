@@ -14,6 +14,6 @@ One exact Agent and Session have one current control page. Successfully authoriz
 
 ## Migration
 
-1. Fully quit Desktop, build the linked plugin with `node scripts/build-client.mjs`, and restart through the existing Desktop profile so Host and Client load the same candidate.
+1. Fully quit Desktop, build the linked plugin with `npm run build`, and restart through the existing Desktop profile so Host and Client load the same candidate.
 2. Custom result producers must include their registered panel `instanceId` and echo the delivered command's lease, generation, epoch, ID and sequence. Reauthorization requires a fresh explicit user action.
 3. Run the protocol and control-ownership tests, then verify revocation refuses new actions while the page remains open. A local test result does not replace real Desktop qualification.

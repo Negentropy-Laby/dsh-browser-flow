@@ -1,3 +1,5 @@
+import {deferred} from './helpers/deferred.ts'
+import {fixtureProgram} from './helpers/fixture-program.ts'
 import {expectRecord,present,expectString,expectSized,expectList} from './helpers/assertions.ts'
 import {hostPort} from './helpers/ports.ts'
 import {programFor,classifyResult} from '../src/clientcore.ts'
@@ -149,23 +151,20 @@ const formHtml = `<!doctype html><html><body>
 <input id="dup" class="dup" value="one">
 <input id="dup2" class="dup" value="two">
 <p id="status">idle</p>
-<script>
-  document.getElementById('mode').addEventListener('change', event => {
-    document.getElementById('status').textContent = 'mode:' + event.target.value
-  })
-  document.getElementById('notify').addEventListener('change', event => {
-    document.getElementById('status').textContent = 'notify:' + String(event.target.checked)
-  })
-  setTimeout(() => { document.getElementById('status').textContent = 'ready' }, 150)
-</script>
+<!-- browser-flow fixture script -->
 </body></html>`
 
 describe('actions and refusals through the tool layer', { skip: jsdomEntry === undefined ? 'jsdom is unavailable' : false }, () => {
   /** Build one authorized page over the form fixture. */
   async function authorizedForm(config = {}) {
     const { JSDOM } = await import(pathToFileURL(entryOf(present(jsdomEntry))).href)
-    const dom = new JSDOM(formHtml, { url: 'https://sample.test/settings', runScripts: 'dangerously' })
+    const dom = new JSDOM(formHtml.replace('<!-- browser-flow fixture script -->',`<script>${fixtureProgram('installActionForm')}</script>`), { url: 'https://sample.test/settings', runScripts: 'dangerously' })
     const window = dom.window
+    const entered=deferred()
+    const Observer=window.MutationObserver
+    window.MutationObserver=class extends Observer {
+      observe(target:Node,options?:MutationObserverInit){super.observe(target,options);entered.resolve()}
+    }
     window.Element.prototype.getBoundingClientRect = function getBoundingClientRect() {
       const hidden = this.closest('[hidden]') !== null
       const width = hidden ? 0 : 100
@@ -211,7 +210,7 @@ describe('actions and refusals through the tool layer', { skip: jsdomEntry === u
       globalThis.getComputedStyle = saved.getComputedStyle
       window.close()
     }
-    return { window, fake, agent, invoke, restore }
+    return {window,fake,agent,invoke,restore,waitEntered:entered.promise,setReady:()=>window.document.dispatchEvent(new window.Event('browser-flow-fixture-ready'))}
   }
 
   it('selects an explicit option and reports the page-side change', async () => {
@@ -380,16 +379,21 @@ describe('actions and refusals through the tool layer', { skip: jsdomEntry === u
   it('waits for a condition that becomes true and then reports it', async () => {
     const form = await authorizedForm()
     try {
-      // The fixture flips #status to "ready" after 150ms.
+      // Change the condition only after the actual page observer is installed.
       const found = await form.invoke('browser_find', { by: 'attr', name: 'id', value: 'status' })
       assert.equal(expectRecord(found).ok, true)
-      const waited = await form.invoke('browser_wait', {
+      const pending = form.invoke('browser_wait', {
         documentToken: expectRecord(expectRecord(found).value).documentToken,
         elementRef: expectRecord(expectRecord(expectRecord(found).value).match).elementRef,
         condition: 'text',
         text: 'ready',
         timeoutMs: 5_000,
       })
+      const observerEntered=await Promise.race([form.waitEntered.then(()=>true),pending.then(()=>false)])
+      assert.equal(observerEntered,true,'the wait must install its observer before the condition changes')
+      form.setReady()
+      const waited=await pending
+      assert.equal(expectRecord(expectRecord(waited).value).satisfied,true)
       assert.equal(expectRecord(waited).ok, true, `wait failed: ${JSON.stringify(expectRecord(waited).error)}`)
       assert.equal(form.window.document.getElementById('status').textContent, 'ready')
     } finally { form.restore() }
@@ -398,6 +402,7 @@ describe('actions and refusals through the tool layer', { skip: jsdomEntry === u
   it('reports a wait that cannot be satisfied instead of hanging', async () => {
     const form = await authorizedForm()
     try {
+      form.setReady()
       const found = await form.invoke('browser_find', { by: 'attr', name: 'id', value: 'status' })
       assert.equal(expectRecord(found).ok, true)
       const started = Date.now()

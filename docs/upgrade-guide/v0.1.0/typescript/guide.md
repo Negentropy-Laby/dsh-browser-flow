@@ -8,7 +8,7 @@ The Host entry and public package exports continue to load compiled JavaScript
 from `lib/`. Installed profiles need neither tsx nor a TypeScript compiler.
 Rebuild and reload the Host and Client together after a source update.
 
-Source filenames change from `.js` or `.mjs` to `.ts` in reviewed batches. Update
+Handwritten source filenames are `.ts`. Update
 direct development imports to the owning TypeScript source; published package
 subpaths keep their existing names. Generated declarations describe the narrowed
 internal types. Wire protocol v3, Desktop bridge v1 and task journal format v1
@@ -16,8 +16,8 @@ retain their existing parsing and persistence rules.
 
 Shared scope, configuration, wait and wire modules now expose TypeScript types.
 Handshake and command parsers retain their existing runtime checks and return
-canonical identities. Source test discovery includes both migration generations
-until the final JavaScript source batch has been removed.
+canonical identities. Source test discovery selects `.test.ts` files. Every compiler face rejects
+JavaScript sources. Generated JavaScript remains the installed runtime.
 
 Optional terminal-result diagnostics must be objects with a bounded string
 message when a message is supplied. This matches the paired Client output;
@@ -49,3 +49,18 @@ Child source entrypoints explicitly load this package's `tsx/esm`; installed
 package probes use generated JavaScript under plain Node. Fixture serialization
 rejects captured compiler helpers. The Host, Client, DOM programs, scripts,
 tests, DOM fixtures and Electron programs each have a compiler face.
+
+The unused root `lib/pagecode.js` copy is removed. The public `./pagecode` export
+continues to resolve to the generated `lib/host/pagecode.js` entry.
+
+Fixed-program inputs are separate from DOM runtime state. Node consumers can
+check the public Host and page-builder declarations with an ES-only library
+configuration; installing the plugin does not add a DOM type requirement.
+
+Optional policy kinds, lease counts and file-confirmation flags retain their
+stated JSON types; malformed optional fields are refused. Tool-layer forms also
+install compiler-emitted handlers. Wait fixtures use explicit readiness events
+after the page observer is installed.
+
+Find results reject non-object page matches before selecting an element; the
+public result declaration carries the validated record type.

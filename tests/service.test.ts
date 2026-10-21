@@ -281,6 +281,26 @@ describe('browser_observe and browser_find', () => {
     assert.equal(expectSized(present(outcome.error.details).matches).length, 2)
   })
 
+  it('refuses malformed page matches before returning a selected element', async () => {
+    const {tools,agent,routes,service}=await authorized()
+    try {
+      const pending=present(tools.get('browser_find')).execute({by:'text',value:'Save'},{agent,signal:new AbortController().signal})
+      const polled=await call(present(routes.get('POST /api/browser-flow/poll')),{
+        instanceId:'panel-1',connectionGeneration:1,sessionId:'session-1',
+        pages:[{lease:'guest-1',partition:'part-1',url:'https://example.test/a',documentToken:'doc-1',tabId:'tab-1'}],
+      })
+      const command=polled.body.value.commands[0]
+      const settled=await call(present(routes.get('POST /api/browser-flow/result')),{
+        kind:'result',task:command.task,instanceId:'panel-1',id:command.id,leaseId:command.leaseId,connectionGeneration:1,
+        epoch:command.epoch,sequence:command.sequence,outcome:'ok',payload:{documentToken:'doc-1',matches:[null]},
+      })
+      assert.equal(settled.status,200)
+      const outcome=await pending
+      assert.equal(outcome.ok,false)
+      assert.equal(outcome.error.code,'internal')
+    } finally {await service.close()}
+  })
+
   it('reports not_found when nothing matches', async () => {
     const { tools, agent, routes } = await authorized()
     const pending = present(tools.get('browser_find')).execute({ by: 'role', value: 'dialog' }, { agent, signal: new AbortController().signal })

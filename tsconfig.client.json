@@ -10,7 +10,7 @@
     "src/protocol.ts",
     "src/node-ambient.d.ts",
     "src/import-rules.ts",
-    "src/page/types.ts",
+    "src/page/input.ts",
     "src/page/program-sources.d.ts",
     "src/client-wire.ts"
   ],
