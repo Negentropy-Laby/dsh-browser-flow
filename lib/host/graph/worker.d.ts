@@ -12,12 +12,13 @@ export declare function packagedBinary(): Binary;
 export declare class GraphWorkers {
     private readonly config;
     private readonly binary;
+    private readonly now;
     private runtime;
     private workers;
     private closed;
-    private acquisition;
-    /** @param config - resolved settings. @param binary - package resolver; tests may supply an owned helper. */
-    constructor(config: GraphConfig, binary?: () => Binary);
+    private acquisitions;
+    /** @param config - resolved settings. @param binary - package resolver; tests may supply an owned helper. @param now - monotonic clock, injectable for deadline tests. */
+    constructor(config: GraphConfig, binary?: () => Binary, now?: () => number);
     /** @param runtime - newly mounted service. @returns Disposal joined before the provider is released. */
     attach(runtime: SubprocessPort): () => Promise<void>;
     private stopAll;
@@ -27,7 +28,7 @@ export declare class GraphWorkers {
     project(input: GraphInput, budget: number, current: () => boolean, signal?: AbortSignal): Promise<JsonRecord>;
     /** @param input - current snapshot. @param ref - task-owned projection reference. @param current - current binding check. @param signal - caller cancellation. @returns Sanitized immutable detail. */
     detail(input: GraphInput, ref: string, current: () => boolean, signal?: AbortSignal): Promise<unknown>;
-    private cancelable;
+    private bounded;
     /** @param taskId - owned task being ended or revised. @returns Quiescent worker disposal. */
     retire(taskId: string): Promise<void>;
     /** @returns All workers have stopped before plugin disposal completes. */

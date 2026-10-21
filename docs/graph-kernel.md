@@ -61,3 +61,11 @@ projection ID. Unavailable projections do not block independent page operations,
 user waits, safe original reads or permission withdrawal. Unknown writes remain
 blocked regardless of graph availability. Large views include detail references
 and an explicit truncation flag; mandatory safety state remains visible.
+
+Acquisition is serialized within each task. A worker whose exit is not yet
+confirmed still occupies capacity, but does not hold another task's acquisition
+queue. Read deadlines include acquisition and detail preparation. An expired
+read returns without waiting for cleanup; the registry retains the process and
+joins its managed range during retirement or disposal. A timed-out replacement
+cannot start a helper later, and retiring a predecessor cannot discard ownership
+of its replacement.

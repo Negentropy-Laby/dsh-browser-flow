@@ -80,3 +80,55 @@ it('expires a held RPC using a controlled timer without sleeping or replaying',a
  await barrier;t.mock.timers.tick(5001);await rejected
  assert.equal(sent,1);assert.equal(runtime.terminated,true);await workers.close()
 })
+it('bounds a stuck same-task replacement and lets an independent task progress',async t=>{
+ const runtime=graphRuntime();let now=0
+ const workers=new GraphWorkers(resolveConfig(),graphBinary,()=>now);workers.attach(runtime)
+ let release,entered;const held=new Promise(resolve=>{release=resolve}),barrier=new Promise(resolve=>{entered=resolve})
+ try{
+  await workers.project(input(),8000,()=>true)
+  const original=runtime.handles[0].waitForExit
+  runtime.handles[0].waitForExit=async()=>{entered();await held;return original()}
+  t.mock.timers.enable({apis:['setTimeout']})
+  let replacementOutcome,independentOutcome
+  const replacement=workers.project(input({...scope,runId:'run-33333333-3333-4333-8333-333333333333'}),8000,()=>true).then(()=>{replacementOutcome='ready'},e=>{replacementOutcome=e.code})
+  await barrier
+  const independent=workers.project(input({...scope,taskId:'task-22222222-2222-4222-8222-222222222222',ownerSessionId:'independent'}),8000,()=>true).then(()=>{independentOutcome='ready'},e=>{independentOutcome=e.code})
+  // Flush the admission microtasks; no elapsed-time condition admits the task.
+  await new Promise(resolve=>setImmediate(resolve))
+  assert.equal(runtime.handles.length,2,'an unrelated task must not queue behind replacement cleanup')
+  // Wait for the real helper response without using elapsed time as evidence.
+  await independent;assert.equal(independentOutcome,'ready')
+  now=6000;t.mock.timers.tick(6000);await new Promise(resolve=>setImmediate(resolve))
+  assert.equal(replacementOutcome,'graph_timeout')
+  release();await replacement
+ }finally{release();await workers.close()}
+})
+it('returns a timed-out RPC before cleanup finishes while retaining cleanup ownership',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});let now=0,entered,release
+ const barrier=new Promise(resolve=>{entered=resolve}),cleanup=new Promise(resolve=>{release=resolve})
+ const runtime=heldRuntime(()=>entered()),spawn=runtime.spawn
+ runtime.spawn=()=>{const h=spawn();h.waitForExit=async()=>{await cleanup;await h.done;return true};return h}
+ const workers=new GraphWorkers(resolveConfig(),graphBinary,()=>now);workers.attach(runtime)
+ try{
+  const pending=workers.project(input(),8000,()=>true),rejected=assert.rejects(pending,/graph_timeout/)
+  await barrier;now=6000;t.mock.timers.tick(6000);await rejected
+  assert.equal(runtime.terminated,true)
+  let closed=false;const closing=workers.close().then(()=>{closed=true})
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(closed,false,'cleanup ownership must outlive the expired read')
+  release();await closing;assert.equal(closed,true)
+ }finally{release();await workers.close()}
+})
+it('does not lose the replacement worker when retiring its predecessor races with a read',async t=>{
+ const {workers,runtime}=setup(t)
+ t.after(async()=>{for(const h of runtime.handles){h.terminate();await h.done}})
+ await workers.project(input(),8000,()=>true)
+ let entered,release;const barrier=new Promise(resolve=>{entered=resolve}),cleanup=new Promise(resolve=>{release=resolve}),first=runtime.handles[0],wait=first.waitForExit
+ first.waitForExit=async()=>{entered();await cleanup;return wait()}
+ try{
+  const replacement=workers.project(input({...scope,runId:'run-33333333-3333-4333-8333-333333333333'}),8000,()=>true)
+  await barrier;const retiring=workers.retire(scope.taskId);release()
+  await Promise.all([replacement,retiring]);assert.equal(runtime.handles.length,2)
+  await workers.close()
+  assert.ok(runtime.handles.every(h=>h.child.exitCode!==null||h.child.signalCode!==null),'all replacement processes must stay owned through disposal')
+ }finally{release()}
+})

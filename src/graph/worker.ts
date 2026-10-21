@@ -26,14 +26,14 @@ export function packagedBinary(): Binary {
 interface Pending {request: GraphRequest; resolve: (value: unknown)=>void; reject: (error: GraphError)=>void; timer: ReturnType<typeof setTimeout>}
 class Worker {
   readonly generation=randomUUID();readonly handle: ProcessHandle;readonly scope: GraphInput['scope']
-  closing=false;busy=false;private pending: Pending | undefined;private counter=0
+  closing=false;stopped=false;busy=false;private pending: Pending | undefined;private counter=0
   private idle: ReturnType<typeof setTimeout> | undefined;private stopping: Promise<void> | undefined
   private readonly decoder: Frames;private readonly onData: (chunk: Buffer)=>void
   private readonly onEnd: ()=>void;private readonly onError: ()=>void
   cached: {hash:string;budget:number;value: JsonRecord} | undefined
   flight: {key:string;promise:Promise<JsonRecord>} | undefined
-  /** @param runtime - actual Host service. @param config - resolved limits. @param binary - verified package artifact. @param input - initial run. */
-  constructor(runtime: SubprocessPort,private readonly config: GraphConfig,binary: Binary,input: GraphInput) {
+  /** @param runtime - actual Host service. @param config - resolved limits. @param binary - verified package artifact. @param input - initial run. @param now - Host monotonic clock. */
+  constructor(runtime: SubprocessPort,private readonly config: GraphConfig,binary: Binary,input: GraphInput,private readonly now:()=>number) {
     this.scope={...input.scope}
     this.handle=runtime.spawn({argv:[binary.path,'--max-frame',String(config.graphMaxFrameBytes)],cwd:binary.cwd,stdio:{stdin:'pipe',stdout:'pipe',stderr:{maxBytes:config.graphStderrBytes}},graceMs:config.graphTerminateGraceMs})
     this.decoder=new Frames(config.graphMaxFrameBytes,value=>this.receive(value))
@@ -56,12 +56,13 @@ class Worker {
   /** @param op - fixed RPC. @param input - safe snapshot. @param hash - its identity. @param budget - view size. @param deadline - Host monotonic deadline. @param ref - scoped projection detail. @returns Validated envelope payload. */
   async rpc(op: GraphRequest['op'],input: GraphInput,hash:string,budget:number,deadline:number,ref?:string): Promise<unknown> {
     if(this.closing||this.pending)throw new GraphError('graph_busy')
-    const remaining=Math.floor(deadline-performance.now());if(remaining<=0)throw new GraphError('graph_timeout')
+    const remaining=Math.floor(deadline-this.now());if(remaining<=0)throw new GraphError('graph_timeout')
     clearTimeout(this.idle);this.busy=true
     const q: GraphRequest={protocolVersion:1,id:String(++this.counter),generation:this.generation,scope:this.scope,version:input.version,tailHash:input.tailHash,inputHash:hash,op,budgetMs:remaining,budget,...(op==='project'?{input}:{}),...(ref?{ref}:{})}
     const encoded=frame(q,this.config.graphMaxFrameBytes)
     try{return await new Promise<unknown>((resolve,reject)=>{
-      const timer=setTimeout(()=>this.fail('graph_timeout'),remaining)
+      const timeout=Math.floor(deadline-this.now());if(timeout<=0){reject(new GraphError('graph_timeout'));return}
+      const timer=setTimeout(()=>this.fail('graph_timeout'),timeout)
       this.pending={request:q,resolve,reject,timer}
       if(!this.handle.stdin||!this.handle.stdout){this.fail('worker_io');return}
       this.handle.stdin.write(encoded,error=>{if(error)this.fail('worker_io')})
@@ -72,38 +73,48 @@ class Worker {
     if(this.stopping)return this.stopping
     this.closing=true;this.cached=undefined;clearTimeout(this.idle)
     if(this.pending){clearTimeout(this.pending.timer);this.pending.reject(new GraphError('worker_stopped'));this.pending=undefined}
-    this.stopping=(async()=>{this.handle.terminate();if(!await this.handle.waitForExit())throw new GraphError('cleanup_failed');await this.handle.done.catch(()=>{});this.handle.stdout?.off('data',this.onData);this.handle.stdout?.off('end',this.onEnd);this.handle.stdout?.off('error',this.onError);this.handle.stdin?.off('error',this.onError)})()
+    this.stopping=(async()=>{this.handle.terminate();if(!await this.handle.waitForExit())throw new GraphError('cleanup_failed');await this.handle.done.catch(()=>{});this.handle.stdout?.off('data',this.onData);this.handle.stdout?.off('end',this.onEnd);this.handle.stdout?.off('error',this.onError);this.handle.stdin?.off('error',this.onError);this.stopped=true})()
     return this.stopping
   }
 }
 /** Task-scoped registry. Missing services affect graph reads, never permission withdrawal. */
 export class GraphWorkers {
-  private runtime: SubprocessPort | undefined;private workers=new Map<string,Worker>();private closed=false;private acquisition:Promise<void>=Promise.resolve()
-  /** @param config - resolved settings. @param binary - package resolver; tests may supply an owned helper. */
-  constructor(private readonly config: GraphConfig,private readonly binary: ()=>Binary=packagedBinary) {}
+  private runtime: SubprocessPort | undefined;private workers=new Map<string,Worker>();private closed=false;private acquisitions=new Map<string,Promise<void>>()
+  /** @param config - resolved settings. @param binary - package resolver; tests may supply an owned helper. @param now - monotonic clock, injectable for deadline tests. */
+  constructor(private readonly config: GraphConfig,private readonly binary: ()=>Binary=packagedBinary,private readonly now:()=>number=()=>performance.now()) {}
   /** @param runtime - newly mounted service. @returns Disposal joined before the provider is released. */
-  attach(runtime: SubprocessPort): ()=>Promise<void> {this.runtime=runtime;return async()=>{if(this.runtime===runtime)this.runtime=undefined;await this.acquisition;await this.stopAll()}}
+  attach(runtime: SubprocessPort): ()=>Promise<void> {this.runtime=runtime;return async()=>{if(this.runtime===runtime)this.runtime=undefined;await this.stopAll();await Promise.allSettled([...this.acquisitions.values()])}}
   private async stopAll(): Promise<void> {const entries=[...this.workers.values()];const results=await Promise.allSettled(entries.map(worker=>worker.stop()));if(results.some(row=>row.status==='rejected'))throw new GraphError('cleanup_failed');this.workers.clear()}
-  private worker(input: GraphInput,deadline:number): Promise<{worker:Worker;fresh:boolean}> {
-    const result=this.acquisition.then(()=>this.acquire(input,deadline));this.acquisition=result.then(()=>{},()=>{});return result
+  private worker(input: GraphInput,deadline:number,current:()=>boolean,signal?:AbortSignal): Promise<{worker:Worker;fresh:boolean}> {
+    const key=input.scope.taskId,previous=this.acquisitions.get(key)??Promise.resolve()
+    const result=previous.then(()=>this.acquire(input,deadline,current,signal)),settled=result.then(()=>{},()=>{})
+    this.acquisitions.set(key,settled)
+    void settled.then(()=>{if(this.acquisitions.get(key)===settled)this.acquisitions.delete(key)})
+    return result
   }
-  private async acquire(input: GraphInput,deadline:number): Promise<{worker:Worker;fresh:boolean}> {
+  private async acquire(input: GraphInput,deadline:number,current:()=>boolean,signal?:AbortSignal): Promise<{worker:Worker;fresh:boolean}> {
+    if(this.now()>=deadline)throw new GraphError('graph_timeout')
+    if(!current()||signal?.aborted)throw new GraphError('stale_projection')
     if(this.closed)throw new GraphError('graph_closed');if(!this.runtime)throw new GraphError('subprocess_unavailable')
     const key=input.scope.taskId;let worker=this.workers.get(key)
     if(worker&&(worker.closing||!sameRunScope(worker.scope,input.scope))){await worker.stop();if(this.workers.get(key)===worker)this.workers.delete(key);worker=undefined}
+    if(this.now()>=deadline)throw new GraphError('graph_timeout')
+    if(!current()||signal?.aborted)throw new GraphError('stale_projection')
     if(worker)return {worker,fresh:false}
-    for(const [id,entry]of this.workers)if(entry.closing){await entry.stop();this.workers.delete(id)}
+    for(const [id,entry]of this.workers)if(entry.stopped)this.workers.delete(id)
     if(this.workers.size>=this.config.graphMaxWorkers)throw new GraphError('graph_capacity')
     if(this.closed||!this.runtime)throw new GraphError('graph_closed')
-    if(performance.now()>=deadline)throw new GraphError('graph_timeout')
+    if(this.now()>=deadline)throw new GraphError('graph_timeout')
     // No await between the capacity check and claiming this task's worker.
-    const entry=new Worker(this.runtime,this.config,this.binary(),input);this.workers.set(key,entry);return {worker:entry,fresh:true}
+    const binary=this.binary();if(this.now()>=deadline)throw new GraphError('graph_timeout')
+    const entry=new Worker(this.runtime,this.config,binary,input,this.now);this.workers.set(key,entry);return {worker:entry,fresh:true}
   }
   /** @param input - complete sanitized snapshot. @param budget - display limit. @param current - recheck after every asynchronous operation. @param signal - caller cancellation. @returns Four derived modules; no Host facts. */
   async project(input:GraphInput,budget:number,current:()=>boolean,signal?:AbortSignal): Promise<JsonRecord> {
-    const deadline=performance.now()+this.config.graphRequestTimeoutMs
-    const hash=graphHash(JSON.stringify(input));const {worker,fresh}=await this.worker(input,deadline)
-    if(!current()||signal?.aborted){if(fresh)await worker.stop();throw new GraphError('stale_projection')}
+    const deadline=this.now()+this.config.graphRequestTimeoutMs
+    if(this.closed)throw new GraphError('graph_closed');if(!this.runtime)throw new GraphError('subprocess_unavailable')
+    const hash=graphHash(JSON.stringify(input));const {worker,fresh}=await this.bounded(this.worker(input,deadline,current,signal),deadline,signal)
+    if(!current()||signal?.aborted){if(fresh)void worker.stop().catch(()=>{});throw new GraphError('stale_projection')}
     const key=hash+':'+budget
     if(worker.cached?.hash===hash&&worker.cached.budget===budget)return worker.cached.value
     let promise: Promise<JsonRecord>
@@ -113,27 +124,33 @@ export class GraphWorkers {
         if(fresh){const hello=await worker.rpc('hello',input,hash,budget,deadline);if(!record(hello)||hello.kernelVersion!=='1'||hello.rulesVersion!=='structural-v1')throw new GraphError('protocol_mismatch')}
         const value=validateView(await worker.rpc('project',input,hash,budget,deadline),input,hash);if(worker.closing||!current())throw new GraphError('stale_projection')
         worker.cached={hash,budget,value};return value
-      }catch(error){await worker.stop();throw error}finally{worker.flight=undefined}})()
+      }catch(error){void worker.stop().catch(()=>{});throw error}finally{worker.flight=undefined}})()
       worker.flight={key,promise}
     }
-    const value=await this.cancelable(promise,signal)
+    const value=await this.bounded(promise,deadline,signal)
     if(worker.closing||!current())throw new GraphError('stale_projection')
     return value
   }
   /** @param input - current snapshot. @param ref - task-owned projection reference. @param current - current binding check. @param signal - caller cancellation. @returns Sanitized immutable detail. */
   async detail(input:GraphInput,ref:string,current:()=>boolean,signal?:AbortSignal): Promise<unknown> {
-    await this.project(input,8000,current,signal)
+    const deadline=this.now()+this.config.graphRequestTimeoutMs
+    await this.bounded(this.project(input,8000,current,signal),deadline,signal)
     const worker=this.workers.get(input.scope.taskId);if(!worker)throw new GraphError('graph_unavailable')
-    const hash=graphHash(JSON.stringify(input)),deadline=performance.now()+this.config.graphRequestTimeoutMs
-    try{const value=await this.cancelable(worker.rpc('detail',input,hash,8000,deadline,ref),signal);if(worker.closing||!current())throw new GraphError('stale_projection');return validateDetail(value,ref,input,hash)}catch(error){await worker.stop();throw error}
+    const hash=graphHash(JSON.stringify(input))
+    try{const value=await this.bounded(worker.rpc('detail',input,hash,8000,deadline,ref),deadline,signal);if(worker.closing||!current())throw new GraphError('stale_projection');return validateDetail(value,ref,input,hash)}catch(error){void worker.stop().catch(()=>{});throw error}
   }
-  private async cancelable<T>(promise:Promise<T>,signal?:AbortSignal):Promise<T> {
-    if(!signal)return promise;if(signal.aborted)throw new GraphError('graph_cancelled')
-    let abort:()=>void=()=>{}
-    try{return await Promise.race([promise,new Promise<never>((_,reject)=>{abort=()=>reject(new GraphError('graph_cancelled'));signal.addEventListener('abort',abort,{once:true})})])}finally{signal.removeEventListener('abort',abort)}
+  private async bounded<T>(promise:Promise<T>,deadline:number,signal?:AbortSignal):Promise<T> {
+    const remaining=Math.floor(deadline-this.now())
+    if(remaining<=0||signal?.aborted){void promise.catch(()=>{});throw new GraphError(remaining<=0?'graph_timeout':'stale_projection')}
+    // Promise.race retains rejection handlers even after the caller times out.
+    let abort:()=>void=()=>{},timer:ReturnType<typeof setTimeout>|undefined
+    try{return await Promise.race([promise,new Promise<never>((_,reject)=>{
+      timer=setTimeout(()=>reject(new GraphError('graph_timeout')),remaining)
+      abort=()=>reject(new GraphError('graph_cancelled'));signal?.addEventListener('abort',abort,{once:true})
+    })])}finally{clearTimeout(timer);signal?.removeEventListener('abort',abort)}
   }
   /** @param taskId - owned task being ended or revised. @returns Quiescent worker disposal. */
-  async retire(taskId:string):Promise<void>{const worker=this.workers.get(taskId);if(worker){await worker.stop();this.workers.delete(taskId)}}
+  async retire(taskId:string):Promise<void>{const worker=this.workers.get(taskId);if(worker){await worker.stop();if(this.workers.get(taskId)===worker)this.workers.delete(taskId)}}
   /** @returns All workers have stopped before plugin disposal completes. */
-  async close():Promise<void>{this.closed=true;this.runtime=undefined;await this.acquisition;await this.stopAll()}
+  async close():Promise<void>{this.closed=true;this.runtime=undefined;await this.stopAll();await Promise.allSettled([...this.acquisitions.values()])}
 }
