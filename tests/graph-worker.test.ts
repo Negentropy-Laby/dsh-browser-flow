@@ -185,3 +185,13 @@ it('reclaims an acquired worker even when the caller expires or cancels before i
   }finally{release();await workers.close();t.mock.timers.reset()}
  }
 })
+it('rejects invalid display budgets before acquiring a process while details retain zero-budget preparation',async t=>{
+ const runtime=graphRuntime(),workers=new GraphWorkers(resolveConfig({}),graphBinary);workers.attach(runtime);t.after(()=>workers.close())
+ for(const budget of [-1,0,0.5,NaN,Infinity,-Infinity,Number.MAX_SAFE_INTEGER+1]){
+  await assert.rejects(workers.project(input(),budget,()=>true),/invalid_budget/)
+  assert.equal(runtime.handles.length,0)
+ }
+ const graph=expectRecord(await workers.detail(input(),'graph',()=>true))
+ assert.ok(expectList(graph.nodes).length)
+ assert.equal(expectRecord((await workers.project(input(),1,()=>true)).active_context).truncated,true)
+})

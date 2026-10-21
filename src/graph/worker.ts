@@ -61,7 +61,7 @@ class Worker {
     if(value.protocolVersion!==2||value.id!==q.id||value.generation!==q.generation||!validRunScope(value.scope)||!sameRunScope(value.scope,q.scope)||value.version!==q.version||value.tailHash!==q.tailHash||value.inputHash!==q.inputHash||typeof value.ok!=='boolean')throw new GraphError('binding_mismatch')
     this.pending=undefined;clearTimeout(pending.timer)
     if(!value.ok){
-      const code=typeof value.code==='string'&&['stale_reference','stale_projection','detail_capacity','invalid_offset','projection_failed','frame_limit','protocol_mismatch','invalid_input','binding_mismatch'].includes(value.code)?value.code:'kernel_rejected'
+      const code=typeof value.code==='string'&&['stale_reference','stale_projection','detail_capacity','invalid_offset','invalid_budget','projection_failed','frame_limit','protocol_mismatch','invalid_input','binding_mismatch'].includes(value.code)?value.code:'kernel_rejected'
       pending.reject(new GraphError(code));return
     }
     pending.resolve(value.value)
@@ -177,6 +177,7 @@ export class GraphWorkers {
   }
   /** @param input - complete sanitized snapshot. @param budget - display limit. @param current - recheck after every asynchronous operation. @param signal - caller cancellation. @returns Four derived modules; no Host facts. */
   async project(input:GraphInput,budget:number,current:()=>boolean,signal?:AbortSignal): Promise<JsonRecord> {
+    if(!Number.isSafeInteger(budget)||budget<=0)throw new GraphError('invalid_budget')
     const deadline=this.now()+this.config.graphRequestTimeoutMs
     if(this.closed)throw new GraphError('graph_closed');if(!this.runtime)throw new GraphError('subprocess_unavailable')
     const hash=graphHash(JSON.stringify(input));const {worker,fresh}=await this.bounded(this.worker(input,deadline,current,signal),deadline,signal)

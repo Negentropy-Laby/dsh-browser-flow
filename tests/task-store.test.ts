@@ -17,6 +17,14 @@ async function fixture(t:import('node:test').TestContext) {
   return {root,store,profile}
 }
 const spec={goal:'Read a synthetic task',origins:['https://one.example','https://two.example'],constraints:['Do not submit'],criteria:['Current visible document observed']}
+it('rejects invalid task display budgets before evidence or graph work',async t=>{
+  const {store}=await fixture(t),access=await store.create('budget-owner',spec)
+  store.refreshEvidence=async()=>{assert.fail('invalid display budget reached evidence work')}
+  for(const budget of [0,-1,0.5,NaN,Infinity,Number.MAX_SAFE_INTEGER+1]){
+    await assert.rejects(store.view(access,budget),{code:'invalid_request'})
+    await assert.rejects(store.detail(access,'graph',0,budget),{code:'invalid_request'})
+  }
+})
 it('returns committed end and revision results when derived cleanup fails, including after recovery',async t=>{
   const {store,root,profile}=await fixture(t)
   const graph=new GraphWorkers(resolveConfig({}))

@@ -95,6 +95,8 @@ func Serve(reader io.Reader, writer io.Writer, maxFrame, maxDetail int) error {
 		switch {
 		case q.ProtocolVersion != 2:
 			fail("protocol_mismatch")
+		case q.Budget < 0:
+			fail("invalid_budget")
 		case q.ID == "" || len(q.ID) > 100 || q.Generation == "" || len(q.Generation) > 100 || q.BudgetMS <= 0 || q.BudgetMS > 300000 || q.Scope.TaskID == "" || q.Scope.ProfileID == "" || q.Scope.OwnerSessionID == "" || q.Scope.RunID == "" || q.Scope.WorkflowRef == "" || q.Scope.ScopeRevision < 1:
 			fail("invalid_request")
 		case bound != nil && (*bound != q.Scope || generation != q.Generation):

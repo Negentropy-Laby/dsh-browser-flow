@@ -159,3 +159,49 @@ func TestWireBindingHashAndTruncation(t *testing.T) {
 		t.Fatal("accepted foreign owner")
 	}
 }
+
+func TestDisplayBudgetValidationAndZeroPreparation(t *testing.T) {
+	in := sample(2)
+	raw, _ := json.Marshal(in)
+	h := sha256.Sum256(raw)
+	q := Request{ProtocolVersion: 2, ID: "hello", Generation: "generation", Scope: in.Scope, Version: in.Version, TailHash: in.TailHash, InputHash: hex.EncodeToString(h[:]), Op: "hello", BudgetMS: 5000}
+	frames := encodeFrame(q)
+	q.Op = "project"
+	q.ID = "negative"
+	q.Budget = -1
+	q.Input = raw
+	frames = append(frames, encodeFrame(q)...)
+	q.ID = "prepare"
+	q.Budget = 0
+	frames = append(frames, encodeFrame(q)...)
+	q.Op = "detail"
+	q.ID = "detail"
+	q.Ref = "graph"
+	q.Input = nil
+	frames = append(frames, encodeFrame(q)...)
+	var out bytes.Buffer
+	if err := Serve(bytes.NewReader(frames), &out, 65536, 32*1024*1024); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 4; i++ {
+		var p [4]byte
+		if _, err := io.ReadFull(&out, p[:]); err != nil {
+			t.Fatal(err)
+		}
+		b := make([]byte, binary.BigEndian.Uint32(p[:]))
+		if _, err := io.ReadFull(&out, b); err != nil {
+			t.Fatal(err)
+		}
+		var r Response
+		if err := json.Unmarshal(b, &r); err != nil {
+			t.Fatal(err)
+		}
+		if i == 1 {
+			if r.OK || r.Code != "invalid_budget" {
+				t.Fatalf("negative budget accepted: %s", b)
+			}
+		} else if !r.OK {
+			t.Fatalf("zero preparation rejected: %s", b)
+		}
+	}
+}

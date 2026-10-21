@@ -427,6 +427,7 @@ tail: Promise<void>;
   }
   /** @param {TaskAccess} access - capability. @param {number} budget - projection character limit. @param {AbortSignal} [signal] - caller cancellation. @returns {Promise<Record<string,unknown>>} current Host facts and optional derived graph. */
   async view(access: TaskAccess,budget: number,signal: AbortSignal | undefined=undefined) : Promise<ReturnType<typeof taskView>> {
+    if(!Number.isSafeInteger(budget)||budget<=0)throw new TaskError('invalid_request','task view budget must be a positive safe integer')
     const data=this.openTask(access)
     data.liveDocumentToken=this.controlDocument?.(access)
     const input=graphInput(data,this.graphConfig),hash=graphHash(JSON.stringify(input))
@@ -540,6 +541,7 @@ tail: Promise<void>;
   }
   /** @param {TaskAccess} access - capability. @param {string} id - task-local detail. @param {number} offset - safe character continuation. @param {number} budget - character budget. @param projectionId - identity required for graph/digest continuation after offset zero. @returns {Promise<object>} complete validated detail exposed in bounded text pieces. */
   async detail(access: TaskAccess,id: string,offset: number,budget: number,projectionId?:string) : Promise<object> {
+    if(!Number.isSafeInteger(budget)||budget<=0)throw new TaskError('invalid_request','task detail budget must be a positive safe integer')
     const data=this.openTask(access)
     const row=data.events.findLast(event=>event.type==='asset'&&event.data.id===id)
     const asset=row?{id,taskId:data.manifest.scope.taskId,kind:row.data.kind,source:row.data.source,sourceSeq:row.seq,data:(row.data.data as Record<string, unknown>)}:undefined

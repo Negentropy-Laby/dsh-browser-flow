@@ -91,6 +91,8 @@ does not depend on the view's character budget. View and detail RPCs share the
 prepared projection through a serial queue bounded by `queueLimit`; the original
 request deadline includes queueing. An expired queued read cannot dispatch later.
 
+Display budgets must be positive safe integers at view entry; invalid values fail before worker acquisition. Internal RPCs reject negative display budgets as `invalid_budget` and reserve zero for handshake, detail and projection preparation. This does not change the request's time budget.
+
 ## Complete detail continuation
 
 Internal detail replies carry consecutive base64 byte chunks. Every chunk echoes
