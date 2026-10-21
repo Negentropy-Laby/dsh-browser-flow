@@ -67,7 +67,9 @@ node --import tsx/esm tests/target-graph-host.ts <target-checkout> <private-rece
 
 It requires the fixed target revision and a clean tracked source tree. It checks
 actual managed Go processes, two isolated synthetic tasks, waits, release,
-crash-without-replay, reconstruction and quiescent disposal. Its synthetic page
+crash-without-replay, reconstruction and quiescent disposal. It also checks full
+detail transfer over 64 KiB frames and over the default 8 MiB frame, using a
+16,001-event projection with the default request deadline. Its synthetic page
 inventory is a fixture; it does not prove manual authorization or website
 acceptance. Normal Agent runs and actual Desktop identities must be recorded
 separately in private evidence. Preserve failed receipts alongside later runs.

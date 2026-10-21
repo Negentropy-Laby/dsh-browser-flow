@@ -1,4 +1,4 @@
-import {expectOk,expectString,present,expectRecord} from './helpers/assertions.ts'
+import {expectOk,expectString,present,expectRecord,expectList,expectFailure} from './helpers/assertions.ts'
 import type {HostRuntime} from './helpers/host-runtime.ts'
 /** Explicit Windows target-artifact fixture. It does not establish real website acceptance. */
 import assert from 'node:assert/strict'
@@ -8,6 +8,11 @@ import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
+import {performance} from 'node:perf_hooks'
+import {GraphWorkers} from '../src/graph/worker.ts'
+import {resolveConfig} from '../src/config.ts'
+import type {GraphInput} from '../src/graph/protocol.ts'
+import {TASK} from './helpers/task-scope.ts'
 
 async function main(){
  if(process.platform!=='win32'||process.arch!=='x64')throw new Error('NOT_RUN: this fixture requires Windows x64')
@@ -45,13 +50,16 @@ async function main(){
    const result=await present(context.tools.get('browser_observe')).execute({view:'task'},{agent:agents.get(sessionId),signal:new AbortController().signal})
    assert.equal(result.ok,true);assert.equal(expectRecord(expectRecord(expectRecord(result.value).active_context).graph).status,'ready',JSON.stringify(result))
    assert.equal(expectRecord(result.value).businessVerdict,'unverified');outputs[id]=result
+   const exec={agent:agents.get(sessionId),signal:new AbortController().signal}
+   assert.equal((await present(context.tools.get('browser_release')).execute({},exec)).ok,true)
+   assert.equal(expectFailure(await present(context.tools.get('browser_observe')).execute({},exec)).code,'not_authorized')
+   assert.equal(expectFailure(await present(context.tools.get('browser_act')).execute({action:'click',documentToken:page.documentToken,elementRef:'synthetic-element'},exec)).code,'not_authorized')
    const waiting=await present(context.tools.get('browser_act')).execute({action:'await_user',wait:{kind:'other_user_input',reason:'Synthetic wait '+id,resumeCondition:'An actual new user response'}},{agent:agents.get(sessionId),signal:new AbortController().signal})
    assert.equal(waiting.ok,true)
    const view=await present(context.tools.get('browser_observe')).execute({view:'task'},{agent:agents.get(sessionId),signal:new AbortController().signal})
    assert.equal(expectRecord(expectRecord(expectRecord(expectOk(view)).active_context).waiting).reason,'Synthetic wait '+id)
-   assert.equal((await present(context.tools.get('browser_release')).execute({},{agent:agents.get(sessionId),signal:new AbortController().signal})).ok,true)
   }
-  assert.ok(!JSON.stringify(outputs.b).includes(firstScope.taskId));checks.push('actual Windows managed Go workers','task isolation','Host criteria remain unverified','Agent tool waits','release independent of graph')
+  assert.ok(!JSON.stringify(outputs.b).includes(firstScope.taskId));checks.push('actual Windows managed Go workers','task isolation','Host criteria remain unverified','Agent tool waits','release independent of graph','released synthetic binding rejects reads and writes')
   const readA=()=>present(context.tools.get('browser_observe')).execute({view:'task'},{agent:agents.get('graph-a'),signal:new AbortController().signal})
   const before=await readA(),count=owned.length
   owned[0].terminate();assert.equal(await owned[0].waitForExit(),true);await owned[0].done
@@ -60,9 +68,26 @@ async function main(){
   assert.equal(expectRecord(expectRecord(expectRecord(expectOk(after)).active_context).graph).projectionId,expectRecord(expectRecord(expectRecord(expectOk(before)).active_context).graph).projectionId)
   assert.equal(expectRecord(expectRecord(expectRecord(expectOk(after)).active_context).waiting).reason,'Synthetic wait a');assert.equal(expectRecord(expectRecord(expectOk(after)).active_context).pageControl,'unavailable')
   assert.equal(owned.length,count+1);checks.push('actual worker crash without automatic replay','deterministic reconstruction without restored control')
+  function sequential(n:number):GraphInput{
+   const events:GraphInput['events']=[{seq:1,hash:'hash-1',type:'created',run:TASK,goal:'Synthetic 中文😀'}]
+   for(let i=0;i<n;i++)for(const type of ['attempt','receipt'] as const){const seq=events.length+1;events.push({seq,hash:'hash-'+seq,type,run:TASK,id:'intent-'+i,...(type==='attempt'?{action:'click'}:{outcome:'executed'})})}
+   return {scope:TASK,version:events.length,tailHash:events.at(-1)!.hash,events,goal:'Synthetic 中文😀',constraints:[],criteria:[],protected:[],proofRef:'',proofSeq:0,coldRounds:6,minGroup:2,liveDocumentToken:''}
+  }
+  const timings=[]
+  for(const [frameLimit,size]of [[65536,80],[8388608,8000]]){
+   const probe=new GraphWorkers(resolveConfig({graphMaxFrameBytes:frameLimit})),detach=probe.attach(runtime)
+   try{
+    const input=sequential(size),started=performance.now()
+    await probe.project(input,6000,()=>true)
+    const projectMs=performance.now()-started,value=expectRecord(await probe.detail(input,'graph',()=>true)),bytes=Buffer.byteLength(JSON.stringify(value))
+    assert.ok(bytes>frameLimit);assert.equal(expectList(value.nodes).filter(row=>expectRecord(row).kind!=='digest').length,2*size+1)
+    timings.push({events:input.events.length,projectMs,frameLimit,detailBytes:bytes,defaultDeadlineMs:5000})
+   }finally{await detach();await probe.close()}
+  }
+  checks.push('complete detail over 64 KiB frames','16001 events within default request budget','complete detail over 8 MiB frame')
   await context.fiber.dispose();assert.ok((await Promise.all(owned.map(handle=>handle.waitForExit()))).every(Boolean));assert.equal(context.tools?.schemas().filter((row)=>row.name.startsWith('browser_')).length??0,0);checks.push('awaited provider and plugin disposal')
   const manifest=JSON.parse(await readFile(new URL('../lib/native/manifest.json',import.meta.url),'utf8'))
-  const result={recordedAt:new Date().toISOString(),status:'PASS',kind:'target-artifact fixture; synthetic task calls, not normal Agent or website acceptance',target:sha,node:process.version,platform:process.platform,checks,native:manifest,hostSha256:createHash('sha256').update(await readFile(new URL('../lib/host/index.js',import.meta.url))).digest('hex')}
+  const result={recordedAt:new Date().toISOString(),status:'PASS',kind:'target-artifact fixture; synthetic task calls, not normal Agent or website acceptance',target:sha,node:process.version,platform:process.platform,checks,timings,native:manifest,hostSha256:createHash('sha256').update(await readFile(new URL('../lib/host/index.js',import.meta.url))).digest('hex')}
   await writeFile(resolve(receipt),JSON.stringify(result,null,2)+'\n',{flag:'wx'})
   process.stdout.write(JSON.stringify({status:result.status,checks:checks.length,target:sha})+'\n')
  }finally{await context.fiber.dispose();restoreSpawn();await rm(scratch,{recursive:true,force:true})}

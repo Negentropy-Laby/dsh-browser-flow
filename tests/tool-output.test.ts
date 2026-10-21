@@ -125,7 +125,7 @@ describe('browser_observe output', () => {
     const { tools } = toolsWith({})
     const observe = tools.get('browser_observe')
     assert.deepEqual(present(observe).parameters.required, [])
-    assert.deepEqual(Object.keys(present(observe).parameters.properties), ['view','ref','offset'])
+    assert.deepEqual(Object.keys(present(observe).parameters.properties), ['view','ref','projectionId','offset'])
     assert.deepEqual(expectRecord(expectRecord(present(observe).parameters.properties).view).enum, ['page', 'bjrsj_import','task'])
     assert.equal(present(observe).parameters.additionalProperties, false)
   })
