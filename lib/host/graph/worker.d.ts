@@ -2,6 +2,8 @@ import type { Binary } from './binary.ts';
 import type { GraphConfig, GraphInput, GraphRequest, JsonRecord, ProcessHandle, SubprocessPort } from './protocol.ts';
 /** @param bytes - complete input. @returns SHA-256 identity. */
 export declare function graphHash(bytes: string | Buffer): string;
+/** @param inputHash - exact safe replay input digest. @returns External continuation identity including the kernel serialization version. */
+export declare function graphProjectionId(inputHash: string): string;
 declare class Worker {
     private readonly config;
     private readonly now;

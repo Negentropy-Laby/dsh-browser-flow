@@ -102,7 +102,7 @@ validated detail for the current input.
 
 The outer tool keeps character-based `offset`, `text`, `totalChars` and `complete`.
 Graph and digest details return `projectionId`; nonzero offsets must provide that
-same identity. A changed projection requires reading again from offset zero.
+same identity. The identity hashes the tuple `["task-graph", "3", inputHash]`; a changed kernel or input requires reading again from offset zero.
 Offsets are nonnegative safe integers and cannot exceed the actual text length.
 
 Page asset summaries include their safe `documentToken`. Only the Host adds
@@ -118,3 +118,5 @@ Successful packaged-binary verification is cached for one plugin instance.
 New workers check executable and manifest file identities without rereading their
 bytes. Replacing either artifact requires a paired plugin reload; failed initial
 verification is not cached. No file watcher or runtime downloader is installed.
+
+Kernel v3 gives each current code-proof edge a criterion-specific ID. Host validation simulates replay-order endpoint creation, including skipped forward references, and checks complete edge identities. A recorded `proves` relation alone does not establish a code-verified criterion.

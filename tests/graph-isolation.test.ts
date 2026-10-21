@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { it } from 'node:test'
 import { taskHost } from './helpers/task-host.ts'
 import { graphInput } from '../src/task-projections.ts'
-import { GraphWorkers } from '../src/graph/worker.ts'
+import { GraphWorkers, graphHash } from '../src/graph/worker.ts'
 import { validateView, validateDetail } from '../src/graph/validation.ts'
 
 it('excludes private original data and paths from graph input, replies and cross-task views',async t=>{
@@ -17,7 +17,7 @@ it('excludes private original data and paths from graph input, replies and cross
  assert.equal(first.active_context.graph.status,'ready');assert.equal(second.active_context.graph.status,'ready')
  assert.ok(!JSON.stringify(first).includes('PERSON_B'));assert.ok(!JSON.stringify(second).includes(present(a).scope.taskId))
  // A worker receives and returns only its four derived modules.
- const view=await env.service.graph.project(safe,50000,()=>true),hash=first.active_context.graph.projectionId
+ const view=await env.service.graph.project(safe,50000,()=>true),hash=graphHash(JSON.stringify(safe))
  const bad=structuredClone(view);expectRecord(expectList(expectRecord(bad.knowledge_graph).nodes)[0]).id='asset-foreign'
  assert.throws(()=>validateView(bad,safe,present(hash)),/invalid_projection/)
  const fake=structuredClone(view);expectRecord(fake.procedural_law_index).criteria=[{id:'fake',status:'passed',source:'code_verified'}]

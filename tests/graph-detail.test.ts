@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import {it} from 'node:test'
-import {GraphWorkers} from '../src/graph/worker.ts'
+import {GraphWorkers,graphHash,graphProjectionId} from '../src/graph/worker.ts'
+import {graphInput} from '../src/task-projections.ts'
 import {resolveConfig} from '../src/config.ts'
 import type {GraphInput} from '../src/graph/protocol.ts'
 import {graphRuntime,graphBinary} from './helpers/graph-process.ts'
@@ -26,6 +27,11 @@ it('pins outer continuations to the same projection and rejects offsets beyond t
  const env=await taskHost(t);await env.task('a');const access=present(env.service.tasks.current('session-a')),store=env.service.tasks
  const first=expectRecord(await store.detail(access,'graph',0,30))
  assert.equal(typeof first.projectionId,'string')
+ const rawHash=graphHash(JSON.stringify(graphInput(store.openTask(access),env.service.config)))
+ assert.equal(first.projectionId,graphProjectionId(rawHash))
+ await assert.rejects(store.detail(access,'graph',30,30,rawHash),/projection/)
+ await env.service.graph.retire(access.scope.taskId)
+ assert.equal(expectRecord(await store.detail(access,'graph',0,30)).projectionId,first.projectionId)
  await assert.rejects(store.detail(access,'graph',30,30),/projection/)
  const next=expectRecord(await store.detail(access,'graph',30,30,String(first.projectionId)))
  assert.equal(next.offset,30)
@@ -54,7 +60,7 @@ it('rejects corrupt fragments and unowned complete JSON before returning detail'
  for(const mode of ['offset','total','empty','duplicate','base64','utf8','json','foreign','limit','binding'] as const){
   const stdin=new PassThrough(),stdout=new PassThrough();let end!:()=>void;const done=new Promise<void>(resolve=>{end=resolve});let chunks=0
   const decoder=new Frames(config.graphMaxFrameBytes,raw=>{
-   const q=expectRecord(raw);let value:unknown=q.op==='hello'?{kernelVersion:'2',rulesVersion:'structural-v1'}:view
+   const q=expectRecord(raw);let value:unknown=q.op==='hello'?{kernelVersion:'3',rulesVersion:'structural-v1'}:view
    if(q.op==='detail'){
     chunks++;const offset=Number(q.offsetBytes??0),data=mode==='utf8'?Buffer.from([255]):mode==='json'?Buffer.from('{broken'):mode==='foreign'?Buffer.from('{"nodes":[],"edges":[],"digests":[]}'):serialized
     const count=chunks===1&&['total','duplicate'].includes(mode)?10:data.length-offset

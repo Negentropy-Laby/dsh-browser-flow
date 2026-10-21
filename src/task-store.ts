@@ -52,7 +52,7 @@ export type TaskAccess = {
 import { graphInput, taskView } from './task-projections.ts'
 import { taskFacts, taskReferences } from './task-facts.ts'
 import { GraphError } from './graph/protocol.ts'
-import { graphHash } from './graph/worker.ts'
+import { graphHash, graphProjectionId } from './graph/worker.ts'
 import { resolveConfig } from './config.ts'
 import { validUserWait } from './task-wait.ts'
 import { trustedCriterion, validArtifact } from './task-criteria.ts'
@@ -431,7 +431,7 @@ tail: Promise<void>;
     try{if(this.graph&&!data.readOnly&&!data.unhealthy){derived=await this.graph.project(input,budget,current,signal);reason='ready'}}catch(error){reason=error instanceof GraphError?error.code:'graph_failed'}
     this.openTask(access);data.liveDocumentToken=this.controlDocument?.(access)
     if(derived){await this.refreshEvidence(access);if(!current()){derived=undefined;reason='stale_projection'}}
-    return taskView(data,budget,derived,reason,this.writable,derived?hash:undefined,this.graph?.cleanup(access.scope.taskId))
+    return taskView(data,budget,derived,reason,this.writable,derived?graphProjectionId(hash):undefined,this.graph?.cleanup(access.scope.taskId))
   }
   /** @param {TaskAccess} access - owner. @param {Record<string,unknown>} value - private original facts. @returns {Promise<string>} task-local evidence reference. */
   async proof(access: TaskAccess,value: Record<string, unknown>) : Promise<string> {
@@ -522,8 +522,8 @@ tail: Promise<void>;
       if(data.unhealthy)throw new TaskError('task_unavailable','derived details require healthy task history; original details remain readable')
       if(!this.graph)throw new TaskError('task_unavailable','graph component is unavailable')
       data.liveDocumentToken=this.controlDocument?.(access)
-      const input=graphInput(data,this.graphConfig),hash=graphHash(JSON.stringify(input));currentProjection=hash
-      if(((id==='graph'||id.startsWith('digest-'))&&offset>0&&!projectionId) || (projectionId!==undefined&&projectionId!==hash))throw new TaskError('task_not_bound','projection changed or identity is missing; restart detail at offset zero')
+      const input=graphInput(data,this.graphConfig),hash=graphHash(JSON.stringify(input));currentProjection=graphProjectionId(hash)
+      if(((id==='graph'||id.startsWith('digest-'))&&offset>0&&!projectionId) || (projectionId!==undefined&&projectionId!==currentProjection))throw new TaskError('task_not_bound','projection changed or identity is missing; restart detail at offset zero')
       try{value=await this.graph.detail(input,id,()=>{try{const latest=this.openTask(access);latest.liveDocumentToken=this.controlDocument?.(access);return graphHash(JSON.stringify(graphInput(latest,this.graphConfig)))===hash}catch{return false}})}catch(error){
         const code=error instanceof GraphError?error.code:'graph_failed'
         throw new TaskError(['stale_reference','stale_projection'].includes(code)?'task_not_bound':'task_unavailable',`graph detail unavailable: ${code}`)

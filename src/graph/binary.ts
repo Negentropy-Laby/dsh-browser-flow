@@ -23,7 +23,7 @@ export class BinaryVerifier{
    const before=identity(path)+'|'+identity(manifestPath)
    if(this.verified!==undefined){if(this.verified!==before)throw new GraphError('binary_changed_reload_required');return {path,cwd:this.root}}
    const manifest:unknown=JSON.parse(this.read(manifestPath).toString('utf8'))
-   if(!record(manifest)||manifest.protocolVersion!==2||manifest.kernelVersion!=='2'||manifest.rulesVersion!=='structural-v1'||manifest.sha256!==createHash('sha256').update(this.read(path)).digest('hex'))throw new GraphError('binary_mismatch')
+   if(!record(manifest)||manifest.protocolVersion!==2||manifest.kernelVersion!=='3'||manifest.rulesVersion!=='structural-v1'||manifest.sha256!==createHash('sha256').update(this.read(path)).digest('hex'))throw new GraphError('binary_mismatch')
    if(before!==identity(path)+'|'+identity(manifestPath))throw new GraphError('binary_changed_reload_required')
    this.verified=before;return {path,cwd:this.root}
   }catch(error){if(error instanceof GraphError)throw error;throw new GraphError('binary_unavailable')}

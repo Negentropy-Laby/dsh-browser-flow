@@ -232,7 +232,7 @@ func buildReplay(ctx context.Context, in Input, id string, oracle func(*Projecti
 	for _, criterion := range in.Criteria {
 		p.add(criterion.ID, "criterion", criterion.Source, 1, in.Scope, map[string]any{"label": criterion.Label, "status": criterion.Status, "validatorId": criterion.ValidatorID, "validatorVersion": criterion.Version})
 		if criterion.Source == "code_verified" && criterion.Status == "passed" {
-			p.edge(fmt.Sprintf("proof-edge-%d", in.ProofSeq), in.ProofRef, criterion.ID, "proves", in.ProofSeq)
+			p.edge(fmt.Sprintf("proof-edge-%d-%s", in.ProofSeq, criterion.ID), in.ProofRef, criterion.ID, "proves", in.ProofSeq)
 		}
 	}
 	g := p.causal()

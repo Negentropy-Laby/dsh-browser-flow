@@ -12,6 +12,8 @@ import type { GraphConfig, GraphInput, GraphRequest, JsonRecord, ProcessHandle, 
 
 /** @param bytes - complete input. @returns SHA-256 identity. */
 export function graphHash(bytes: string | Buffer): string {return createHash('sha256').update(bytes).digest('hex')}
+/** @param inputHash - exact safe replay input digest. @returns External continuation identity including the kernel serialization version. */
+export function graphProjectionId(inputHash:string):string {return graphHash(JSON.stringify(['task-graph','3',inputHash]))}
 function packagedBinary():()=>Binary {
  let verifier:BinaryVerifier|undefined
  return ()=>{
@@ -88,7 +90,7 @@ class Worker {
   }
   /** @param input - complete safe input. @param hash - projection identity. @param budget - optional requested view budget. @param deadline - original deadline. @param current - current binding. @returns Validated view, or no view when already prepared for a detail read. */
   async load(input:GraphInput,hash:string,budget:number|undefined,deadline:number,current:()=>boolean):Promise<JsonRecord|undefined>{
-    if(!this.ready){const hello=await this.rpc('hello',input,hash,0,deadline);if(!record(hello)||hello.kernelVersion!=='2'||hello.rulesVersion!=='structural-v1')throw new GraphError('protocol_mismatch');this.ready=true}
+    if(!this.ready){const hello=await this.rpc('hello',input,hash,0,deadline);if(!record(hello)||hello.kernelVersion!=='3'||hello.rulesVersion!=='structural-v1')throw new GraphError('protocol_mismatch');this.ready=true}
     if(this.cached?.hash===hash&&this.cached.budget===budget)return this.cached.value
     if(this.prepared===hash&&budget===undefined)return
     const value=validateView(await this.rpc('project',input,hash,budget??0,deadline),input,hash)

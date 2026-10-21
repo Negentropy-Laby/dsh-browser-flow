@@ -1,6 +1,6 @@
 # Rebuild Host and Client for the Go graph kernel
 
-The graph worker now uses internal protocol/kernel v2. Rebuild and reload the
+The graph worker now uses internal protocol v2 and kernel v3. Rebuild and reload the
 Host, Client and packaged worker together; v1 workers are rejected. Browser Flow
 v3, Desktop bridge v1 and journal v1 stay compatible.
 
@@ -35,3 +35,5 @@ Missing helpers, absent subprocess services, exhausted graph capacity and failed
 RPCs appear in `active_context.graph`. They do not validate a task or clear an
 unknown write. Obtain a new task view after repairing the component; RPCs and
 browser writes are not automatically replayed.
+
+Kernel v3 uses criterion-specific proof edge IDs and validates recorded edges in replay order. Outer graph continuation IDs include the kernel version; restart at offset zero after upgrading. The raw safe input digest remains the internal RPC binding. No task journal or Browser Flow protocol migration is needed.
