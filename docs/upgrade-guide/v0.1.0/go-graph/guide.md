@@ -1,5 +1,20 @@
 # Rebuild Host and Client for the Go graph kernel
 
+The graph worker now uses internal protocol/kernel v2. Rebuild and reload the
+Host, Client and packaged worker together; v1 workers are rejected. Browser Flow
+v3, Desktop bridge v1 and journal v1 stay compatible.
+
+Graph and digest detail continuations must send the `projectionId` returned by
+the first read when `offset` is nonzero. Restart from zero after a projection
+change. `graphMaxDetailBytes` defaults to 32 MiB and must be at least the frame
+limit; detail capacity errors require reducing task size or increasing this
+explicit setting. A missing graph never changes permissions or business facts.
+
+Cancellation and revision report their committed journal result immediately.
+Pending or failed worker retirement appears separately at
+`active_context.graph.cleanup`; termination grace controls escalation, not an
+exit-observation timeout.
+
 The package entry and existing Host export subpaths now resolve to built ESM
 under `lib/host`. The new TypeScript adapter is compiled at build time; installed
 profiles require neither a TypeScript loader nor a Go toolchain. Windows x64

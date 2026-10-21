@@ -34,7 +34,7 @@ success, and no model call is used for compression.
 
 The Host consumes its mounted subprocess service through a small structural
 TypeScript interface matching the supported API. Workers are lazy, task-owned
-and replaced on run changes. IPC v1 uses a four-byte big-endian length and UTF-8
+and replaced on run changes. IPC v2 uses a four-byte big-endian length and UTF-8
 JSON, with request, generation, RunScope, journal position and input hash checks.
 
 Limits are validated plugin settings: four workers, 60-second idle lifetime,
@@ -88,3 +88,23 @@ on the complete sanitized input, including current Host document identity, and
 does not depend on the view's character budget. View and detail RPCs share the
 prepared projection through a serial queue bounded by `queueLimit`; the original
 request deadline includes queueing. An expired queued read cannot dispatch later.
+
+## Complete detail continuation
+
+Internal detail replies carry consecutive base64 byte chunks. Every chunk echoes
+the request binding; its full encoded envelope fits `graphMaxFrameBytes`. The
+Host checks offsets, total length, progress, encoding and completion, then decodes
+strict UTF-8 and validates the entire JSON graph before returning model-visible
+text. `graphMaxDetailBytes` caps the complete detail on both sides: default 32 MiB,
+range 64 KiB–256 MiB, and at least `graphMaxFrameBytes`. Capacity errors are
+reported separately from stale references. Each worker caches one complete
+validated detail for the current input.
+
+The outer tool keeps character-based `offset`, `text`, `totalChars` and `complete`.
+Graph and digest details return `projectionId`; nonzero offsets must provide that
+same identity. A changed projection requires reading again from offset zero.
+Offsets are nonnegative safe integers and cannot exceed the actual text length.
+
+Page asset summaries include their safe `documentToken`. Only the Host adds
+`validity`, after checking the current authorized document. Other asset kinds
+carry neither field. Revocation and navigation invalidate that live comparison.

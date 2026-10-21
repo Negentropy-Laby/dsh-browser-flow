@@ -12,6 +12,7 @@ export type BrowserFlowConfig = {
     graphIdleMs: number;
     graphRequestTimeoutMs: number;
     graphMaxFrameBytes: number;
+    graphMaxDetailBytes: number;
     graphStderrBytes: number;
     graphTerminateGraceMs: number;
     graphColdRounds: number;

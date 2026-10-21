@@ -59,10 +59,10 @@ function heldRuntime(reply:(request:Record<string,unknown>,stdout:PassThrough)=>
 it('rejects wrong identities, malformed frames and fake authority without replay',async t=>{
  for(const mode of ['owner','generation','version','malformed','authority'] as const){
   let deliveries=0
-  const runtime=heldRuntime((q,stdout)=>{deliveries++;const r={protocolVersion:1,id:q.id,generation:q.generation,scope:q.scope,version:q.version,tailHash:q.tailHash,inputHash:q.inputHash,ok:true,value:{kernelVersion:'1',rulesVersion:'structural-v1'} as Record<string,unknown>}
+  const runtime=heldRuntime((q,stdout)=>{deliveries++;const r={protocolVersion:2,id:q.id,generation:q.generation,scope:q.scope,version:q.version,tailHash:q.tailHash,inputHash:q.inputHash,ok:true,value:{kernelVersion:'2',rulesVersion:'structural-v1'} as Record<string,unknown>}
    if(mode==='owner')r.scope={...expectRecord(q.scope),ownerSessionId:'foreign'}
    if(mode==='generation')r.generation='old'
-   if(mode==='version')r.protocolVersion=2
+   if(mode==='version')r.protocolVersion=1
    if(mode==='malformed'){stdout.write(Buffer.from([255,255,255,255]));return}
    if(mode==='authority'&&q.op==='project')r.value={active_context:{businessVerdict:'import_confirmed'},procedural_law_index:{},technical_law_index:{},knowledge_graph:{}}
    stdout.write(frame(r,8*1024*1024))

@@ -12,7 +12,7 @@ it('pairs the native artifact with its source identity and removes build-machine
  const bytes=readFileSync(join(root,'lib/native/win32-x64/browser-flow-graph.exe'))
  const manifest=JSON.parse(readFileSync(join(root,'lib/native/manifest.json'),'utf8'))
  assert.equal(manifest.sha256,createHash('sha256').update(bytes).digest('hex'))
- assert.equal(manifest.goVersion,'go1.26.5');assert.equal(manifest.protocolVersion,1)
+ assert.equal(manifest.goVersion,'go1.26.5');assert.equal(manifest.protocolVersion,2)
  for(const path of [root,homedir()] as const)assert.ok(!bytes.includes(Buffer.from(path)),'native binary contains a build-machine path')
 })
 it('packs and installs without task data and loads six tools/seven routes under plain Node',{skip:!process.env.npm_execpath?'run via npm so its CLI is explicitly available':false},()=>{

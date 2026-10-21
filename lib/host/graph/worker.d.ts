@@ -35,6 +35,11 @@ declare class Worker {
         budget: number;
         value: JsonRecord;
     } | undefined;
+    detailCache: {
+        hash: string;
+        ref: string;
+        value: unknown;
+    } | undefined;
     private ready;
     private prepared;
     private queue;
@@ -44,7 +49,7 @@ declare class Worker {
     private fail;
     private receive;
     /** @param op - fixed RPC. @param input - safe snapshot. @param hash - its identity. @param budget - view size. @param deadline - Host monotonic deadline. @param ref - scoped projection detail. @returns Validated envelope payload. */
-    rpc(op: GraphRequest['op'], input: GraphInput, hash: string, budget: number, deadline: number, ref?: string): Promise<unknown>;
+    rpc(op: GraphRequest['op'], input: GraphInput, hash: string, budget: number, deadline: number, ref?: string, offsetBytes?: number): Promise<unknown>;
     /** @param job - serial RPC operation. @param deadline - original request deadline. @param current - live binding. @returns One bounded queued operation; expired work never dispatches. */
     run<T>(job: () => Promise<T>, deadline: number, current: () => boolean): Promise<T>;
     /** @param input - complete safe input. @param hash - projection identity. @param budget - optional requested view budget. @param deadline - original deadline. @param current - current binding. @returns Validated view, or no view when already prepared for a detail read. */

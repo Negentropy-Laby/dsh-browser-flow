@@ -138,8 +138,8 @@ export declare class TaskStore {
     asset(access: TaskAccess, kind: string, data: Record<string, unknown>, source?: 'host' | 'code_verified'): Promise<string>;
     /** @param {TaskAccess} access - capability. @param {string} from - existing task asset. @param {string} to - existing task asset. @param {string} relation - fixed relation. @returns {Promise<string>} journaled relation after both ownership checks. */
     relate(access: TaskAccess, from: string, to: string, relation: string): Promise<string>;
-    /** @param {TaskAccess} access - capability. @param {string} id - task-local detail. @param {number} offset - bounded text continuation. @param {number} budget - character budget. @returns {Promise<object>} scoped immutable detail or generic refusal. */
-    detail(access: TaskAccess, id: string, offset: number, budget: number): Promise<object>;
+    /** @param {TaskAccess} access - capability. @param {string} id - task-local detail. @param {number} offset - safe character continuation. @param {number} budget - character budget. @param projectionId - identity required for graph/digest continuation after offset zero. @returns {Promise<object>} complete validated detail exposed in bounded text pieces. */
+    detail(access: TaskAccess, id: string, offset: number, budget: number, projectionId?: string): Promise<object>;
     /** @returns {Promise<void>} read immutable ownership plus complete validated journal prefixes; no commands or control are restored. */
     recover(): Promise<void>;
     /** @param {TaskData} data - task being recovered. @returns {Promise<void>} valid history prefix, conservatively blocked on truncation/unfinished writes. */

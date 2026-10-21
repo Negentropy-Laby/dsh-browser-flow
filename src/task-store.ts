@@ -458,13 +458,14 @@ tail: Promise<void>;
     await this.append(access,'edge',{id,from,to,relation,run:access.run})
     return id
   }
-  /** @param {TaskAccess} access - capability. @param {string} id - task-local detail. @param {number} offset - bounded text continuation. @param {number} budget - character budget. @returns {Promise<object>} scoped immutable detail or generic refusal. */
-  async detail(access: TaskAccess,id: string,offset: number,budget: number) : Promise<object> {
+  /** @param {TaskAccess} access - capability. @param {string} id - task-local detail. @param {number} offset - safe character continuation. @param {number} budget - character budget. @param projectionId - identity required for graph/digest continuation after offset zero. @returns {Promise<object>} complete validated detail exposed in bounded text pieces. */
+  async detail(access: TaskAccess,id: string,offset: number,budget: number,projectionId?:string) : Promise<object> {
     const data=this.openTask(access)
     const row=data.events.findLast(event=>event.type==='asset'&&event.data.id===id)
     const asset=row?{id,taskId:data.manifest.scope.taskId,kind:row.data.kind,source:row.data.source,sourceSeq:row.seq,data:(row.data.data as Record<string, unknown>)}:undefined
     const criterion=taskFacts(data).criteria.find(item=>item.id===id)
-    let value
+    let value,currentProjection:string|undefined
+    if(!Number.isSafeInteger(offset)||offset<0)throw new TaskError('invalid_request','detail offset must be a nonnegative safe integer')
     if(asset)value=asset.kind==='evidence'?{...asset,data:{sha256:asset.data.sha256,bytes:asset.data.bytes,originalAvailable:data.checkedProofs?.has(asset.id)??false}}:asset
     else if(id==='waiting')value={current:data.state==='active'?data.waiting??null:null,history:data.events.filter(event=>['wait_requested','wait_input','wait_resolved'].includes(event.type)).map(event=>({sourceSeq:event.seq,type:event.type,...event.data}))}
     else if(criterion)value={id:criterion.id,kind:'criterion',source:criterion.source,data:criterion}
@@ -474,11 +475,17 @@ tail: Promise<void>;
     else {
       if(id!=='graph'&&!id.startsWith('digest-')&&!taskReferences(data).has(id))throw new TaskError('task_not_bound','task reference is inaccessible')
       if(!this.graph)throw new TaskError('task_unavailable','graph component is unavailable')
-      const input=graphInput(data,this.graphConfig),hash=graphHash(JSON.stringify(input))
-      try{value=await this.graph.detail(input,id,()=>{try{return graphHash(JSON.stringify(graphInput(this.openTask(access),this.graphConfig)))===hash}catch{return false}})}catch(error){throw new TaskError(error instanceof GraphError&&error.code==='kernel_rejected'?'task_not_bound':'task_unavailable','projection reference is unavailable or expired')}
+      data.liveDocumentToken=this.controlDocument?.(access)
+      const input=graphInput(data,this.graphConfig),hash=graphHash(JSON.stringify(input));currentProjection=hash
+      if(((id==='graph'||id.startsWith('digest-'))&&offset>0&&!projectionId) || (projectionId!==undefined&&projectionId!==hash))throw new TaskError('task_not_bound','projection changed or identity is missing; restart detail at offset zero')
+      try{value=await this.graph.detail(input,id,()=>{try{const latest=this.openTask(access);latest.liveDocumentToken=this.controlDocument?.(access);return graphHash(JSON.stringify(graphInput(latest,this.graphConfig)))===hash}catch{return false}})}catch(error){
+        const code=error instanceof GraphError?error.code:'graph_failed'
+        throw new TaskError(['stale_reference','stale_projection'].includes(code)?'task_not_bound':'task_unavailable',`graph detail unavailable: ${code}`)
+      }
     }
     const serialized=JSON.stringify(value)
-    return {task:access.run,contextVersion:data.events.length,ref:id,offset,totalChars:serialized.length,text:serialized.slice(offset,offset+budget),complete:offset+budget>=serialized.length}
+    if(offset>serialized.length)throw new TaskError('invalid_request','detail offset exceeds its total characters')
+    return {task:access.run,contextVersion:data.events.length,ref:id,...(currentProjection?{projectionId:currentProjection}:{}),offset,totalChars:serialized.length,text:serialized.slice(offset,offset+budget),complete:offset+budget>=serialized.length}
   }
   /** @returns {Promise<void>} read immutable ownership plus complete validated journal prefixes; no commands or control are restored. */
   async recover() : Promise<void> {

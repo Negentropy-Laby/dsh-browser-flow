@@ -1,4 +1,4 @@
-/** Internal graph protocol v1. Page control remains Browser Flow v3. */
+/** Internal graph protocol v2. Page control remains Browser Flow v3. */
 import type { Readable, Writable } from 'node:stream';
 import type { RunScope } from '../task-scope.ts';
 /** Consumed subset of the pinned Host subprocess service. No provider is created. */
@@ -31,6 +31,7 @@ export interface GraphConfig {
     graphIdleMs: number;
     graphRequestTimeoutMs: number;
     graphMaxFrameBytes: number;
+    graphMaxDetailBytes: number;
     graphStderrBytes: number;
     graphTerminateGraceMs: number;
     graphColdRounds: number;
@@ -81,7 +82,7 @@ export interface GraphInput {
 }
 /** Closed request envelope. All replies must echo its immutable binding. */
 export interface GraphRequest {
-    protocolVersion: 1;
+    protocolVersion: 2;
     id: string;
     generation: string;
     scope: RunScope;
@@ -93,6 +94,7 @@ export interface GraphRequest {
     budget: number;
     input?: GraphInput;
     ref?: string;
+    offsetBytes?: number;
 }
 /** A sanitized record decoded from a worker. */
 export type JsonRecord = Record<string, unknown>;

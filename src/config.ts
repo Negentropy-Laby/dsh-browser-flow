@@ -12,6 +12,7 @@ export type BrowserFlowConfig = {
     graphIdleMs: number;
     graphRequestTimeoutMs: number;
     graphMaxFrameBytes: number;
+    graphMaxDetailBytes: number;
     graphStderrBytes: number;
     graphTerminateGraceMs: number;
     graphColdRounds: number;
@@ -41,6 +42,7 @@ export const DEFAULTS: Readonly<BrowserFlowConfig> = Object.freeze({
   graphIdleMs: 60000,
   graphRequestTimeoutMs: 5000,
   graphMaxFrameBytes: 8388608,
+  graphMaxDetailBytes: 33554432,
   graphStderrBytes: 16384,
   graphTerminateGraceMs: 1000,
   graphColdRounds: 6,
@@ -67,6 +69,7 @@ const RANGES: Readonly<Record<Exclude<keyof BrowserFlowConfig, 'importEvidenceDi
   graphIdleMs: [1000, 600000],
   graphRequestTimeoutMs: [100, 300000],
   graphMaxFrameBytes: [65536, 33554432],
+  graphMaxDetailBytes: [65536, 268435456],
   graphStderrBytes: [1024, 1048576],
   graphTerminateGraceMs: [1, 60000],
   graphColdRounds: [1, 10000],
@@ -106,6 +109,7 @@ export function resolveConfig(input: unknown) : Readonly<BrowserFlowConfig> {
     }
     resolved[key] = value
   }
+  if(resolved.graphMaxDetailBytes<resolved.graphMaxFrameBytes)throw new Error('browser-flow: graphMaxDetailBytes must not be smaller than graphMaxFrameBytes')
   if (resolved.waitMaxMs > resolved.commandBudgetMs) {
     throw new Error('browser-flow: config waitMaxMs must not exceed commandBudgetMs')
   }

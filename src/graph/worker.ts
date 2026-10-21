@@ -19,7 +19,7 @@ export function packagedBinary(): Binary {
   const root=dirname(createRequire(import.meta.url).resolve('@negentropy/dsh-browser-flow/package.json'))
   const path=join(root,'lib','native','win32-x64','browser-flow-graph.exe')
   try {const manifest: unknown=JSON.parse(readFileSync(join(root,'lib','native','manifest.json'),'utf8'))
-    if(!record(manifest)||manifest.protocolVersion!==1||manifest.kernelVersion!=='1'||manifest.rulesVersion!=='structural-v1'||manifest.sha256!==graphHash(readFileSync(path)))throw new GraphError('binary_mismatch')
+    if(!record(manifest)||manifest.protocolVersion!==2||manifest.kernelVersion!=='2'||manifest.rulesVersion!=='structural-v1'||manifest.sha256!==graphHash(readFileSync(path)))throw new GraphError('binary_mismatch')
   }catch(error){if(error instanceof GraphError)throw error;throw new GraphError('binary_unavailable')}
   return {path,cwd:root}
 }
@@ -33,12 +33,13 @@ class Worker {
   private readonly decoder: Frames;private readonly onData: (chunk: Buffer)=>void
   private readonly onEnd: ()=>void;private readonly onError: ()=>void
   cached: {hash:string;budget:number;value: JsonRecord} | undefined
+  detailCache:{hash:string;ref:string;value:unknown}|undefined
   private ready=false;private prepared:string|undefined
   private queue:Promise<void>=Promise.resolve();private queued=0
   /** @param runtime - actual Host service. @param config - resolved limits. @param binary - verified package artifact. @param input - initial run. @param now - Host monotonic clock. */
   constructor(runtime: SubprocessPort,private readonly config: GraphConfig,binary: Binary,input: GraphInput,private readonly now:()=>number) {
     this.scope={...input.scope}
-    this.handle=runtime.spawn({argv:[binary.path,'--max-frame',String(config.graphMaxFrameBytes)],cwd:binary.cwd,stdio:{stdin:'pipe',stdout:'pipe',stderr:{maxBytes:config.graphStderrBytes}},graceMs:config.graphTerminateGraceMs})
+    this.handle=runtime.spawn({argv:[binary.path,'--max-frame',String(config.graphMaxFrameBytes),'--max-detail',String(config.graphMaxDetailBytes)],cwd:binary.cwd,stdio:{stdin:'pipe',stdout:'pipe',stderr:{maxBytes:config.graphStderrBytes}},graceMs:config.graphTerminateGraceMs})
     this.decoder=new Frames(config.graphMaxFrameBytes,value=>this.receive(value))
     this.onData=chunk=>{try{this.decoder.push(chunk)}catch{this.fail('invalid_response')}}
     this.onEnd=()=>this.fail(this.decoder.incomplete?'truncated_frame':'worker_exit')
@@ -51,17 +52,20 @@ class Worker {
     const pending=this.pending
     if(!pending||!record(value)||Object.keys(value).some(key=>!['protocolVersion','id','generation','scope','version','tailHash','inputHash','ok','code','value'].includes(key)))throw new GraphError('invalid_response')
     const q=pending.request
-    if(value.protocolVersion!==1||value.id!==q.id||value.generation!==q.generation||!validRunScope(value.scope)||!sameRunScope(value.scope,q.scope)||value.version!==q.version||value.tailHash!==q.tailHash||value.inputHash!==q.inputHash||typeof value.ok!=='boolean')throw new GraphError('binding_mismatch')
+    if(value.protocolVersion!==2||value.id!==q.id||value.generation!==q.generation||!validRunScope(value.scope)||!sameRunScope(value.scope,q.scope)||value.version!==q.version||value.tailHash!==q.tailHash||value.inputHash!==q.inputHash||typeof value.ok!=='boolean')throw new GraphError('binding_mismatch')
     this.pending=undefined;clearTimeout(pending.timer)
-    if(!value.ok){pending.reject(new GraphError('kernel_rejected'));void this.stop().catch(()=>{});return}
+    if(!value.ok){
+      const code=typeof value.code==='string'&&['stale_reference','stale_projection','detail_capacity','invalid_offset','projection_failed','frame_limit','protocol_mismatch','invalid_input','binding_mismatch'].includes(value.code)?value.code:'kernel_rejected'
+      pending.reject(new GraphError(code));return
+    }
     pending.resolve(value.value)
   }
   /** @param op - fixed RPC. @param input - safe snapshot. @param hash - its identity. @param budget - view size. @param deadline - Host monotonic deadline. @param ref - scoped projection detail. @returns Validated envelope payload. */
-  async rpc(op: GraphRequest['op'],input: GraphInput,hash:string,budget:number,deadline:number,ref?:string): Promise<unknown> {
+  async rpc(op: GraphRequest['op'],input: GraphInput,hash:string,budget:number,deadline:number,ref?:string,offsetBytes?:number): Promise<unknown> {
     if(this.closing||this.pending)throw new GraphError('graph_busy')
     const remaining=Math.floor(deadline-this.now());if(remaining<=0)throw new GraphError('graph_timeout')
     clearTimeout(this.idle);this.busy=true
-    const q: GraphRequest={protocolVersion:1,id:String(++this.counter),generation:this.generation,scope:this.scope,version:input.version,tailHash:input.tailHash,inputHash:hash,op,budgetMs:remaining,budget,...(op==='project'?{input}:{}),...(ref?{ref}:{})}
+    const q: GraphRequest={protocolVersion:2,id:String(++this.counter),generation:this.generation,scope:this.scope,version:input.version,tailHash:input.tailHash,inputHash:hash,op,budgetMs:remaining,budget,...(op==='project'?{input}:{}),...(ref?{ref}:{}),...(offsetBytes===undefined?{}:{offsetBytes})}
     const encoded=frame(q,this.config.graphMaxFrameBytes)
     try{return await new Promise<unknown>((resolve,reject)=>{
       const timeout=Math.floor(deadline-this.now());if(timeout<=0){reject(new GraphError('graph_timeout'));return}
@@ -87,12 +91,13 @@ class Worker {
   }
   /** @param input - complete safe input. @param hash - projection identity. @param budget - optional requested view budget. @param deadline - original deadline. @param current - current binding. @returns Validated view, or no view when already prepared for a detail read. */
   async load(input:GraphInput,hash:string,budget:number|undefined,deadline:number,current:()=>boolean):Promise<JsonRecord|undefined>{
-    if(!this.ready){const hello=await this.rpc('hello',input,hash,0,deadline);if(!record(hello)||hello.kernelVersion!=='1'||hello.rulesVersion!=='structural-v1')throw new GraphError('protocol_mismatch');this.ready=true}
+    if(!this.ready){const hello=await this.rpc('hello',input,hash,0,deadline);if(!record(hello)||hello.kernelVersion!=='2'||hello.rulesVersion!=='structural-v1')throw new GraphError('protocol_mismatch');this.ready=true}
     if(this.cached?.hash===hash&&this.cached.budget===budget)return this.cached.value
     if(this.prepared===hash&&budget===undefined)return
     const value=validateView(await this.rpc('project',input,hash,budget??0,deadline),input,hash)
     if(this.closing||!current())throw new GraphError('stale_projection')
     if(this.now()>=deadline)throw new GraphError('graph_timeout')
+    if(this.prepared!==hash)this.detailCache=undefined
     this.prepared=hash
     if(budget!==undefined)this.cached={hash,budget,value}
     return value
@@ -101,7 +106,7 @@ class Worker {
   stop(): Promise<void> {
     if(this.stopped)return Promise.resolve()
     if(this.stopping)return this.stopping
-    this.closing=true;this.cached=undefined;clearTimeout(this.idle);this.cleanup={state:'pending'}
+    this.closing=true;this.cached=undefined;this.detailCache=undefined;clearTimeout(this.idle);this.cleanup={state:'pending'}
     if(this.pending){clearTimeout(this.pending.timer);this.pending.reject(new GraphError('worker_stopped'));this.pending=undefined}
     this.handle.stdout?.off('data',this.onData);this.handle.stdout?.off('end',this.onEnd)
     this.handle.stdout?.off('error',this.onError);this.handle.stdin?.off('error',this.onError)
@@ -185,11 +190,28 @@ export class GraphWorkers {
     return this.bounded(worker.run(async()=>{
       try{
         await worker.load(input,hash,undefined,deadline,guard)
-        const value=await worker.rpc('detail',input,hash,0,deadline,ref)
-        if(worker.closing||!guard())throw new GraphError('stale_projection')
-        if(this.now()>=deadline)throw new GraphError('graph_timeout')
-        return validateDetail(value,ref,input,hash)
-      }catch(error){void worker.stop().catch(()=>{});throw error}
+        if(worker.detailCache?.hash===hash&&worker.detailCache.ref===ref)return worker.detailCache.value
+        let offset=0,total:number|undefined,bytes:Buffer|undefined
+        for(;;){
+          const part=await worker.rpc('detail',input,hash,0,deadline,ref,offset)
+          if(worker.closing||!guard())throw new GraphError('stale_projection')
+          if(this.now()>=deadline)throw new GraphError('graph_timeout')
+          if(!record(part)||Object.keys(part).sort().join(',')!=='chunkBase64,complete,offsetBytes,ref,totalBytes'||part.ref!==ref||part.offsetBytes!==offset||typeof part.totalBytes!=='number'||!Number.isSafeInteger(part.totalBytes)||part.totalBytes<1||typeof part.complete!=='boolean'||typeof part.chunkBase64!=='string')throw new GraphError('invalid_detail_chunk')
+          if(part.totalBytes>this.config.graphMaxDetailBytes)throw new GraphError('detail_capacity')
+          if(total!==undefined&&part.totalBytes!==total)throw new GraphError('invalid_detail_chunk')
+          total=part.totalBytes
+          if(part.chunkBase64.length>Math.ceil(this.config.graphMaxFrameBytes/3)*4)throw new GraphError('invalid_detail_chunk')
+          const chunk=Buffer.from(part.chunkBase64,'base64')
+          if(chunk.toString('base64')!==part.chunkBase64||chunk.length===0||offset+chunk.length>total||part.complete!==(offset+chunk.length===total))throw new GraphError('invalid_detail_chunk')
+          bytes??=Buffer.alloc(total);chunk.copy(bytes,offset);offset+=chunk.length
+          if(!part.complete)continue
+          let parsed:unknown;try{parsed=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes))}catch{throw new GraphError('invalid_detail_json')}
+          const value=validateDetail(parsed,ref,input,hash)
+          if(worker.closing||!guard())throw new GraphError('stale_projection')
+          if(this.now()>=deadline)throw new GraphError('graph_timeout')
+          worker.detailCache={hash,ref,value};return value
+        }
+      }catch(error){if(!(error instanceof GraphError)||!['stale_reference','detail_capacity','invalid_offset'].includes(error.code))void worker.stop().catch(()=>{});throw error}
     },deadline,guard),deadline,signal)
   }
   private async bounded<T>(promise:Promise<T>,deadline:number,signal?:AbortSignal):Promise<T> {

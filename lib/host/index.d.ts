@@ -162,7 +162,9 @@ export declare class BrowserFlowService {
                 type: string;
             }[];
         };
-        technical_law_index: Record<string, unknown>;
+        technical_law_index: {
+            [x: string]: unknown;
+        };
         knowledge_graph: Record<string, unknown>;
         active_context: {
             complete: boolean;
@@ -417,12 +419,13 @@ export declare class BrowserFlowService {
      * @param {ResolvedCaller} caller - resolved caller.
      * @param {AbortSignal} signal - cancellation.
      * @param {string} [view] - page, scoped import evidence or task.
-     * @param {{ref:string,offset:number}} [detail] - task detail only.
+     * @param {{ref:string,offset:number,projectionId?:string}} [detail] - task detail only.
      * @returns  observation.
      */
     observe(caller: ResolvedCaller, signal: AbortSignal, view?: string, detail?: {
         ref: string;
         offset: number;
+        projectionId?: string;
     }): Promise<{
         ok: false;
         error: {
@@ -441,10 +444,11 @@ export declare class BrowserFlowService {
         ok: true;
         value: object;
     }>;
-    /** @param {ResolvedCaller} caller - actual caller. @param {AbortSignal} signal - cancellation. @param {string} [view] - fixed view. @param {{ref:string,offset:number}} [detail] - task-local continuation. @returns  owned observation. */
+    /** @param {ResolvedCaller} caller - actual caller. @param {AbortSignal} signal - cancellation. @param {string} [view] - fixed view. @param {{ref:string,offset:number,projectionId?:string}} [detail] - task-local continuation. @returns  owned observation. */
     observeOwned(caller: ResolvedCaller, signal: AbortSignal, view?: string, detail?: {
         ref: string;
         offset: number;
+        projectionId?: string;
     }): Promise<{
         ok: false;
         error: {

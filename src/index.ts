@@ -382,20 +382,20 @@ closing: Promise<void> | undefined;
    * @param {ResolvedCaller} caller - resolved caller.
    * @param {AbortSignal} signal - cancellation.
    * @param {string} [view] - page, scoped import evidence or task.
-   * @param {{ref:string,offset:number}} [detail] - task detail only.
+   * @param {{ref:string,offset:number,projectionId?:string}} [detail] - task detail only.
    * @returns  observation.
    */
   observe(caller: ResolvedCaller,signal: AbortSignal,view?: string,detail?: {
     ref: string;
-    offset: number;
+    offset: number;projectionId?:string;
 }) {return this.own(()=>this.observeOwned(caller,signal,view,detail))}
-  /** @param {ResolvedCaller} caller - actual caller. @param {AbortSignal} signal - cancellation. @param {string} [view] - fixed view. @param {{ref:string,offset:number}} [detail] - task-local continuation. @returns  owned observation. */
+  /** @param {ResolvedCaller} caller - actual caller. @param {AbortSignal} signal - cancellation. @param {string} [view] - fixed view. @param {{ref:string,offset:number,projectionId?:string}} [detail] - task-local continuation. @returns  owned observation. */
   async observeOwned(caller: ResolvedCaller, signal: AbortSignal, view?: string, detail?: {
     ref: string;
-    offset: number;
+    offset: number;projectionId?:string;
 }) {
     if(view==='task'){
-      try{const access=await this.tasks.forSession(caller.sessionId);await this.tasks.refreshEvidence(access);return success(detail ? await this.tasks.detail(access,detail.ref,detail.offset,this.config.observeMaxChars) : await this.taskSummary(access,true,signal))}catch(error){return this.taskFailure(error)}
+      try{const access=await this.tasks.forSession(caller.sessionId);await this.tasks.refreshEvidence(access);return success(detail ? await this.tasks.detail(access,detail.ref,detail.offset,this.config.observeMaxChars,detail.projectionId) : await this.taskSummary(access,true,signal))}catch(error){return this.taskFailure(error)}
     }
     try{this.taskOf(caller)}catch(error){return this.taskFailure(error)}
     if (view === 'bjrsj_import') {

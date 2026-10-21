@@ -20,24 +20,26 @@ function expected(input:GraphInput):Map<string,Expected> {
  for(const c of input.criteria)result.set(c.id,{kind:'criterion',source:c.source,sourceSeq:1,data:{label:c.label,status:c.status,validatorId:c.validatorId??'',validatorVersion:c.version??0},run:JSON.stringify([input.scope.profileId,input.scope.taskId,input.scope.ownerSessionId,input.scope.scopeRevision,input.scope.runId,input.scope.workflowRef])})
  return result
 }
-function metadata(value:unknown,refs:Map<string,Expected>):void {
- const row=object(value);keys(row,['id','kind','source','sourceSeq']);if(typeof row.id!=='string')bad();const source=refs.get(row.id);if(!source||row.kind!==source.kind||row.source!==source.source||row.sourceSeq!==source.sourceSeq)bad()
+function metadata(value:unknown,refs:Map<string,Expected>,asset=false):void {
+ const row=object(value);keys(row,['id','kind','source','sourceSeq',...(asset?['documentToken']:[])]);if(typeof row.id!=='string')bad();const source=refs.get(row.id);if(!source||row.kind!==source.kind||row.source!==source.source||row.sourceSeq!==source.sourceSeq)bad()
+ if(asset&&source.kind==='page'){if(row.documentToken!==source.data.documentToken)bad()}else if('documentToken' in row)bad()
 }
-function digests(value:unknown,refs:Map<string,Expected>,input:GraphInput,hash:string):Map<string,JsonRecord> {
- const all=new Map<string,JsonRecord>(),covered=new Set<string>()
+interface DigestRecord {row:JsonRecord;members:Set<unknown>}
+function digests(value:unknown,refs:Map<string,Expected>,input:GraphInput,hash:string):Map<string,DigestRecord> {
+ const all=new Map<string,DigestRecord>(),covered=new Set<string>(),protectedRefs=new Set(input.protected)
  for(const valueRow of list(value)){
   const row=object(valueRow);keys(row,['id','members','anchors','outcomes','sourceSeqs','signature'])
   if(typeof row.signature!=='string'||!/^[a-f0-9]{64}$/.test(row.signature)||row.id!==`digest-${hash}-${row.signature}`)bad()
-  const members=list(row.members),anchors=list(row.anchors);if(members.length<input.minGroup)bad();let run:string|undefined;const outcomes:Record<string,number>={},seqs:number[]=[]
-  for(const id of members){if(typeof id!=='string'||covered.has(id)||input.protected.includes(id))bad();const node=refs.get(id);if(!node||!['intent','receipt'].includes(node.kind)||['pending','unknown_outcome'].includes(String(node.data.status??node.data.outcome)))bad();if(run&&run!==node.run)bad();run=node.run;covered.add(id);seqs.push(node.sourceSeq);if(node.kind==='receipt'){const outcome=String(node.data.outcome);outcomes[outcome]=(outcomes[outcome]??0)+1}}
-  for(const id of anchors)if(typeof id!=='string'||!refs.has(id)||members.includes(id))bad()
-  if(!equal(outcomes,row.outcomes)||!equal(seqs.sort((a,b)=>a-b),row.sourceSeqs))bad();all.set(String(row.id),row)
+  const members=list(row.members),memberSet=new Set(members),anchors=list(row.anchors);if(members.length<input.minGroup)bad();let run:string|undefined;const outcomes:Record<string,number>={},seqs:number[]=[]
+  for(const id of members){if(typeof id!=='string'||covered.has(id)||protectedRefs.has(id))bad();const node=refs.get(id);if(!node||!['intent','receipt'].includes(node.kind)||['pending','unknown_outcome'].includes(String(node.data.status??node.data.outcome)))bad();if(run&&run!==node.run)bad();run=node.run;covered.add(id);seqs.push(node.sourceSeq);if(node.kind==='receipt'){const outcome=String(node.data.outcome);outcomes[outcome]=(outcomes[outcome]??0)+1}}
+  for(const id of anchors)if(typeof id!=='string'||!refs.has(id)||memberSet.has(id))bad()
+  if(!equal(outcomes,row.outcomes)||!equal(seqs.sort((a,b)=>a-b),row.sourceSeqs))bad();if(all.has(String(row.id)))bad();all.set(String(row.id),{row,members:memberSet})
  }
  return all
 }
-function edge(value:unknown,input:GraphInput,refs:Map<string,Expected>,ds:Map<string,JsonRecord>):void {
+function edge(value:unknown,input:GraphInput,refs:Map<string,Expected>,ds:Map<string,DigestRecord>):void {
  const row=object(value);keys(row,['id','taskId','from','to','relation','sourceSeq']);if(row.taskId!==input.scope.taskId||typeof row.from!=='string'||typeof row.to!=='string'||!refs.has(row.to))bad()
- if(row.relation==='covers'){const d=ds.get(row.from);if(!d||!list(d.members).includes(row.to)||row.id!==row.from+':'+row.to||row.sourceSeq!==0)bad();return}
+ if(row.relation==='covers'){const d=ds.get(row.from);if(!d||!d.members.has(row.to)||row.id!==row.from+':'+row.to||row.sourceSeq!==0)bad();return}
  if(!refs.has(row.from))bad();integer(row.sourceSeq)
  if(row.relation==='proves'){if(row.from!==input.proofRef||row.sourceSeq!==input.proofSeq||row.id!==`proof-edge-${input.proofSeq}`||!input.criteria.some(c=>c.id===row.to&&c.source==='code_verified'&&c.status==='passed'))bad();return}
  const e=input.events[Number(row.sourceSeq)-1];if(!e)bad()
@@ -60,8 +62,8 @@ export function validateView(value:unknown,input:GraphInput,hash:string):JsonRec
  if(p.criteria!==undefined&&!equal(p.criteria,input.criteria))bad()
  for(const row of p.intents===undefined?[]:list(p.intents))attempt(row,refs,false)
  for(const row of p.frontier===undefined?[]:list(p.frontier))attempt(row,refs,true)
- for(const row of t.assets===undefined?[]:list(t.assets))metadata(row,refs)
- for(const row of a.recentAssets===undefined?[]:list(a.recentAssets))metadata(row,refs)
+ for(const row of t.assets===undefined?[]:list(t.assets))metadata(row,refs,true)
+ for(const row of a.recentAssets===undefined?[]:list(a.recentAssets))metadata(row,refs,true)
  for(const row of g.nodes===undefined?[]:list(g.nodes))metadata(row,refs)
  const ds=digests(g.digests??[],refs,input,hash)
  for(const row of g.edges===undefined?[]:list(g.edges))edge(row,input,refs,ds)
@@ -74,11 +76,13 @@ export function validateView(value:unknown,input:GraphInput,hash:string):JsonRec
 /** @param value - detail reply. @param ref - requested reference. @param input - original safe input. @param hash - projection identity. @returns Owned immutable detail. */
 export function validateDetail(value:unknown,ref:string,input:GraphInput,hash:string):unknown {
  const v=object(value),refs=expected(input)
- const node=(value:unknown,ds:Map<string,JsonRecord>)=>{const n=object(value);keys(n,['id','taskId','kind','source','sourceSeq','data']);if(n.taskId!==input.scope.taskId||typeof n.id!=='string')bad()
-  if(n.kind==='digest'){const d=ds.get(n.id);if(!d||n.source!=='derived'||!equal(n.data,{signature:d.signature}))bad();return}
+ const node=(value:unknown,ds:Map<string,DigestRecord>)=>{const n=object(value);keys(n,['id','taskId','kind','source','sourceSeq','data']);if(n.taskId!==input.scope.taskId||typeof n.id!=='string')bad()
+  if(n.kind==='digest'){const d=ds.get(n.id);if(!d||n.source!=='derived'||!equal(n.data,{signature:d.row.signature}))bad();return}
   const original=refs.get(n.id);if(!original||n.kind!==original.kind||n.source!==original.source||n.sourceSeq!==original.sourceSeq||!equal(n.data,original.data))bad()
  }
- if(ref==='graph'){keys(v,['nodes','edges','digests']);const ds=digests(v.digests,refs,input,hash);for(const n of list(v.nodes))node(n,ds);for(const e of list(v.edges))edge(e,input,refs,ds)}
+ if(ref==='graph'){keys(v,['nodes','edges','digests']);const ds=digests(v.digests,refs,input,hash);const nodes=list(v.nodes),edges=list(v.edges),nodeIds=new Set(),edgeIds=new Set();for(const n of nodes){node(n,ds);const id=object(n).id;if(nodeIds.has(id))bad();nodeIds.add(id)}
+ if(nodeIds.size!==refs.size+ds.size)bad();for(const e of edges){edge(e,input,refs,ds);const id=object(e).id;if(edgeIds.has(id))bad();edgeIds.add(id)}
+ const expectedEdges=input.events.filter(e=>e.type==='attempt'||e.type==='receipt'||e.type==='edge'&&refs.has(e.from??'')&&refs.has(e.to??'')).length+input.criteria.filter(c=>c.source==='code_verified'&&c.status==='passed'&&refs.has(input.proofRef)).length+[...ds.values()].reduce((sum,d)=>sum+d.members.size,0);if(edgeIds.size!==expectedEdges)bad()}
  else if(ref.startsWith('digest-')){if(v.id!==ref)bad();digests([v],refs,input,hash)}
  else{if(v.id!==ref)bad();node(v,new Map())}
  return v

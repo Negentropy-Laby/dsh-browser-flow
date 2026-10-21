@@ -1,4 +1,4 @@
-/** Internal graph protocol v1. Page control remains Browser Flow v3. */
+/** Internal graph protocol v2. Page control remains Browser Flow v3. */
 import type { Readable, Writable } from 'node:stream'
 import type { RunScope } from '../task-scope.ts'
 
@@ -17,7 +17,7 @@ export interface ProcessHandle {
 /** Deployment choices resolved with the plugin configuration. */
 export interface GraphConfig {
   graphMaxWorkers: number; graphIdleMs: number; graphRequestTimeoutMs: number
-  graphMaxFrameBytes: number; graphStderrBytes: number; graphTerminateGraceMs: number
+  graphMaxFrameBytes: number; graphMaxDetailBytes:number; graphStderrBytes: number; graphTerminateGraceMs: number
   graphColdRounds: number; graphMinGroup: number; queueLimit: number
 }
 /** Sanitized closed event; original asset data cannot enter a worker. */
@@ -38,9 +38,9 @@ export interface GraphInput {
 }
 /** Closed request envelope. All replies must echo its immutable binding. */
 export interface GraphRequest {
-  protocolVersion: 1; id: string; generation: string; scope: RunScope; version: number
+  protocolVersion: 2; id: string; generation: string; scope: RunScope; version: number
   tailHash: string; inputHash: string; op: 'hello' | 'project' | 'detail'
-  budgetMs: number; budget: number; input?: GraphInput; ref?: string
+  budgetMs: number; budget: number; input?: GraphInput; ref?: string; offsetBytes?:number
 }
 /** A sanitized record decoded from a worker. */
 export type JsonRecord = Record<string, unknown>

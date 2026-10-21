@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -13,7 +14,7 @@ import (
 	"time"
 )
 
-// Request is the closed internal protocol v1 envelope. Input is hash-bound raw JSON.
+// Request is the closed internal protocol v2 envelope. Input is hash-bound raw JSON.
 type Request struct {
 	ProtocolVersion int             `json:"protocolVersion"`
 	ID              string          `json:"id"`
@@ -27,6 +28,7 @@ type Request struct {
 	Budget          int             `json:"budget"`
 	Input           json.RawMessage `json:"input,omitempty"`
 	Ref             string          `json:"ref,omitempty"`
+	OffsetBytes     int             `json:"offsetBytes,omitempty"`
 }
 
 // Response echoes every request binding, including on typed failures.
@@ -56,10 +58,15 @@ func decode(b []byte, value any) error {
 }
 
 // Serve owns one run and one disposable projection. It never opens files or sockets.
-func Serve(reader io.Reader, writer io.Writer, maxFrame int) error {
+func Serve(reader io.Reader, writer io.Writer, maxFrame, maxDetail int) error {
 	if maxFrame < 65536 || maxFrame > 32*1024*1024 {
 		return errors.New("invalid_frame_limit")
 	}
+	if maxDetail < maxFrame || maxDetail > 256*1024*1024 {
+		return errors.New("invalid_detail_limit")
+	}
+	var detailRef string
+	var detailBytes []byte
 	var bound *Scope
 	generation := ""
 	var current *Projection
@@ -83,10 +90,10 @@ func Serve(reader io.Reader, writer io.Writer, maxFrame int) error {
 		if decode(body, &q) != nil {
 			return errors.New("invalid_request")
 		}
-		r := Response{ProtocolVersion: 1, ID: q.ID, Generation: q.Generation, Scope: q.Scope, Version: q.Version, TailHash: q.TailHash, InputHash: q.InputHash}
+		r := Response{ProtocolVersion: 2, ID: q.ID, Generation: q.Generation, Scope: q.Scope, Version: q.Version, TailHash: q.TailHash, InputHash: q.InputHash}
 		fail := func(code string) { r.OK = false; r.Code = code; r.Value = nil }
 		switch {
-		case q.ProtocolVersion != 1:
+		case q.ProtocolVersion != 2:
 			fail("protocol_mismatch")
 		case q.ID == "" || len(q.ID) > 100 || q.Generation == "" || len(q.Generation) > 100 || q.BudgetMS <= 0 || q.BudgetMS > 300000 || q.Scope.TaskID == "" || q.Scope.ProfileID == "" || q.Scope.OwnerSessionID == "" || q.Scope.RunID == "" || q.Scope.WorkflowRef == "" || q.Scope.ScopeRevision < 1:
 			fail("invalid_request")
@@ -102,7 +109,7 @@ func Serve(reader io.Reader, writer io.Writer, maxFrame int) error {
 					bound = &s
 					generation = q.Generation
 					r.OK = true
-					r.Value = map[string]any{"kernelVersion": "1", "rulesVersion": "structural-v1"}
+					r.Value = map[string]any{"kernelVersion": "2", "rulesVersion": "structural-v1"}
 				}
 			case "project":
 				if bound == nil {
@@ -126,6 +133,8 @@ func Serve(reader io.Reader, writer io.Writer, maxFrame int) error {
 						break
 					}
 					current = p
+					detailBytes = nil
+					detailRef = ""
 				} else if p.Input.Version != q.Version || p.Input.TailHash != q.TailHash {
 					fail("invalid_input")
 					break
@@ -138,13 +147,44 @@ func Serve(reader io.Reader, writer io.Writer, maxFrame int) error {
 					fail("stale_projection")
 					break
 				}
-				value, err := current.Detail(q.Ref)
-				if err != nil {
-					fail("stale_reference")
-				} else {
-					r.OK = true
-					r.Value = value
+				if q.Ref != detailRef || detailBytes == nil {
+					value, err := current.Detail(q.Ref)
+					if err != nil {
+						fail("stale_reference")
+						break
+					}
+					detailBytes, err = json.Marshal(value)
+					detailRef = q.Ref
+					if err != nil {
+						detailBytes = nil
+						fail("response_encoding")
+						break
+					}
+					if len(detailBytes) > maxDetail {
+						detailBytes = nil
+						fail("detail_capacity")
+						break
+					}
 				}
+				if q.OffsetBytes < 0 || q.OffsetBytes > len(detailBytes) {
+					fail("invalid_offset")
+					break
+				}
+				chunk := map[string]any{"ref": q.Ref, "offsetBytes": q.OffsetBytes, "totalBytes": len(detailBytes), "chunkBase64": "", "complete": false}
+				r.OK = true
+				r.Value = chunk
+				envelope, _ := json.Marshal(r)
+				count := (maxFrame - len(envelope)) / 4 * 3
+				if count < 1 {
+					fail("frame_limit")
+					break
+				}
+				if remaining := len(detailBytes) - q.OffsetBytes; count > remaining {
+					count = remaining
+				}
+				chunk["chunkBase64"] = base64.StdEncoding.EncodeToString(detailBytes[q.OffsetBytes : q.OffsetBytes+count])
+				chunk["complete"] = q.OffsetBytes+count == len(detailBytes)
+
 			default:
 				fail("unsupported_operation")
 			}

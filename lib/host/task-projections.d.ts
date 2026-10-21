@@ -34,7 +34,9 @@ export declare function taskView(task: import('./task-store.ts').TaskData, budge
             type: string;
         }[];
     };
-    technical_law_index: Record<string, unknown>;
+    technical_law_index: {
+        [x: string]: unknown;
+    };
     knowledge_graph: Record<string, unknown>;
     active_context: {
         complete: boolean;

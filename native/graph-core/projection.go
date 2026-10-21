@@ -343,7 +343,11 @@ func (p *Projection) View(budget int) map[string]any {
 	for _, n := range p.Nodes {
 		if n.Kind != "goal" && n.Kind != "criterion" && n.Kind != "intent" && n.Kind != "receipt" {
 			counts[n.Kind]++
-			assets = append(assets, metadata(n))
+			asset := metadata(n)
+			if n.Kind == "page" {
+				asset["documentToken"] = n.Data["documentToken"]
+			}
+			assets = append(assets, asset)
 		}
 	}
 	if len(assets) > 8 {

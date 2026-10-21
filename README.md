@@ -184,6 +184,8 @@ recorded runs.
 Task fact authority and graph extraction are described in [Graph kernel](docs/graph-kernel.md).
 
 The task graph uses an owned Go worker on Windows x64. The package contains the
-helper; installed profiles need no Go toolchain. Source builds use Go 1.26.5 and
+helper; installed profiles need no Go toolchain. Graph details support complete,
+projection-bound continuation; see [graph limits and failure handling](docs/graph-kernel.md).
+Source builds use Go 1.26.5 and
 `npm run build`, which emits the Host, Client and native artifacts. See the
 [upgrade guide](docs/upgrade-guide/v0.1.0/go-graph/guide.md) before reloading.
