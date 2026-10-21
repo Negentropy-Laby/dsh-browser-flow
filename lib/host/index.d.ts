@@ -202,6 +202,10 @@ export declare class BrowserFlowService {
             }[];
             graph: {
                 kernelVersion: string;
+                cleanup?: {
+                    state: "pending" | "failed";
+                    code?: string;
+                } | undefined;
                 projectionId?: string | undefined;
                 status: string;
                 reason: string;
@@ -285,6 +289,10 @@ export declare class BrowserFlowService {
             pendingAttempts: string[];
             graph: {
                 kernelVersion: string;
+                cleanup?: {
+                    state: "pending" | "failed";
+                    code?: string;
+                } | undefined;
                 projectionId?: string | undefined;
                 status: string;
                 reason: string;

@@ -27,6 +27,8 @@ interface Pending {request: GraphRequest; resolve: (value: unknown)=>void; rejec
 class Worker {
   readonly generation=randomUUID();readonly handle: ProcessHandle;readonly scope: GraphInput['scope']
   closing=false;stopped=false;busy=false;private pending: Pending | undefined;private counter=0
+  cleanup: {state:'pending'|'failed';code?:string} | undefined
+  private readonly drainError=()=>{}
   private idle: ReturnType<typeof setTimeout> | undefined;private stopping: Promise<void> | undefined
   private readonly decoder: Frames;private readonly onData: (chunk: Buffer)=>void
   private readonly onEnd: ()=>void;private readonly onError: ()=>void
@@ -70,10 +72,24 @@ class Worker {
   }
   /** @returns Completion only after the managed range is empty. */
   stop(): Promise<void> {
+    if(this.stopped)return Promise.resolve()
     if(this.stopping)return this.stopping
-    this.closing=true;this.cached=undefined;clearTimeout(this.idle)
+    this.closing=true;this.cached=undefined;clearTimeout(this.idle);this.cleanup={state:'pending'}
     if(this.pending){clearTimeout(this.pending.timer);this.pending.reject(new GraphError('worker_stopped'));this.pending=undefined}
-    this.stopping=(async()=>{this.handle.terminate();if(!await this.handle.waitForExit())throw new GraphError('cleanup_failed');await this.handle.done.catch(()=>{});this.handle.stdout?.off('data',this.onData);this.handle.stdout?.off('end',this.onEnd);this.handle.stdout?.off('error',this.onError);this.handle.stdin?.off('error',this.onError);this.stopped=true})()
+    this.handle.stdout?.off('data',this.onData);this.handle.stdout?.off('end',this.onEnd)
+    this.handle.stdout?.off('error',this.onError);this.handle.stdin?.off('error',this.onError)
+    this.handle.stdout?.off('error',this.drainError);this.handle.stdin?.off('error',this.drainError)
+    this.handle.stdout?.on('error',this.drainError);this.handle.stdin?.on('error',this.drainError);this.handle.stdout?.resume()
+    this.stopping=(async()=>{
+      try{
+        this.handle.terminate()
+        if(!await this.handle.waitForExit())throw new GraphError('cleanup_failed')
+        await this.handle.done.catch(()=>{})
+        this.stopped=true;this.cleanup=undefined
+        this.handle.stdout?.off('error',this.drainError);this.handle.stdin?.off('error',this.drainError)
+      }catch{this.cleanup={state:'failed',code:'cleanup_failed'};throw new GraphError('cleanup_failed')}
+      finally{this.stopping=undefined}
+    })()
     return this.stopping
   }
 }
@@ -83,8 +99,16 @@ export class GraphWorkers {
   /** @param config - resolved settings. @param binary - package resolver; tests may supply an owned helper. @param now - monotonic clock, injectable for deadline tests. */
   constructor(private readonly config: GraphConfig,private readonly binary: ()=>Binary=packagedBinary,private readonly now:()=>number=()=>performance.now()) {}
   /** @param runtime - newly mounted service. @returns Disposal joined before the provider is released. */
-  attach(runtime: SubprocessPort): ()=>Promise<void> {this.runtime=runtime;return async()=>{if(this.runtime===runtime)this.runtime=undefined;await this.stopAll();await Promise.allSettled([...this.acquisitions.values()])}}
-  private async stopAll(): Promise<void> {const entries=[...this.workers.values()];const results=await Promise.allSettled(entries.map(worker=>worker.stop()));if(results.some(row=>row.status==='rejected'))throw new GraphError('cleanup_failed');this.workers.clear()}
+  attach(runtime: SubprocessPort): ()=>Promise<void> {this.runtime=runtime;return async()=>{if(this.runtime===runtime)this.runtime=undefined;await this.disposeWorkers()}}
+  private async stopAll(): Promise<void> {
+    const results=await Promise.allSettled([...this.workers.values()].map(worker=>worker.stop()))
+    for(const [key,worker]of this.workers)if(worker.stopped)this.workers.delete(key)
+    if(results.some(row=>row.status==='rejected'))throw new GraphError('cleanup_failed')
+  }
+  private async disposeWorkers():Promise<void>{
+    const result=await Promise.allSettled([this.stopAll(),...this.acquisitions.values()])
+    if(result.some(row=>row.status==='rejected'))throw new GraphError('cleanup_failed')
+  }
   private worker(input: GraphInput,deadline:number,current:()=>boolean,signal?:AbortSignal): Promise<{worker:Worker;fresh:boolean}> {
     const key=input.scope.taskId,previous=this.acquisitions.get(key)??Promise.resolve()
     const result=previous.then(()=>this.acquire(input,deadline,current,signal)),settled=result.then(()=>{},()=>{})
@@ -97,7 +121,11 @@ export class GraphWorkers {
     if(!current()||signal?.aborted)throw new GraphError('stale_projection')
     if(this.closed)throw new GraphError('graph_closed');if(!this.runtime)throw new GraphError('subprocess_unavailable')
     const key=input.scope.taskId;let worker=this.workers.get(key)
-    if(worker&&(worker.closing||!sameRunScope(worker.scope,input.scope))){await worker.stop();if(this.workers.get(key)===worker)this.workers.delete(key);worker=undefined}
+    if(worker?.closing&&!worker.stopped){
+      if(worker.cleanup?.state!=='failed')throw new GraphError('cleanup_pending')
+      await worker.stop()
+    }
+    if(worker&&(worker.stopped||!sameRunScope(worker.scope,input.scope))){await worker.stop();if(this.workers.get(key)===worker)this.workers.delete(key);worker=undefined}
     if(this.now()>=deadline)throw new GraphError('graph_timeout')
     if(!current()||signal?.aborted)throw new GraphError('stale_projection')
     if(worker)return {worker,fresh:false}
@@ -151,6 +179,8 @@ export class GraphWorkers {
   }
   /** @param taskId - owned task being ended or revised. @returns Quiescent worker disposal. */
   async retire(taskId:string):Promise<void>{const worker=this.workers.get(taskId);if(worker){await worker.stop();if(this.workers.get(taskId)===worker)this.workers.delete(taskId)}}
+  /** @param taskId - owned task. @returns Pending or failed cleanup, independent of durable task status. */
+  cleanup(taskId:string):Worker['cleanup']{return this.workers.get(taskId)?.cleanup}
   /** @returns All workers have stopped before plugin disposal completes. */
-  async close():Promise<void>{this.closed=true;this.runtime=undefined;await this.stopAll();await Promise.allSettled([...this.acquisitions.values()])}
+  async close():Promise<void>{this.closed=true;this.runtime=undefined;await this.disposeWorkers()}
 }

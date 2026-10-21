@@ -1,7 +1,10 @@
 /** @param {import('./task-store.ts').TaskData} task - opened task. @param {import('./graph/protocol.ts').GraphConfig} config - resolved graph limits. @returns {import('./graph/protocol.ts').GraphInput} safe replay input without original assets or physical paths. */
 export declare function graphInput(task: import('./task-store.ts').TaskData, config: import('./graph/protocol.ts').GraphConfig): import('./graph/protocol.ts').GraphInput;
 /** @param {import('./task-store.ts').TaskData} task - current Host data. @param {number} budget - optional display budget. @param {Record<string,unknown>|undefined} derived - validated Go view. @param {string} reason - component status. @param {boolean} writable - current durable writer availability. @param {string} [projectionId] - exact safe input hash. @returns {Record<string,unknown>} five-module view with Host authority over safety and criteria. */
-export declare function taskView(task: import('./task-store.ts').TaskData, budget: number, derived: Record<string, unknown> | undefined, reason: string, writable: boolean, projectionId?: string): {
+export declare function taskView(task: import('./task-store.ts').TaskData, budget: number, derived: Record<string, unknown> | undefined, reason: string, writable: boolean, projectionId?: string, cleanup?: {
+    state: 'pending' | 'failed';
+    code?: string;
+}): {
     basic_law_index: {
         events: number;
         healthy: boolean;
@@ -71,6 +74,10 @@ export declare function taskView(task: import('./task-store.ts').TaskData, budge
         }[];
         graph: {
             kernelVersion: string;
+            cleanup?: {
+                state: "pending" | "failed";
+                code?: string;
+            } | undefined;
             projectionId?: string | undefined;
             status: string;
             reason: string;
@@ -130,6 +137,10 @@ export declare function taskView(task: import('./task-store.ts').TaskData, budge
         pendingAttempts: string[];
         graph: {
             kernelVersion: string;
+            cleanup?: {
+                state: "pending" | "failed";
+                code?: string;
+            } | undefined;
             projectionId?: string | undefined;
             status: string;
             reason: string;

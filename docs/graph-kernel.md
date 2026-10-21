@@ -69,3 +69,14 @@ read returns without waiting for cleanup; the registry retains the process and
 joins its managed range during retirement or disposal. A timed-out replacement
 cannot start a helper later, and retiring a predecessor cannot discard ownership
 of its replacement.
+
+Retirement immediately detaches RPC listeners and clears derived caches. Stream
+draining and error handling remain owned until the managed range confirms exit.
+Failed exit observation retains capacity and reports `cleanup_failed`; another
+retirement attempt can confirm a later exit. Termination grace controls process
+termination escalation, not the deadline for exit observation.
+
+Task cancellation and revision return their durable journal result without
+waiting for retirement. `active_context.graph.cleanup` separately reports
+pending or failed process cleanup. Disposal still joins every owned range and
+reports failure if exit cannot be confirmed.

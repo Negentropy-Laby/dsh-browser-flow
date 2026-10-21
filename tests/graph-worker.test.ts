@@ -42,7 +42,7 @@ it('contains capacity, cancellation, stale snapshots and worker crashes to graph
  await assert.rejects(workers.project(input(runScope({...scope,taskId:'task-22222222-2222-4222-8222-222222222222'})),8000,()=>true),/graph_capacity/)
  const controller=new AbortController();controller.abort();await assert.rejects(workers.project(input(),8000,()=>true,controller.signal),/stale_projection/)
  await assert.rejects(workers.project(input(),8000,()=>false),/stale_projection/)
- runtime.handles[0].child.kill();await runtime.handles[0].done
+ runtime.handles[0].child.kill();await runtime.handles[0].done;await workers.retire(scope.taskId)
  await workers.project(input(),8000,()=>true);assert.equal(runtime.handles.length,2)
 })
 function heldRuntime(reply:(request:Record<string,unknown>,stdout:PassThrough)=>void){
@@ -72,6 +72,20 @@ it('service removal cancels an RPC at an explicit barrier and awaits quiescence'
  const pending=workers.project(input(),8000,()=>true);const refused=assert.rejects(pending)
  await barrier;await detach();await refused
  assert.equal(runtime.terminated,true);await assert.rejects(workers.project(input(),8000,()=>true),/subprocess_unavailable/);await workers.close()
+})
+it('detaches business listeners on failed exit observation, retains capacity and can reclaim later',async()=>{
+ const runtime=graphRuntime(),workers=new GraphWorkers(resolveConfig({graphMaxWorkers:1}),graphBinary);workers.attach(runtime)
+ try{
+  await workers.project(input(),8000,()=>true)
+  const handle=runtime.handles[0],wait=handle.waitForExit
+  handle.waitForExit=async()=>{throw new Error('observation unavailable')}
+  await assert.rejects(workers.retire(scope.taskId),/cleanup_failed/)
+  assert.equal(handle.stdout?.listenerCount('data'),0)
+  await assert.rejects(workers.project(input(),8000,()=>true),/cleanup_failed|cleanup_pending/)
+  assert.equal(runtime.handles.length,1)
+  handle.waitForExit=wait;await handle.done;await workers.retire(scope.taskId)
+  await workers.project(input(),8000,()=>true);assert.equal(runtime.handles.length,2)
+ }finally{await workers.close()}
 })
 it('expires a held RPC using a controlled timer without sleeping or replaying',async t=>{
  t.mock.timers.enable({apis:['setTimeout']})

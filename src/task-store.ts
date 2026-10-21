@@ -357,7 +357,7 @@ tail: Promise<void>;
     if(!['cancelled','handed_off'].includes(state))throw new TaskError('invalid_request','ending a task records cancelled or handed_off, never business success')
     if(this.openTask(access).readOnly)return access
     await this.append(access,'status',{state,run:access.run})
-    await this.graph?.retire(access.scope.taskId)
+    void this.graph?.retire(access.scope.taskId).catch(()=>{/* The graph registry retains failed process cleanup. */})
     return access
   }
   /** @param {TaskAccess} access - user-owned task. @param {unknown} raw - explicit revised goal/scope or new run. @returns {Promise<TaskAccess>} new revision; unknown write remains blocked. */
@@ -372,7 +372,7 @@ tail: Promise<void>;
       const manifest={...data.manifest,scope:{...data.manifest.scope,scopeRevision:data.manifest.scope.scopeRevision+1},runId:('run-'+randomUUID() as import('./task-scope.ts').RunId),
         ...(raw.goal===undefined?{}:{goal:raw.goal}),...(raw.constraints===undefined?{}:{constraints:(raw.constraints as string[])}),...(raw.criteria===undefined?{}:{criteria:(raw.criteria as string[])}),...(raw.origins===undefined?{}:{origins:(raw.origins as string[])})}
       await this.appendOwned(data,'revise',{manifest})
-      await this.graph?.retire(access.scope.taskId)
+      void this.graph?.retire(access.scope.taskId).catch(()=>{/* The graph registry retains failed process cleanup. */})
       return this.access(data)
     })
   }
@@ -387,7 +387,7 @@ tail: Promise<void>;
     try{if(this.graph&&!data.readOnly&&!data.unhealthy){derived=await this.graph.project(input,budget,current,signal);reason='ready'}}catch(error){reason=error instanceof GraphError?error.code:'graph_failed'}
     this.openTask(access);data.liveDocumentToken=this.controlDocument?.(access)
     if(derived){await this.refreshEvidence(access);if(!current()){derived=undefined;reason='stale_projection'}}
-    return taskView(data,budget,derived,reason,this.writable,derived?hash:undefined)
+    return taskView(data,budget,derived,reason,this.writable,derived?hash:undefined,this.graph?.cleanup(access.scope.taskId))
   }
   /** @param {TaskAccess} access - owner. @param {Record<string,unknown>} value - private original facts. @returns {Promise<string>} task-local evidence reference. */
   async proof(access: TaskAccess,value: Record<string, unknown>) : Promise<string> {

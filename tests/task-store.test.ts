@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os'
 import { it } from 'node:test'
 import { TaskStore } from '../src/task-store.ts'
 import { syntheticDefinition } from './helpers/task-definition.ts'
+import { GraphWorkers } from '../src/graph/worker.ts'
+import { resolveConfig } from '../src/config.ts'
 
 async function fixture(t:import('node:test').TestContext) {
   const root=await mkdtemp(join(tmpdir(),'bf-task-store-'))
@@ -15,6 +17,20 @@ async function fixture(t:import('node:test').TestContext) {
   return {root,store,profile}
 }
 const spec={goal:'Read a synthetic task',origins:['https://one.example','https://two.example'],constraints:['Do not submit'],criteria:['Current visible document observed']}
+it('returns committed end and revision results when derived cleanup fails, including after recovery',async t=>{
+  const {store,root,profile}=await fixture(t)
+  const graph=new GraphWorkers(resolveConfig({}))
+  graph.retire=async()=>{throw new Error('exit observation failed')}
+  store.graph=graph
+  const a=await store.create('session-a',spec),b=await store.create('session-b',spec)
+  await store.end(a,'cancelled')
+  const revised=await store.revise(b,{goal:'Durably revised'})
+  assert.equal(revised.scope.scopeRevision,2)
+  await store.close()
+  const recovered=new TaskStore(root,profile,100);t.after(()=>recovered.close())
+  assert.equal(recovered.openTask(await recovered.forSession('session-a')).state,'cancelled')
+  assert.equal(recovered.openTask(await recovered.forSession('session-b')).manifest.goal,'Durably revised')
+})
 it('persists one Session ownership and rejects task, profile, Session and revision forgeries',async t=>{
   const {store}=await fixture(t)
   const a=await store.create('session-a',spec)
