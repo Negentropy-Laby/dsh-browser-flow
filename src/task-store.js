@@ -1,6 +1,9 @@
 /** Profile-owned task store. Durable ownership never grants page control or replays commands. */
-import { projectTask, taskView } from './task-projections.js'
+import { graphInput, taskView } from './task-projections.js'
 import { taskFacts, taskReferences } from './task-facts.js'
+import { GraphError } from './graph/protocol.ts'
+import { graphHash } from './graph/worker.ts'
+import { resolveConfig } from './config.js'
 import { validUserWait } from './task-wait.js'
 import { trustedCriterion, validArtifact } from './task-criteria.js'
 import { TASK_FORMAT_VERSION, validTaskManifest, validTaskEvent } from './task-journal.js'
@@ -36,8 +39,10 @@ const conditions = value => Array.isArray(value) && value.length <= 32 && value.
 
 /** The service owns one writer lease, access capabilities and a serialized append queue. */
 export class TaskStore {
-  /** @param {string | undefined} root - localTasksDir. @param {import('./task-definitions.js').Profile | undefined} profile - actual dsh profile. @param {number} waitMs - bounded writer acquisition. */
-  constructor(root, profile, waitMs) {
+  /** @param {string | undefined} root - localTasksDir. @param {import('./task-definitions.js').Profile | undefined} profile - actual dsh profile. @param {number} waitMs - bounded writer acquisition. @param {import('./graph/worker.ts').GraphWorkers|undefined} [graph] - optional derived view service. @param {import('./graph/protocol.ts').GraphConfig} [graphConfig] - resolved limits. */
+  constructor(root, profile, waitMs, graph=undefined, graphConfig=resolveConfig(undefined)) {
+    this.graph=graph;this.graphConfig=graphConfig
+    /** @type {((access:TaskAccess)=>string|undefined)|undefined} */ this.controlDocument=undefined
     this.root = root
     this.profileId = profile ? /** @type {import('./task-scope.js').ProfileId} */('profile-'+hash(JSON.stringify([profile.name,resolve(profile.home)])).slice(0,32)) : undefined
     this.runtime = root && this.profileId ? join(root,'.runtime',this.profileId) : undefined
@@ -287,6 +292,7 @@ export class TaskStore {
     if(!['cancelled','handed_off'].includes(state))throw new TaskError('invalid_request','ending a task records cancelled or handed_off, never business success')
     if(this.openTask(access).readOnly)return access
     await this.append(access,'status',{state,run:access.run})
+    await this.graph?.retire(access.scope.taskId)
     return access
   }
   /** @param {TaskAccess} access - user-owned task. @param {unknown} raw - explicit revised goal/scope or new run. @returns {Promise<TaskAccess>} new revision; unknown write remains blocked. */
@@ -301,11 +307,23 @@ export class TaskStore {
       const manifest={...data.manifest,scope:{...data.manifest.scope,scopeRevision:data.manifest.scope.scopeRevision+1},runId:/** @type {import('./task-scope.js').RunId} */('run-'+randomUUID()),
         ...(raw.goal===undefined?{}:{goal:raw.goal}),...(raw.constraints===undefined?{}:{constraints:/** @type {string[]} */(raw.constraints)}),...(raw.criteria===undefined?{}:{criteria:/** @type {string[]} */(raw.criteria)}),...(raw.origins===undefined?{}:{origins:/** @type {string[]} */(raw.origins)})}
       await this.appendOwned(data,'revise',{manifest})
+      await this.graph?.retire(access.scope.taskId)
       return this.access(data)
     })
   }
-  /** @param {TaskAccess} access - capability. @param {number} budget - projection character limit. @returns {Record<string,unknown>} bounded current task projections. */
-  view(access,budget) {return taskView(this.openTask(access),budget)}
+  /** @param {TaskAccess} access - capability. @param {number} budget - projection character limit. @param {AbortSignal} [signal] - caller cancellation. @returns {Promise<Record<string,unknown>>} current Host facts and optional derived graph. */
+  async view(access,budget,signal=undefined) {
+    await this.refreshEvidence(access)
+    const data=this.openTask(access)
+    data.liveDocumentToken=this.controlDocument?.(access)
+    const input=graphInput(data,this.graphConfig),hash=graphHash(JSON.stringify(input))
+    let derived,reason='subprocess_unavailable'
+    const current=()=>{try{const now=this.openTask(access);now.liveDocumentToken=this.controlDocument?.(access);return graphHash(JSON.stringify(graphInput(now,this.graphConfig)))===hash}catch{return false}}
+    try{if(this.graph&&!data.readOnly&&!data.unhealthy){derived=await this.graph.project(input,budget,current,signal);reason='ready'}}catch(error){reason=error instanceof GraphError?error.code:'graph_failed'}
+    this.openTask(access);data.liveDocumentToken=this.controlDocument?.(access)
+    if(derived){await this.refreshEvidence(access);if(!current()){derived=undefined;reason='stale_projection'}}
+    return taskView(data,budget,derived,reason,this.writable,derived?hash:undefined)
+  }
   /** @param {TaskAccess} access - owner. @param {Record<string,unknown>} value - private original facts. @returns {Promise<string>} task-local evidence reference. */
   async proof(access,value) {
     const data=this.openTask(access)
@@ -375,18 +393,25 @@ export class TaskStore {
     await this.append(access,'edge',{id,from,to,relation,run:access.run})
     return id
   }
-  /** @param {TaskAccess} access - capability. @param {string} id - task-local detail. @param {number} offset - bounded text continuation. @param {number} budget - character budget. @returns {object} scoped immutable detail or generic refusal. */
-  detail(access,id,offset,budget) {
+  /** @param {TaskAccess} access - capability. @param {string} id - task-local detail. @param {number} offset - bounded text continuation. @param {number} budget - character budget. @returns {Promise<object>} scoped immutable detail or generic refusal. */
+  async detail(access,id,offset,budget) {
     const data=this.openTask(access)
-    const asset=projectTask(data).assets.get(id)
+    const row=data.events.findLast(event=>event.type==='asset'&&event.data.id===id)
+    const asset=row?{id,taskId:data.manifest.scope.taskId,kind:row.data.kind,source:row.data.source,sourceSeq:row.seq,data:/** @type {Record<string,unknown>} */(row.data.data)}:undefined
+    const criterion=taskFacts(data).criteria.find(item=>item.id===id)
     let value
     if(asset)value=asset.kind==='evidence'?{...asset,data:{sha256:asset.data.sha256,bytes:asset.data.bytes,originalAvailable:data.checkedProofs?.has(asset.id)??false}}:asset
     else if(id==='waiting')value={current:data.state==='active'?data.waiting??null:null,history:data.events.filter(event=>['wait_requested','wait_input','wait_resolved'].includes(event.type)).map(event=>({sourceSeq:event.seq,type:event.type,...event.data}))}
-    else if(id==='criteria')value=[...projectTask(data).assets.values()].filter(asset=>asset.kind==='criterion').map(asset=>({id:asset.id,...asset.data,source:asset.source}))
-    else if(id==='graph'){const projected=projectTask(data);value={nodes:[...projected.assets.values()].map(asset=>({id:asset.id,kind:asset.kind,source:asset.source,sourceSeq:asset.sourceSeq})),edges:projected.edges}}
+    else if(criterion)value={id:criterion.id,kind:'criterion',source:criterion.source,data:criterion}
+    else if(id==='criteria')value=taskFacts(data).criteria
     else if(id==='goal')value={goal:data.manifest.goal,constraints:data.manifest.constraints,criteria:data.manifest.criteria,source:'user_declared'}
     else if(data.snapshot?.definition.resources.includes(id))value={name:id,text:data.snapshot.files[id],source:'definition_snapshot',digest:data.manifest.definitionDigest}
-    else throw new TaskError('task_not_bound','task reference is inaccessible')
+    else {
+      if(id!=='graph'&&!id.startsWith('digest-')&&!taskReferences(data).has(id))throw new TaskError('task_not_bound','task reference is inaccessible')
+      if(!this.graph)throw new TaskError('task_unavailable','graph component is unavailable')
+      const input=graphInput(data,this.graphConfig),hash=graphHash(JSON.stringify(input))
+      try{value=await this.graph.detail(input,id,()=>{try{return graphHash(JSON.stringify(graphInput(this.openTask(access),this.graphConfig)))===hash}catch{return false}})}catch(error){throw new TaskError(error instanceof GraphError&&error.code==='kernel_rejected'?'task_not_bound':'task_unavailable','projection reference is unavailable or expired')}
+    }
     const serialized=JSON.stringify(value)
     return {task:access.run,contextVersion:data.events.length,ref:id,offset,totalChars:serialized.length,text:serialized.slice(offset,offset+budget),complete:offset+budget>=serialized.length}
   }

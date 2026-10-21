@@ -1,13 +1,14 @@
 /** Host-owned fact selection. Derived graph output never supplies authority. */
 import { trustedCriterion, evidenceVerdict } from './task-criteria.js'
 
-/** @param {import('./task-store.js').TaskData} task - opened owned task. @returns {{verdict:string,sourceSeq:number|null,proofRef:string|null,criteria:Record<string,unknown>[]}} independently verified current facts. */
+/** @param {import('./task-store.js').TaskData} task - opened owned task. @returns {{verdict:string,sourceSeq:number|null,proofRef:string|null,criteria:import('./graph/protocol.ts').Criterion[]}} independently verified current facts. */
 export function taskFacts(task) {
   let verdict='unverified',sourceSeq=null,proofRef=null
   for(const event of task.events)if(event.type==='business_verdict'&&event.data.run&&typeof event.data.run==='object'&&'runId' in event.data.run&&event.data.run.runId===task.manifest.runId){
     verdict=evidenceVerdict(task,event.data);sourceSeq=event.seq
     proofRef=verdict!=='unverified'&&typeof event.data.proofRef==='string'?event.data.proofRef:null
   }
+  /** @type {import('./graph/protocol.ts').Criterion[]} */
   const criteria=task.manifest.criteria.map((label,index)=>({id:`criterion-${task.manifest.scope.taskId}-r${task.manifest.scope.scopeRevision}-${index+1}`,label,status:'unverified',source:'user_declared'}))
   const trusted=trustedCriterion(task.manifest)
   if(trusted)criteria.push({...trusted,status:verdict==='unverified'?'unverified':'passed',source:'code_verified'})

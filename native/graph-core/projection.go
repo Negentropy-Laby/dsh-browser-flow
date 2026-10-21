@@ -51,6 +51,7 @@ type Event struct {
 
 // Input is a complete sanitized replay snapshot plus current proof references.
 type Input struct {
+ LiveDocumentToken string `json:"liveDocumentToken"`
 	Scope       Scope       `json:"scope"`
 	Version     int64       `json:"version"`
 	TailHash    string      `json:"tailHash"`

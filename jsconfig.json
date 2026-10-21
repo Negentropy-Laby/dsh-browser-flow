@@ -23,8 +23,6 @@
     "types": [],
     "allowImportingTsExtensions": true
   },
-  "include": [
-    "src/**/*.js",
-    "src/**/*.ts"
-  ]
+  "include": [],
+  "files": []
 }

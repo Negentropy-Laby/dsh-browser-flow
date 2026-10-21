@@ -37,7 +37,7 @@ it('proves a trusted navigation criterion with actual evidence and identical gra
   const row=env.service.tasks.openTask(env.access).events.findLast(event=>event.type==='business_verdict')
   assert.ok(row.data.proofRef)
   const next=await env.service.tasks.revise(env.access,{newRun:true})
-  assert.equal(env.service.tasks.view(next,8000).active_context.businessVerdict,'unverified')
+  assert.equal((await env.service.tasks.view(next,8000)).active_context.businessVerdict,'unverified')
 })
 it('rechecks private originals and refuses missing, changed and foreign proof references',async t=>{
   for(const mode of ['missing','changed','foreign','wrong-version']){
@@ -63,7 +63,7 @@ it('rebuilds a valid proof from disk without restoring control and rejects a mis
     const store=new TaskStore(env.root,env.ctx.profileContext,100)
     try{
       const access=await store.forSession('session-a')
-      assert.equal(store.view(access,8000).active_context.businessVerdict,missing?'unverified':'entry_reached')
+      assert.equal((await store.view(access,8000)).active_context.businessVerdict,missing?'unverified':'entry_reached')
       assert.equal(env.service.state.leaseFor(env.agents.get('session-a'),'no-restored-token','session-a'),undefined)
     }finally{await store.close()}
   }

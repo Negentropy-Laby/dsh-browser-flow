@@ -8,7 +8,7 @@ import { graphRuntime, graphBinary } from './helpers/graph-process.js'
 import { TASK } from './helpers/task-scope.js'
 
 const scope=TASK
-function input(run=scope){return {scope:run,version:1,tailHash:'hash-1',goal:'中文 synthetic goal',constraints:[],criteria:[],events:[{seq:1,hash:'hash-1',type:'created',run,goal:'中文 synthetic goal'}],protected:[],proofRef:'',proofSeq:0,coldRounds:6,minGroup:2}}
+function input(run=scope){return {scope:run,version:1,tailHash:'hash-1',goal:'中文 synthetic goal',constraints:[],criteria:[],events:[{seq:1,hash:'hash-1',type:'created',run,goal:'中文 synthetic goal'}],liveDocumentToken:'',protected:[],proofRef:'',proofSeq:0,coldRounds:6,minGroup:2}}
 function setup(t,config={}){const runtime=graphRuntime(),workers=new GraphWorkers(resolveConfig(config),graphBinary);workers.attach(runtime);t.after(()=>workers.close());return {runtime,workers}}
 it('decodes fragmented and coalesced UTF-8 frames and rejects oversize before body allocation',()=>{
  const got=[],decoder=new Frames(1000,v=>got.push(v)),bytes=Buffer.concat([frame({text:'北京'},1000),frame({text:'second'},1000)])

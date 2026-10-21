@@ -5,6 +5,7 @@ import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { sameRunScope, validRunScope } from '../task-scope.js'
+import { validateView, validateDetail } from './validation.ts'
 import { Frames, GraphError, frame, record } from './protocol.ts'
 import type { GraphConfig, GraphInput, GraphRequest, JsonRecord, ProcessHandle, SubprocessPort } from './protocol.ts'
 
@@ -75,13 +76,6 @@ class Worker {
     return this.stopping
   }
 }
-/** @param value - cross-process payload. @returns A closed four-module projection; no authority fields are accepted. */
-function projection(value: unknown): JsonRecord {
-  if(!record(value)||Object.keys(value).sort().join(',')!=='active_context,knowledge_graph,procedural_law_index,technical_law_index')throw new GraphError('invalid_projection')
-  const allowed: Record<string,string[]>={active_context:['recentAssets','round','complete','truncated'],procedural_law_index:['goal','constraints','criteria','intents','frontier','details','criteriaRef'],technical_law_index:['assets','total','byKind'],knowledge_graph:['nodes','edges','totalEdges','totalNodes','digests','digestCount','details']}
-  for(const [key,keys]of Object.entries(allowed)){const module=value[key];if(!record(module)||Object.keys(module).some(name=>!keys.includes(name)))throw new GraphError('invalid_projection')}
-  return value
-}
 /** Task-scoped registry. Missing services affect graph reads, never permission withdrawal. */
 export class GraphWorkers {
   private runtime: SubprocessPort | undefined;private workers=new Map<string,Worker>();private closed=false;private acquisition:Promise<void>=Promise.resolve()
@@ -117,7 +111,7 @@ export class GraphWorkers {
     else {
       promise=(async()=>{try{
         if(fresh){const hello=await worker.rpc('hello',input,hash,budget,deadline);if(!record(hello)||hello.kernelVersion!=='1'||hello.rulesVersion!=='structural-v1')throw new GraphError('protocol_mismatch')}
-        const value=projection(await worker.rpc('project',input,hash,budget,deadline));if(worker.closing||!current())throw new GraphError('stale_projection')
+        const value=validateView(await worker.rpc('project',input,hash,budget,deadline),input,hash);if(worker.closing||!current())throw new GraphError('stale_projection')
         worker.cached={hash,budget,value};return value
       }catch(error){await worker.stop();throw error}finally{worker.flight=undefined}})()
       worker.flight={key,promise}
@@ -131,7 +125,7 @@ export class GraphWorkers {
     await this.project(input,8000,current,signal)
     const worker=this.workers.get(input.scope.taskId);if(!worker)throw new GraphError('graph_unavailable')
     const hash=graphHash(JSON.stringify(input)),deadline=performance.now()+this.config.graphRequestTimeoutMs
-    try{const value=await this.cancelable(worker.rpc('detail',input,hash,8000,deadline,ref),signal);if(worker.closing||!current())throw new GraphError('stale_projection');return value}catch(error){await worker.stop();throw error}
+    try{const value=await this.cancelable(worker.rpc('detail',input,hash,8000,deadline,ref),signal);if(worker.closing||!current())throw new GraphError('stale_projection');return validateDetail(value,ref,input,hash)}catch(error){await worker.stop();throw error}
   }
   private async cancelable<T>(promise:Promise<T>,signal?:AbortSignal):Promise<T> {
     if(!signal)return promise;if(signal.aborted)throw new GraphError('graph_cancelled')

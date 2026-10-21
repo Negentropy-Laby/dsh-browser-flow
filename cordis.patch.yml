@@ -5,7 +5,7 @@
 # package names as client rows, and a subpath specifier is permanently not a
 # client row.
 #
-# Every value below is a deployment choice validated at load (lib/config.js);
+# Every value below is a deployment choice validated at load (lib/host/config.js);
 # an invalid value fails the plugin load instead of silently falling back.
 - insert:
     - id: browser-flow
@@ -21,3 +21,11 @@
         connectionIdleMs: 60000
         importWindowMs: 25000
         localTasksDir: ""
+        graphMaxWorkers: 4
+        graphIdleMs: 60000
+        graphRequestTimeoutMs: 5000
+        graphMaxFrameBytes: 8388608
+        graphStderrBytes: 16384
+        graphTerminateGraceMs: 1000
+        graphColdRounds: 6
+        graphMinGroup: 2

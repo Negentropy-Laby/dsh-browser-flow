@@ -31,6 +31,9 @@ import { decodeImportEvidence } from './import-evidence.js'
 import { createControlState, monotonicNow } from './state.js'
 import { redactUrl } from './pagecode.js'
 import { createTools } from './tools.js'
+import { GraphWorkers } from './graph/worker.ts'
+import { taskFacts } from './task-facts.js'
+import { taskView } from './task-projections.js'
 import { tasksRoot, listDefinitions, definitionSkills } from './task-definitions.js'
 
 export { Config }
@@ -71,6 +74,7 @@ export const inject = ['tools', 'agents']
  * @property {{ register: (definition: object) => () => void }} [tools] - tool registry.
  * @property {{ get: (id: string) => LiveAgent | undefined }} [agents] - Agent registry.
  * @property {{ register: (skill: import('./task-definitions.js').LocalSkill) => () => void }} [skills] - Optional existing skill registry; its registrations are Cordis effects.
+ * @property {import('./graph/protocol.ts').SubprocessPort} [subprocess] - optional managed process provider.
  * @property {{ fetch: { register: (route: FetchRoute) => () => void } }} [connection] - authenticated connection.
  * @property {(dependencies: string[], callback: (scope: HostContext) => void) => void} [inject] - deferred injection.
  * @property {(callback: () => (() => void | Promise<void>), label?: string) => void} [effect] - effect-scoped registration.
@@ -133,16 +137,22 @@ export class BrowserFlowService {
   /**
    * @param {HostContext} ctx - Host plugin context.
    * @param {import('./config.js').BrowserFlowConfig} config - resolved config.
+   * @param {GraphWorkers} [graph] - derived graph service; defaults to the packaged helper.
    */
-  constructor(ctx, config) {
+  constructor(ctx, config, graph=new GraphWorkers(config)) {
+    this.graph=graph
     this.ctx = ctx
     this.config = config
     const profile=ctx.get ? ctx.get('profileContext',false) : ctx.profileContext
-    this.tasks=new TaskStore(tasksRoot(config.localTasksDir,profile),profile,config.commandBudgetMs)
+    this.tasks=new TaskStore(tasksRoot(config.localTasksDir,profile),profile,config.commandBudgetMs,graph,config)
     this.importFiles = new ImportFiles(undefined)
     /** @type {WeakMap<object,string>} */ this.instanceTokens=new WeakMap()
     this.now=monotonicNow
     this.state = /** @type {ControlStore} */ (createControlState({now:()=>this.now()}))
+    this.tasks.controlDocument=access=>{
+      const agent=this.ctx.agents?.get(access.scope.ownerSessionId),lease=agent?this.state.leaseFor(agent,this.tokenOf(agent),access.scope.ownerSessionId):undefined
+      return lease?.state==='active'&&lease.task&&sameRunScope(lease.task,access.run)?lease.documentToken:undefined
+    }
     /** @type {Map<string, object>} */
     this.tools = new Map()
     /** @type {(() => void | Promise<void>)[]} */
@@ -222,11 +232,12 @@ export class BrowserFlowService {
     this.ctx.logger?.error?.('browser-flow: task operation failed; dependent writes remain disabled')
     return failure('task_storage_failed','task operation could not be recorded; revoke and hand off')
   }
-  /** @param {import('./task-store.js').TaskAccess} access - verified task. @returns {object} minimal logged task summary. */
-  taskSummary(access) {
+  /** @param {import('./task-store.js').TaskAccess} access - verified task. @param {boolean} [withGraph] - explicitly request derived graph computation. @param {AbortSignal} [signal] - caller cancellation. @returns {Promise<object>} logged task summary. */
+  async taskSummary(access,withGraph=false,signal=undefined) {
     const data=this.tasks.openTask(access)
-    const agent=this.ctx.agents?.get(access.scope.ownerSessionId),lease=agent?this.state.leaseFor(agent,this.tokenOf(agent),access.scope.ownerSessionId):undefined
-    data.liveDocumentToken=lease?.state==='active'&&lease.task&&sameRunScope(lease.task,access.run)?lease.documentToken:undefined
+    data.liveDocumentToken=this.tasks.controlDocument?.(access)
+    const budget=Math.max(1800,Math.floor(this.config.observeMaxChars*3/4))
+    const view=withGraph?await this.tasks.view(access,budget,signal):taskView(data,budget,undefined,'not_requested',this.tasks.writable)
     const workflow=data.snapshot?.definition.workflows.find(row=>row.id===data.manifest.workflowRef)
     const resources=workflow ? [...workflow.instructions,...workflow.resources] : []
     const instructions=(workflow?.instructions ?? []).map(name=>({name,text:data.snapshot?.files[name] ?? ''}))
@@ -235,8 +246,8 @@ export class BrowserFlowService {
       definition:data.manifest.definitionId ? {id:data.manifest.definitionId,version:data.manifest.definitionVersion,digest:data.manifest.definitionDigest} : null,
       workflow:workflow ? {id:workflow.id,stopBoundary:workflow.stopBoundary} : null,
       instructions:instructions.map(row=>({...row,text:row.text.slice(0,instructionBudget),complete:row.text.length<=instructionBudget})),resources,
-      ...this.tasks.view(access,Math.max(1800,Math.floor(this.config.observeMaxChars/2))),
-      businessVerdict:/** @type {{businessVerdict:string}} */(this.tasks.view(access,1800).active_context).businessVerdict,
+      ...view,
+      businessVerdict:taskFacts(data).verdict,
       writeBlocked:!!data.readOnly||data.blocked||data.unhealthy||!this.tasks.writable,logHealthy:!data.unhealthy}
   }
 
@@ -387,7 +398,7 @@ export class BrowserFlowService {
   /** @param {ResolvedCaller} caller - actual caller. @param {AbortSignal} signal - cancellation. @param {string} [view] - fixed view. @param {{ref:string,offset:number}} [detail] - task-local continuation. @returns {Promise<any>} owned observation. */
   async observeOwned(caller, signal, view, detail) {
     if(view==='task'){
-      try{const access=await this.tasks.forSession(caller.sessionId);await this.tasks.refreshEvidence(access);return success(detail ? this.tasks.detail(access,detail.ref,detail.offset,this.config.observeMaxChars) : this.taskSummary(access))}catch(error){return this.taskFailure(error)}
+      try{const access=await this.tasks.forSession(caller.sessionId);await this.tasks.refreshEvidence(access);return success(detail ? await this.tasks.detail(access,detail.ref,detail.offset,this.config.observeMaxChars) : await this.taskSummary(access,true,signal))}catch(error){return this.taskFailure(error)}
     }
     try{this.taskOf(caller)}catch(error){return this.taskFailure(error)}
     if (view === 'bjrsj_import') {
@@ -579,6 +590,9 @@ export class BrowserFlowService {
       this.disposers.push(/** @type {() => void} */ (this.ctx.tools?.register(definition)))
     }
     this.ctx.inject?.(['connection'], scope => this.registerRoutes(scope))
+    this.ctx.inject?.(['subprocess'], scope => {
+      if(scope.subprocess&&!this.closed){const detach=this.graph.attach(scope.subprocess);scope.effect?.(()=>detach,'browser-flow: graph provider')}
+    })
   }
 
   /**
@@ -694,7 +708,7 @@ export class BrowserFlowService {
     const listed=this.state.listPages(instanceId,connectionGeneration)
     const controls=listed.ok?listed.value.pages.filter((/** @type {any} */ page)=>page.authorized).map((/** @type {any} */ page)=>page.controlLeaseId):[]
     const task=this.tasks.current(sessionId)
-    return Response.json(success({ task:task ? this.taskSummary(task) : null,
+    return Response.json(success({ task:task ? await this.taskSummary(task) : null,
       definitions:listDefinitions(this.tasks.root).map(item=>({id:item.definition.id,workflows:item.definition.workflows.map(row=>({id:row.id,description:row.description}))})),
       protocolVersion:PROTOCOL_VERSION,commands: taken.value.commands, dropped: taken.value.dropped, agent, controls }))
   }
@@ -766,10 +780,10 @@ export class BrowserFlowService {
         const access=body.taskOperation==='create' ? await this.tasks.create(sessionId,body.spec) : await this.tasks.forSession(sessionId,body.task)
         let current=access
         if(body.taskOperation==='revise')current=await this.tasks.revise(access,body.spec)
-        else if(body.taskOperation==='cancel'||body.taskOperation==='finish'){await this.tasks.end(access,body.taskOperation==='cancel'?'cancelled':'handed_off');if(this.tasks.openTask(access).readOnly)return Response.json(success({...this.taskSummary(access),handoff:'read_only',historicalLifecycleUnchanged:true}))}
+        else if(body.taskOperation==='cancel'||body.taskOperation==='finish'){await this.tasks.end(access,body.taskOperation==='cancel'?'cancelled':'handed_off');if(this.tasks.openTask(access).readOnly)return Response.json(success({...await this.taskSummary(access),handoff:'read_only',historicalLifecycleUnchanged:true}))}
         else if(body.taskOperation==='resume')await this.tasks.resumeWait(access,body.waitId,body.userInput,(kind,inputRef)=>{const agent=this.ctx.agents?.get(sessionId);if(!agent)return false;const held=this.state.leaseFor(agent,this.tokenOf(agent),sessionId);if(!held||held.state!=='active'||!held.task||!sameRunScope(held.task,access.run))return false;if(kind==='page_authorization')return this.leaseStamp(held)===inputRef;const entry=this.importFiles.current(held);return !!entry&&entry.id===inputRef&&(kind!=='file_confirmation'||entry.state==='confirmed')})
         else if(!['create','open'].includes(body.taskOperation))throw new TaskError('invalid_request','unsupported task operation')
-        return Response.json(success(this.taskSummary(current)))
+        return Response.json(success(await this.taskSummary(current)))
       }catch(error){return Response.json(this.taskFailure(error),{status:409})}
     }
 
@@ -913,10 +927,12 @@ export class BrowserFlowService {
     this.closed = true
     this.closing = (async () => {
       this.state.close()
+      const graphClosed=this.graph.close().then(()=>true,()=>false)
       const filesClosed=this.importFiles.close()
       await Promise.allSettled([...this.pending])
       await filesClosed
       await this.tasks.close()
+      const graphClean=await graphClosed
       for (const dispose of [...this.disposers].reverse()) {
         try {
           await dispose()
@@ -926,6 +942,7 @@ export class BrowserFlowService {
       }
       this.disposers.length = 0
       await this.idleTimer?.()
+      if(!graphClean)throw new Error('browser-flow: graph cleanup failed')
     })()
     return this.closing
   }

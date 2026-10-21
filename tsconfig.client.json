@@ -1,0 +1,18 @@
+{
+  "extends": "./jsconfig.json",
+  "include": [
+    "src/client.js",
+    "src/clientcore.js",
+    "src/panel.js",
+    "src/pagecode.js",
+    "src/import-page.js",
+    "src/task-scope.js",
+    "src/protocol.js",
+    "src/node-ambient.d.ts",
+    "src/import-rules.js"
+  ],
+  "compilerOptions": {
+    "composite": true,
+    "tsBuildInfoFile": ".cache/client.tsbuildinfo"
+  }
+}

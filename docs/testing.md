@@ -1,14 +1,15 @@
 # Testing and private receipts
 
-Run `npm run build` to rebuild the Client and check its bundled page programs.
-`npm run typecheck` checks the JSDoc-typed sources; `npm run verify` also runs the
-plugin tests. Read the output for skips before claiming coverage.
+Run `npm run build` to emit the Host, Client and Windows x64 Go helper.
+The build requires Go 1.26.5 and the declared local TypeScript development dependency.
+`npm run typecheck` checks both compiler faces; `npm run verify` also runs Go and
+plugin tests. Source tests use tsx; package loading tests use plain Node. Read the output for skips before claiming coverage.
 
 ## Host inputs
 
 `DSH_CHECKOUT` selects a built Harness checkout for Host loadability tests. Without
-it the scripts look for a sibling `deepseek-harness` directory. `DSH_TSC` can select
-the TypeScript compiler entry. These values are private environment configuration;
+it the scripts look for a sibling `deepseek-harness` directory. `DSH_TSC` can explicitly select
+the TypeScript compiler entry; absence is a failure, not a successful skip. These values are private environment configuration;
 no contributor's checkout or installation path is committed.
 
 To test an installed Host, provide its application archive explicitly:

@@ -34,7 +34,7 @@ export interface Criterion {
 export interface GraphInput {
   scope: RunScope; version: number; tailHash: string; goal: string; constraints: string[]
   criteria: Criterion[]; events: GraphEvent[]; protected: string[]; proofRef: string; proofSeq: number
-  coldRounds: number; minGroup: number
+  coldRounds: number; minGroup: number; liveDocumentToken: string
 }
 /** Closed request envelope. All replies must echo its immutable binding. */
 export interface GraphRequest {

@@ -46,3 +46,18 @@ provider. Raw stderr and executable paths never enter tool failures.
 Only Windows x64 has a packaged production helper. Other platforms report an
 unavailable graph while loading the plugin and keeping safe Host operations.
 The test-only process provider and host-platform helper are not runtime fallbacks.
+
+## Tool output and failure handling
+
+Only `browser_observe` with `view: "task"` requests a graph. Panel polls carry
+Host state without waiting for graph computation, so queued page command budgets
+are not consumed by an unrelated graph read. Existing task detail references
+also serve graph and digest details. There is no seventh tool or new route.
+
+The Host verifies every returned reference against the sanitized input and
+replaces criteria, waits, permissions, log health and business verdicts with
+current Host facts. `active_context.graph` records availability and the exact
+projection ID. Unavailable projections do not block independent page operations,
+user waits, safe original reads or permission withdrawal. Unknown writes remain
+blocked regardless of graph availability. Large views include detail references
+and an explicit truncation flag; mandatory safety state remains visible.

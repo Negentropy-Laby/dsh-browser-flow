@@ -70,7 +70,7 @@ it('retains unversioned history and Session ownership read-only without promotin
   const before=await readFile(f.journal),restored=await reopen(t,f)
   assert.equal(restored.store.openTask(restored.access).readOnly,true)
   assert.throws(()=>restored.store.openTask(restored.access,true),{code:'task_read_only'})
-  assert.equal(restored.store.view(restored.access,8000).active_context.businessVerdict,'unverified')
+  assert.equal((await restored.store.view(restored.access,8000)).active_context.businessVerdict,'unverified')
   await assert.rejects(restored.store.create('owner',{goal:'Replacement',origins:['https://one.example']}),{code:'task_bound'})
   await assert.rejects(restored.store.revise(restored.access,{newRun:true}),{code:'task_read_only'})
   await restored.store.end(restored.access,'handed_off')

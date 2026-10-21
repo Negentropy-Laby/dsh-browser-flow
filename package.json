@@ -4,13 +4,13 @@
   "private": true,
   "type": "module",
   "description": "Observe and operate the user's already-open, already-authenticated DeepSeek Harness Desktop Sidebar Browser page",
-  "main": "./src/index.js",
+  "main": "./lib/host/index.js",
   "exports": {
-    ".": "./src/index.js",
-    "./protocol": "./src/protocol.js",
-    "./state": "./src/state.js",
-    "./pagecode": "./src/pagecode.js",
-    "./config": "./src/config.js",
+    ".": "./lib/host/index.js",
+    "./protocol": "./lib/host/protocol.js",
+    "./state": "./lib/host/state.js",
+    "./pagecode": "./lib/host/pagecode.js",
+    "./config": "./lib/host/config.js",
     "./client": "./lib/client.js",
     "./package.json": "./package.json"
   },
@@ -20,7 +20,11 @@
     "cordis.patch.yml",
     "docs",
     "README.md",
-    "vendor"
+    "vendor",
+    "native/graph-core/GO-LICENSE",
+    "native/graph-core/extraction.json",
+    "LICENSE",
+    "NOTICE"
   ],
   "dsh": {
     "bundle": {
@@ -34,13 +38,13 @@
     "node": "^22.19 || >=24"
   },
   "scripts": {
-    "build": "node scripts/build-client.mjs",
+    "build": "node scripts/build-host.mjs && node scripts/build-client.mjs && node scripts/build-graph.mjs",
     "typecheck": "node scripts/typecheck.mjs",
     "test": "node scripts/build-client.mjs && node scripts/build-graph.mjs --test-helper && node --import tsx/esm --test \"tests/*.test.js\"",
     "test:coverage": "node scripts/build-client.mjs && node scripts/build-graph.mjs --test-helper && node --import tsx/esm --test --experimental-test-coverage \"tests/*.test.js\"",
     "smoke:live": "node scripts/live-host-smoke.mjs",
     "evidence:host": "node scripts/extract-installed-host.mjs",
-    "verify": "node scripts/build-client.mjs && node scripts/build-graph.mjs --test-helper && node scripts/typecheck.mjs && node --import tsx/esm --test \"tests/*.test.js\""
+    "verify": "npm run build && node scripts/build-graph.mjs --test-helper && go -C native/graph-core test ./... && npm run typecheck && node --import tsx/esm --test \"tests/*.test.js\""
   },
   "dependencies": {
     "@deepseek-ai/dsh-atomic-write": "file:vendor/deepseek-ai-dsh-atomic-write-0.2.1-rc.2.tgz",
@@ -56,5 +60,6 @@
   "bundleDependencies": [
     "@deepseek-ai/dsh-atomic-write"
   ],
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "types": "./lib/host/index.d.ts"
 }

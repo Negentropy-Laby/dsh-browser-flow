@@ -1,0 +1,21 @@
+{
+  "extends": "./jsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rewriteRelativeImportExtensions": true,
+    "rootDir": "src",
+    "outDir": "lib/host",
+    "declaration": true,
+    "composite": true,
+    "tsBuildInfoFile": ".cache/host.tsbuildinfo"
+  },
+  "include": [
+    "src/**/*.js",
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "src/client.js",
+    "src/clientcore.js",
+    "src/panel.js"
+  ]
+}
