@@ -1,6 +1,6 @@
 export type LiveAgent = {
     id: string;
-    session?: { vars?: Record<string, unknown> };
+    session?: { id?:string; vars?: Record<string, unknown> };
 };
 export type ToolExec = {
     agent?: LiveAgent | undefined;
@@ -16,7 +16,7 @@ export type HostContext = {
     get?: ((name: string, strict: boolean) => import("./task-definitions.ts").Profile | undefined) | undefined;
     profileContext?: import("./task-definitions.ts").Profile | undefined;
     tools?: {
-        register: (definition: object) => () => void;
+        register: (definition: ToolDefinition) => () => void;
     } | undefined;
     agents?: {
         get: (id: string) => LiveAgent | undefined;
@@ -194,7 +194,7 @@ closing: Promise<void> | undefined;
    * @param {ToolExec} exec - tool execution context.
    * @returns  caller verdict.
    */
-  resolveCaller(exec: ToolExec) {
+  resolveCaller(exec: Pick<ToolExec,'agent'> & Partial<Pick<ToolExec,'signal'>>) {
     const agent = exec?.agent
     if (agent === undefined || agent === null) {
       return failure('no_live_agent', 'this tool runs only inside an Agent turn; start the Session\'s Agent first')

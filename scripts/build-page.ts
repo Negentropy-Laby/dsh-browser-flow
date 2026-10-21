@@ -16,7 +16,9 @@ export function compiledFunction(file:string,symbol:string): string {
   if(parsed.statements.some(ts.isImportDeclaration))throw new Error('Page programs cannot depend on runtime imports')
   const declaration=parsed.statements.find((statement): statement is ts.FunctionDeclaration=>ts.isFunctionDeclaration(statement)&&statement.name?.text===symbol)
   if(!declaration)throw new Error('Missing fixed page program: '+symbol)
-  return declaration.getText(parsed).replace(/^export\s+/,'')
+  const source=declaration.getText(parsed).replace(/^export\s+/,'')
+  if(/\b__(?:rewriteRelativeImportExtension|awaiter|generator|assign|spreadArray|read|values|name|toESM|commonJS)\b/.test(source))throw new Error('Fixed programs cannot capture compiler helpers')
+  return source
 }
 
 /** @returns Sources compiled by tsc, never functions transformed by tsx. */

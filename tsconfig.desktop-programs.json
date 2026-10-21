@@ -1,0 +1,25 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "checkJs": false,
+    "noEmit": false,
+    "removeComments": true,
+    "rewriteRelativeImportExtensions": false,
+    "lib": [
+      "es2023",
+      "dom"
+    ],
+    "types": [
+      "node"
+    ],
+    "rootDir": "tests/desktop",
+    "outDir": ".cache/desktop-js",
+    "composite": true,
+    "tsBuildInfoFile": ".cache/desktop-programs.tsbuildinfo",
+    "allowImportingTsExtensions": false
+  },
+  "include": [
+    "tests/desktop/**/*.ts"
+  ]
+}

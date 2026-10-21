@@ -9,9 +9,18 @@ const root=join(dirname(fileURLToPath(import.meta.url)),'..')
 export function buildFixtures(): void {
   rmSync(join(root,'.cache','fixture-js'),{recursive:true,force:true})
   rmSync(join(root,'.cache','fixtures.tsbuildinfo'),{force:true})
-  const compiled=spawnSync(process.execPath,[join(root,'node_modules','typescript','bin','tsc'),'-p',join(root,'tsconfig.fixtures.json')],{cwd:root,stdio:'inherit'})
-  if(compiled.status!==0)throw new Error('Synthetic fixture compilation failed')
+  rmSync(join(root,'.cache','desktop-js'),{recursive:true,force:true})
+  rmSync(join(root,'.cache','desktop-programs.tsbuildinfo'),{force:true})
+  for(const config of ['tsconfig.fixtures.json','tsconfig.desktop-programs.json']){
+    const compiled=spawnSync(process.execPath,[join(root,'node_modules','typescript','bin','tsc'),'-p',join(root,config)],{cwd:root,stdio:'inherit'})
+    if(compiled.status!==0)throw new Error('Synthetic fixture compilation failed')
+  }
   mkdirSync(join(root,'.cache','fixtures'),{recursive:true})
+  const programs:Record<string,string>={}
+  for(const [file,symbols] of [['desktop-js/programs',['desktopIdentity','createImportFixture','executeFixturePage','fixtureRequests','destroyFixture','qualifyInstalledPackage']],['fixture-js/native-probes',['fixtureState','fixtureResponse','fixtureRestored']]] as const){
+    for(const symbol of symbols)programs[symbol]=compiledFunction(join(root,'.cache',file+'.js'),symbol)
+  }
+  writeFileSync(join(root,'.cache','fixtures','programs.json'),JSON.stringify(programs)+'\n')
   for(const [name,symbol] of [['dom-table','installDomTable'],['bjrsj-import','installImport'],['second-page','installSecondPage']]){
     const html=readFileSync(join(root,'fixtures',name+'.html'),'utf8')
     if(/<script\b|\son\w+\s*=/i.test(html))throw new Error('Tracked fixture HTML must contain no handwritten executable code')

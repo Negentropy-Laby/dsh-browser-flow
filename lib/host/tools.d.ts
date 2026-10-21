@@ -1,6 +1,14 @@
 import type { BrowserFlowService, ToolExec } from './index.ts';
 export type { ToolExec } from './index.ts';
-export type ToolService = Pick<BrowserFlowService, 'annotate' | 'resolveCaller' | 'listTabs' | 'observe' | 'find' | 'act' | 'wait' | 'release'>;
+/** Tools forward opaque result objects; each owning service retains its richer result type. */
+export type ToolService = Pick<BrowserFlowService, 'resolveCaller'> & Partial<Pick<BrowserFlowService, 'annotate'>> & {
+    listTabs(...args: Parameters<BrowserFlowService['listTabs']>): import('./protocol.ts').Result<object>;
+    observe(...args: Parameters<BrowserFlowService['observe']>): Promise<import('./protocol.ts').Result<object>>;
+    find(...args: Parameters<BrowserFlowService['find']>): Promise<import('./protocol.ts').Result<object>>;
+    act(...args: Parameters<BrowserFlowService['act']>): Promise<import('./protocol.ts').Result<object>>;
+    wait(...args: Parameters<BrowserFlowService['wait']>): Promise<import('./protocol.ts').Result<object>>;
+    release(...args: Parameters<BrowserFlowService['release']>): import('./protocol.ts').Result<object> | Promise<import('./protocol.ts').Result<object>>;
+};
 export type ToolDefinition = ReturnType<typeof createTools>[number];
 /**
  * Build every tool definition bound to one service instance.
@@ -9,17 +17,7 @@ export type ToolDefinition = ReturnType<typeof createTools>[number];
  * @returns {object[]} tool definitions.
  */
 export declare function createTools(service: ToolService, config: import('./config.ts').BrowserFlowConfig): ({
-    execute(args: Record<string, unknown>, exec: ToolExec): Promise<{
-        ok: false;
-        error: {
-            code: string;
-            message: string;
-            details?: Record<string, unknown>;
-        };
-    } | {
-        ok: true;
-        value: object;
-    }>;
+    execute(args: Record<string, unknown>, exec: ToolExec): Promise<import("./protocol.ts").Result<object>>;
     name: string;
     description: string;
     parameters: {
@@ -42,65 +40,7 @@ export declare function createTools(service: ToolService, config: import('./conf
         };
     };
 } | {
-    execute(args: Record<string, unknown>, exec: ToolExec): Promise<{
-        ok: false;
-        error: {
-            code: string;
-            message: string;
-            details?: Record<string, unknown>;
-        };
-    } | {
-        ok: true;
-        value: object;
-    }>;
-    name: string;
-    description: string;
-    parameters: {
-        type: string;
-        properties: {
-            view: {
-                type: string;
-                enum: string[];
-                description: string;
-            };
-            ref: {
-                type: string;
-                description: string;
-            };
-            offset: {
-                type: string;
-                minimum: number;
-                description: string;
-            };
-        };
-        required: never[];
-        additionalProperties: boolean;
-    };
-    output: {
-        schema: {
-            type: string;
-            additionalProperties: boolean;
-        };
-        render: (_args: object, value: unknown) => {
-            type: string;
-            text: string;
-        }[];
-        presentationMeta: (_args: object, value: unknown) => {
-            tool: string;
-        };
-    };
-} | {
-    execute(args: Record<string, unknown>, exec: ToolExec): Promise<{
-        ok: false;
-        error: {
-            code: string;
-            message: string;
-            details?: Record<string, unknown>;
-        };
-    } | {
-        ok: true;
-        value: object;
-    }>;
+    execute(args: Record<string, unknown>, exec: ToolExec): Promise<import("./protocol.ts").Result<object>>;
     name: string;
     description: string;
     parameters: {
@@ -137,17 +77,7 @@ export declare function createTools(service: ToolService, config: import('./conf
         };
     };
 } | {
-    execute(args: Record<string, unknown>, exec: ToolExec): Promise<{
-        ok: false;
-        error: {
-            code: string;
-            message: string;
-            details?: Record<string, unknown>;
-        };
-    } | {
-        ok: true;
-        value: object;
-    }>;
+    execute(args: Record<string, unknown>, exec: ToolExec): Promise<import("./protocol.ts").Result<object>>;
     name: string;
     description: string;
     parameters: {
@@ -217,17 +147,7 @@ export declare function createTools(service: ToolService, config: import('./conf
         };
     };
 } | {
-    execute(args: Record<string, unknown>, exec: ToolExec): Promise<{
-        ok: false;
-        error: {
-            code: string;
-            message: string;
-            details?: Record<string, unknown>;
-        };
-    } | {
-        ok: true;
-        value: object;
-    }>;
+    execute(args: Record<string, unknown>, exec: ToolExec): Promise<import("./protocol.ts").Result<object>>;
     name: string;
     description: string;
     parameters: {
@@ -256,39 +176,6 @@ export declare function createTools(service: ToolService, config: import('./conf
             };
         };
         required: string[];
-        additionalProperties: boolean;
-    };
-    output: {
-        schema: {
-            type: string;
-            additionalProperties: boolean;
-        };
-        render: (_args: object, value: unknown) => {
-            type: string;
-            text: string;
-        }[];
-        presentationMeta: (_args: object, value: unknown) => {
-            tool: string;
-        };
-    };
-} | {
-    execute(args: Record<string, unknown>, exec: ToolExec): Promise<{
-        ok: false;
-        error: {
-            code: string;
-            message: string;
-            details?: Record<string, unknown>;
-        };
-    } | {
-        ok: true;
-        value: object;
-    }>;
-    name: string;
-    description: string;
-    parameters: {
-        type: string;
-        properties: {};
-        required: never[];
         additionalProperties: boolean;
     };
     output: {

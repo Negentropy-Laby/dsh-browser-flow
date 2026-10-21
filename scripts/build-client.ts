@@ -9,10 +9,10 @@
  * build resolves their local import graph, concatenates the modules in
  * dependency order inside one factory scope, and strips the module syntax. It
  * deliberately supports only the import forms this package uses: a bare
- * `import { a, b } from './local.js'` and a bare `import './local.js'`. Anything
+ * `import { a, b } from './local.ts'` and a bare `import './local.js'`. Anything
  * else fails the build rather than producing a silently broken bundle.
  *
- * Usage: `node scripts/build-client.mjs`
+ * Usage: `node --import tsx/esm scripts/build-client.ts`
  */
 
 import { Script } from 'node:vm'
@@ -41,7 +41,7 @@ const PLATFORM_MODULES = new Set([
   '@deepseek-ai/dsh-client-ui-dockkit',
 ])
 
-/** A local import: `import { a, b } from './x.js'` or `import './x.js'`. */
+/** A local import: `import { a, b } from './x.ts'` or `import './x.js'`. */
 const LOCAL_IMPORT = /^import\s+(?:\{([^}]*)\}\s+from\s+)?(['"])(\.[^'"]+|#browser-flow\/page-programs)\2\s*;?\s*$/gm
 /** Literal packaged JSON is embedded, never fetched by the Client. */
 const LOCAL_JSON_IMPORT = /^import\s+(\w+)\s+from\s+'(\.[^']+\.json)'\s+with\s*\{\s*type:\s*'json'\s*\}\s*;?\s*$/gm

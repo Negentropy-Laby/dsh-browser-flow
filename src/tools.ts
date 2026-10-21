@@ -1,6 +1,15 @@
 import type { BrowserFlowService, ToolExec } from './index.ts'
 export type { ToolExec } from './index.ts'
-export type ToolService = Pick<BrowserFlowService, 'annotate' | 'resolveCaller' | 'listTabs' | 'observe' | 'find' | 'act' | 'wait' | 'release'>
+/** Tools forward opaque result objects; each owning service retains its richer result type. */
+export type ToolService = Pick<BrowserFlowService,'resolveCaller'> & Partial<Pick<BrowserFlowService,'annotate'>> & {
+ listTabs(...args:Parameters<BrowserFlowService['listTabs']>):import('./protocol.ts').Result<object>
+ observe(...args:Parameters<BrowserFlowService['observe']>):Promise<import('./protocol.ts').Result<object>>
+ find(...args:Parameters<BrowserFlowService['find']>):Promise<import('./protocol.ts').Result<object>>
+ act(...args:Parameters<BrowserFlowService['act']>):Promise<import('./protocol.ts').Result<object>>
+ wait(...args:Parameters<BrowserFlowService['wait']>):Promise<import('./protocol.ts').Result<object>>
+ release(...args:Parameters<BrowserFlowService['release']>):import('./protocol.ts').Result<object>|Promise<import('./protocol.ts').Result<object>>
+}
+
 export type ToolDefinition = ReturnType<typeof createTools>[number]
 
 /**

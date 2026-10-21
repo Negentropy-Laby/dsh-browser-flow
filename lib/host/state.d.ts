@@ -26,9 +26,8 @@ export type CommandEntry = {
 };
 export type InFlightRecord = {
     entry: CommandEntry;
-    command: {
-        deadlineAt: number;
-        sequence: number;
+    command: Omit<import('./protocol.ts').CommandEnvelope, 'kind' | 'task'> & {
+        task?: import('./task-scope.ts').RunScope;
         budgetMs: number;
     };
     outcome: "pending" | "settled" | "unknown_outcome" | "dropped";
@@ -80,6 +79,8 @@ export declare function createControlState(options?: {
 }): {
     close: () => void;
     registerConnection: (hello: {
+        kind?: string;
+        protocolVersion?: number;
         connectionGeneration: number;
         sessionId: string;
         panel: {
@@ -188,9 +189,9 @@ export declare function createControlState(options?: {
             pageRetained: boolean;
         };
     };
-    run: (lease: ControlLease, op: PageOperation, limits: import("./config.ts").BrowserFlowConfig, signal?: AbortSignal) => Promise<Result<Record<string, unknown>>>;
-    pumpAll: (limits: import("./config.ts").BrowserFlowConfig) => void;
-    takeCommands: (instanceId: string, generation: number, limits: import("./config.ts").BrowserFlowConfig) => {
+    run: (lease: ControlLease, op: PageOperation, limits: Pick<import("./config.ts").BrowserFlowConfig, "commandBudgetMs" | "queueLimit">, signal?: AbortSignal) => Promise<Result<Record<string, unknown>>>;
+    pumpAll: (limits: Pick<import("./config.ts").BrowserFlowConfig, "commandBudgetMs" | "queueLimit">) => void;
+    takeCommands: (instanceId: string, generation: number, limits: Pick<import("./config.ts").BrowserFlowConfig, "commandBudgetMs" | "queueLimit">) => {
         ok: false;
         error: {
             code: string;
@@ -200,17 +201,18 @@ export declare function createControlState(options?: {
     } | {
         ok: true;
         value: {
-            commands: {
-                deadlineAt: number;
-                sequence: number;
+            commands: (Omit<import("./protocol.ts").CommandEnvelope, "kind" | "task"> & {
+                task?: import("./task-scope.ts").RunScope;
                 budgetMs: number;
-            }[];
+            })[];
             dropped: string[];
         };
     };
     settle: (result: Omit<import("./protocol.ts").ResultEnvelope, "kind" | "protocolVersion" | "task"> & {
+        kind?: string;
+        protocolVersion?: number;
         task?: import("./task-scope.ts").RunScope;
-    }, limits: import("./config.ts").BrowserFlowConfig) => {
+    }, limits: Pick<import("./config.ts").BrowserFlowConfig, "commandBudgetMs" | "queueLimit">) => {
         ok: false;
         error: {
             code: string;

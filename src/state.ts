@@ -26,11 +26,7 @@ export type CommandEntry = {
 };
 export type InFlightRecord = {
     entry: CommandEntry;
-    command: {
-        deadlineAt: number;
-        sequence: number;
-        budgetMs: number;
-    };
+    command: Omit<import('./protocol.ts').CommandEnvelope,'kind'|'task'> & {task?:import('./task-scope.ts').RunScope;budgetMs:number};
     outcome: "pending" | "settled" | "unknown_outcome" | "dropped";
     taken: boolean;
     delivery: {
@@ -164,7 +160,7 @@ export function createControlState(options: { now?: (() => number) | undefined; 
    * @param {{ instanceId: string, pages: PanelPage[] }} hello.panel - panel identity and pages.
    * @returns {object} registration verdict.
    */
-  function registerConnection(hello: { connectionGeneration: number; sessionId: string; panel: { instanceId: string; pages: PanelPage[]; }; }) {
+  function registerConnection(hello: { kind?:string;protocolVersion?:number; connectionGeneration: number; sessionId: string; panel: { instanceId: string; pages: PanelPage[]; }; }) {
     if (closed) return failure('connection_stale', 'the browser control service was unloaded')
     const instanceId = hello.panel.instanceId
     const existing = connections.get(instanceId)
@@ -562,7 +558,7 @@ export function createControlState(options: { now?: (() => number) | undefined; 
    * @param {AbortSignal} [signal] - caller cancellation.
    * @returns {Promise<object>} settled outcome.
    */
-  function run(lease: ControlLease, op: PageOperation, limits: import('./config.ts').BrowserFlowConfig, signal?: AbortSignal) : Promise<Result<Record<string, unknown>>> {
+  function run(lease: ControlLease, op: PageOperation, limits: Pick<import('./config.ts').BrowserFlowConfig,'commandBudgetMs'|'queueLimit'>, signal?: AbortSignal) : Promise<Result<Record<string, unknown>>> {
     if (lease.state !== 'active') {
       return Promise.resolve(failure('not_authorized', 'control for this page was revoked; authorize it again'))
     }
@@ -642,7 +638,7 @@ export function createControlState(options: { now?: (() => number) | undefined; 
    * @param {import('./config.ts').BrowserFlowConfig} limits - resolved config.
    * @returns {void}
    */
-  function pump(lease: ControlLease, limits: import('./config.ts').BrowserFlowConfig) : void {
+  function pump(lease: ControlLease, limits: Pick<import('./config.ts').BrowserFlowConfig,'commandBudgetMs'|'queueLimit'>) : void {
     if (lease.state !== 'active') return
     if (lease.inFlight.size > 0) return
     // Reauthorization explicitly selects the connection that may take work.
@@ -663,7 +659,7 @@ export function createControlState(options: { now?: (() => number) | undefined; 
       // so consuming its sequence here would leave the panel's counter behind
       // the Host's for every later command.
       entry.sequence = -1
-      const command = {
+      const command: InFlightRecord['command'] = {
         id: entry.id,
         protocolVersion: PROTOCOL_VERSION,
         ...(lease.task ? {task:lease.task} : {}),
@@ -707,7 +703,7 @@ export function createControlState(options: { now?: (() => number) | undefined; 
    * @param {import('./config.ts').BrowserFlowConfig} limits - resolved config.
    * @returns {void}
    */
-  function pumpAll(limits: import('./config.ts').BrowserFlowConfig) : void {
+  function pumpAll(limits: Pick<import('./config.ts').BrowserFlowConfig,'commandBudgetMs'|'queueLimit'>) : void {
     for (const lease of leases.values()) pump(lease, limits)
   }
 
@@ -721,7 +717,7 @@ export function createControlState(options: { now?: (() => number) | undefined; 
    * @param {import('./config.ts').BrowserFlowConfig} limits - resolved config.
    * @returns {object} commands and dropped ids.
    */
-  function takeCommands(instanceId: string, generation: number, limits: import('./config.ts').BrowserFlowConfig) {
+  function takeCommands(instanceId: string, generation: number, limits: Pick<import('./config.ts').BrowserFlowConfig,'commandBudgetMs'|'queueLimit'>) {
     const connection = connections.get(instanceId)
     if (connection === undefined) return failure('page_unavailable', 'the plugin panel is not connected')
     if (connection.generation !== generation) return failure('connection_stale', 'the panel connection is not the current generation')
@@ -824,7 +820,7 @@ export function createControlState(options: { now?: (() => number) | undefined; 
    * @param {import('./config.ts').BrowserFlowConfig} limits - resolved config.
    * @returns {object} settlement verdict.
    */
-  function settle(result: Omit<import('./protocol.ts').ResultEnvelope, 'kind' | 'protocolVersion' | 'task'> & {task?: import('./task-scope.ts').RunScope}, limits: import('./config.ts').BrowserFlowConfig) {
+  function settle(result: Omit<import('./protocol.ts').ResultEnvelope, 'kind' | 'protocolVersion' | 'task'> & {kind?:string;protocolVersion?:number;task?: import('./task-scope.ts').RunScope}, limits: Pick<import('./config.ts').BrowserFlowConfig,'commandBudgetMs'|'queueLimit'>) {
     const lease = leases.get(result.leaseId)
     if (lease === undefined) return failure('stale_observation', 'the control lease no longer exists')
     if (lease.state !== 'active') return failure('revoked', 'control for this page was revoked')

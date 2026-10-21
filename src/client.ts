@@ -1,15 +1,17 @@
+export interface TabDefinition {id:string;kind:string;multiple:boolean;keepMounted:boolean;title:()=>string;guide:{id:string;order:number;title:()=>string;description:()=>string}[]}
+export interface SlotSpec {name:string;key:string;locale?:string}
 export type ClientContext = {
     effect: (callback: () => (() => void) | void, label?: string) => void;
     locale: {
-        register: (namespace: string, copy: object) => () => void;
+        register: (namespace: string, copy: typeof COPY) => () => void;
         bind: (namespace: string) => (key: string) => string;
     };
     sidebarRightTabs: {
-        register: (definition: object) => () => void;
+        register: (definition: TabDefinition) => () => void;
     };
     slots: {
         inject: (name: string, callback: () => unknown) => unknown;
-        register: (options: object, component: (...args:never[])=>unknown) => () => void;
+        register: (options: SlotSpec, component: (props:{sessionId:string})=>unknown) => () => void;
     };
 };
 

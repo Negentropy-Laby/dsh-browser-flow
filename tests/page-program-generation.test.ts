@@ -12,7 +12,7 @@ it('builds all fixed operations from compiled TypeScript with no module dependen
   assert.ok(manifest&&typeof manifest==='object'&&'sha256' in manifest)
   assert.equal(manifest.sha256,createHash('sha256').update(bytes).digest('hex'))
   const target={documentToken:'synthetic',elementRef:'synthetic'}
-  for(const source of [identityProgram(),observeProgram(100,10),findProgram({by:'text',value:'literal'},2),actProgram({...target,action:'click'}),waitProgram({target,condition:'present',timeoutMs:1})]){
+  for(const source of [identityProgram(),observeProgram(100,10),findProgram({by:'text',value:'literal'},2),actProgram({...target,action:'click'}),waitProgram({target,condition:'present',timeoutMs:1})] as const){
     assert.doesNotMatch(source,/__name|__awaiter/)
     const parsed=ts.createSourceFile('fixed.js',source,ts.ScriptTarget.ES2022,true,ts.ScriptKind.JS)
     const inspect=(node:ts.Node):void=>{
@@ -26,11 +26,25 @@ it('builds all fixed operations from compiled TypeScript with no module dependen
 })
 
 it('keeps tracked synthetic HTML static and assembles its compiled behavior privately',()=>{
-  for(const name of ['dom-table','bjrsj-import','second-page']){
+  for(const name of ['dom-table','bjrsj-import','second-page'] as const){
     const html=readFileSync(new URL('../fixtures/'+name+'.html',import.meta.url),'utf8')
     assert.doesNotMatch(html,/<script\b|\son\w+\s*=/i)
     const compiled=readFileSync(new URL('../.cache/fixtures/'+name+'.html',import.meta.url),'utf8')
     assert.match(compiled,/<script>/)
     assert.doesNotMatch(compiled,/__name|__awaiter/)
   }
+})
+
+it('serialization refuses a compiler helper captured outside the fixed function',async()=>{
+  const {mkdtemp,writeFile,rm}=await import('node:fs/promises')
+  const {tmpdir}=await import('node:os')
+  const {join}=await import('node:path')
+  const {compiledFunction}=await import('../scripts/build-page.ts')
+  const root=await mkdtemp(join(tmpdir(),'bf-helper-refusal-'))
+  try{
+    const file=join(root,'negative.js')
+    // Deliberately malformed emitted code, never a program executed in a page.
+    await writeFile(file,'export function negative(){return __rewriteRelativeImportExtension("fixture")}\n')
+    assert.throws(()=>compiledFunction(file,'negative'),/compiler helpers/)
+  }finally{await rm(root,{recursive:true,force:true})}
 })

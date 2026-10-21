@@ -160,8 +160,8 @@ npm run typecheck
 npm run verify
 ```
 
-Typechecking uses `DSH_TSC` or a compiler in a local/sibling Harness checkout.
-Inspect the output: absence of a compiler is reported as a skip. Host tests also
+Typechecking uses the declared local TypeScript compiler, or an explicit `DSH_TSC`
+entry. A missing compiler fails the check. Host tests also
 report skips when their optional artifacts are unavailable. Automated checks
 and synthetic fixtures do not establish logged-in website or business acceptance.
 

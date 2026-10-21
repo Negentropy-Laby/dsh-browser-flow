@@ -125,12 +125,12 @@ describe('validateCommand', () => {
 
 describe('validateResult', () => {
   it('refuses non-string optional diagnostics before accepting a terminal result', () => {
-    for (const error of [42, {message: 42}, {message: 'x'.repeat(4001)}]) {
+    for (const error of [42, {message: 42}, {message: 'x'.repeat(4001)}] as const) {
       assert.equal(validateResult(result({outcome:'unknown_outcome',error})).ok,false)
     }
   })
   it('requires a nonempty panel instance id', () => {
-    for (const instanceId of [undefined, '', 42]) {
+    for (const instanceId of [undefined, '', 42] as const) {
       const verdict = validateResult(result({ instanceId }))
       assert.equal(verdict.ok, false)
       assert.match(verdict.reason, /instanceId/)
@@ -144,7 +144,7 @@ describe('validateResult', () => {
   })
 
   it('accepts each terminal outcome', () => {
-    for (const outcome of ['ok', 'dropped', 'unknown_outcome']) {
+    for (const outcome of ['ok', 'dropped', 'unknown_outcome'] as const) {
       assert.equal(validateResult(result({ outcome })).ok, true, outcome)
     }
     const failed = validateResult(result({ outcome: 'failed', error: { code: 'not_found', message: 'nothing matched' } }))

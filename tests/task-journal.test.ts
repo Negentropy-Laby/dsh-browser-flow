@@ -39,7 +39,7 @@ it('rejects unknown live event semantics before appending any bytes',async t=>{
   assert.deepEqual(await readFile(f.journal),before)
 })
 it('blocks only the affected task for well-hashed unknown events, versions and invalid write payloads',async t=>{
-  for(const patch of [{type:'future_write'},{schemaVersion:99},{data:{attemptId:'attempt-unknown',action:77}}]){
+  for(const patch of [{type:'future_write'},{schemaVersion:99},{data:{attemptId:'attempt-unknown',action:77}}] as const){
     const f=await fixture(t)
     const attempt=await f.store.beginAttempt(f.access,'click')
     await f.store.receipt(f.access,attempt,'not_executed')

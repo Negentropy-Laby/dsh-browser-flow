@@ -42,8 +42,8 @@
     "typecheck": "node --import tsx/esm scripts/typecheck.ts",
     "test": "npm run build:fixtures && node --import tsx/esm scripts/build-page.ts && node --import tsx/esm scripts/build-client.ts && node --import tsx/esm scripts/build-graph.ts --test-helper && node --import tsx/esm --test \"tests/*.test.{js,ts}\"",
     "test:coverage": "npm run build:fixtures && node --import tsx/esm scripts/build-page.ts && node --import tsx/esm scripts/build-client.ts && node --import tsx/esm scripts/build-graph.ts --test-helper && node --import tsx/esm --test --experimental-test-coverage \"tests/*.test.{js,ts}\"",
-    "smoke:live": "node scripts/live-host-smoke.mjs",
-    "evidence:host": "node scripts/extract-installed-host.mjs",
+    "smoke:live": "node --import tsx/esm scripts/live-host-smoke.ts",
+    "evidence:host": "node --import tsx/esm scripts/extract-installed-host.ts",
     "verify": "npm run build && node --import tsx/esm scripts/build-graph.ts --test-helper && go -C native/graph-core test ./... && npm run build:fixtures && npm run typecheck && node --import tsx/esm --test \"tests/*.test.{js,ts}\"",
     "build:fixtures": "node --import tsx/esm scripts/build-fixtures.ts"
   },

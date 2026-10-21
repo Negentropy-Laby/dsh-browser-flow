@@ -103,7 +103,7 @@ export function programFor(pageCode: PagePrograms, op: PageOperation) : string {
  * @param {Element} element - guest element.
  * @returns {{ lease: string, partition: string, sessionId: string, tabId: string }} identity facts.
  */
-export function identityOf(element: Element) : {
+export function identityOf(element: {getAttribute(name:string):string|null;closest(selector:string):{getAttribute(name:string):string|null}|null}) : {
     lease: string;
     partition: string;
     sessionId: string;

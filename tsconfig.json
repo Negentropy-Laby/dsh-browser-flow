@@ -18,6 +18,9 @@
     },
     {
       "path": "./tsconfig.fixtures.json"
+    },
+    {
+      "path": "./tsconfig.desktop-programs.json"
     }
   ]
 }

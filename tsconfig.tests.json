@@ -7,7 +7,9 @@
   "include": [
     "tests/**/*.ts",
     "src/**/*.ts",
-    "src/**/*.js"
+    "src/**/*.js",
+    "scripts/build-client.ts",
+    "scripts/build-page.ts"
   ],
   "exclude": [
     "src/page/runtime.ts",

@@ -43,3 +43,9 @@ The Client sources are TypeScript and compile before bundle assembly. Panel
 responses are decoded at the HTTP JSON boundary, including task ownership and
 command operations. The existing poll envelope and protocol v3 are unchanged.
 Reload Host and Client together after replacing the generated artifacts.
+
+Tests, diagnostics and Electron fixture programs now use checked TypeScript.
+Child source entrypoints explicitly load this package's `tsx/esm`; installed
+package probes use generated JavaScript under plain Node. Fixture serialization
+rejects captured compiler helpers. The Host, Client, DOM programs, scripts,
+tests, DOM fixtures and Electron programs each have a compiler face.

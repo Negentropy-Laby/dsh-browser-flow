@@ -8,13 +8,13 @@ export type PagePolicy = {
 import { IMPORT_ORIGIN, IMPORT_TABS } from './import-rules.ts'
 
 /** @param {import('./task-store.ts').Manifest} manifest - verified manifest. @param {import('./import-rules.ts').BatchKind} [kind] - confirmed panel business scope. @returns {PagePolicy | undefined} fixed per-site action restrictions. */
-export function pagePolicy(manifest: import('./task-store.ts').Manifest,kind?: import('./import-rules.ts').BatchKind) : PagePolicy | undefined {
+export function pagePolicy(manifest: Pick<import('./task-store.ts').Manifest,'adapter'|'adapterVersion'|'workflowRef'>,kind?: import('./import-rules.ts').BatchKind) : PagePolicy | undefined {
   if(manifest.adapter!=='bjrsj')return undefined
   if(manifest.adapterVersion!==1 || !['navigation','import'].includes(manifest.workflowRef))throw new Error('unsupported-bjrsj-workflow')
   return {adapter:'bjrsj',workflow:((manifest.workflowRef) as 'navigation' | 'import'),...(kind?{kind}:{})}
 }
 /** @param {import('./task-store.ts').Manifest} manifest - current task. @param {Record<string, unknown>} page - current validated main-document observation. @returns {{verdict:string,source:'code_verified',reason:string}} code facts, never a generic success fallback. */
-export function navigationVerdict(manifest: import('./task-store.ts').Manifest,page: Record<string, unknown>) : {
+export function navigationVerdict(manifest: Pick<import('./task-store.ts').Manifest,'adapter'|'adapterVersion'|'workflowRef'>,page: Record<string, unknown>) : {
     verdict: string;
     source: 'code_verified';
     reason: string;

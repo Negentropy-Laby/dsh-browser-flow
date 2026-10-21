@@ -4,3 +4,5 @@ const candidate: unknown = Object.freeze({profileId:'profile-'+'a'.repeat(32),ta
 if (!validRunScope(candidate)) throw new Error('invalid synthetic task scope')
 export const TASK = candidate
 export const TASK_VIEW={task:TASK,state:'active',adapter:'bjrsj',goal:'Synthetic task',origins:['https://example.test'],writeBlocked:false}
+/** Decode an explicitly altered synthetic scope through the production guard. */
+export function runScope(value:unknown):import('../../src/task-scope.ts').RunScope {if(!validRunScope(value))throw new Error('invalid synthetic run scope');return value}

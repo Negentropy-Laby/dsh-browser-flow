@@ -2,7 +2,7 @@
 
 Run `npm run build` to emit the Host, Client and Windows x64 Go helper.
 The build requires Go 1.26.5 and the declared local TypeScript development dependency.
-`npm run typecheck` checks both compiler faces; `npm run verify` also runs Go and
+`npm run typecheck` checks all seven compiler faces; `npm run verify` also runs Go and
 plugin tests. Source tests and development scripts use the declared `tsx/esm`
 loader; package loading tests use plain Node. Read the output for skips before claiming coverage.
 
@@ -16,7 +16,7 @@ no contributor's checkout or installation path is committed.
 To test an installed Host, provide its application archive explicitly:
 
 ```text
-node scripts/extract-installed-host.mjs <app.asar> [private-output-directory]
+node --import tsx/esm scripts/extract-installed-host.ts <app.asar> [private-output-directory]
 ```
 
 `DSH_BF_APP_ASAR` is an alternative to the first argument. The default output is
@@ -32,7 +32,7 @@ uses an isolated profile and writes its receipt to ignored `.evidence/`.
 
 ## Evidence scope
 
-The synthetic Electron fixture (`tests/import-desktop-fixture.mjs`) accepts an
+The synthetic Electron fixture (`tests/import-desktop-fixture.ts`) accepts an
 owned Desktop start specification and an output receipt path. Keep both private.
 It checks native file and response behavior in a network-isolated page and reads
 runtime versions from the connected instance. It does not establish a logged-in
@@ -54,7 +54,7 @@ synthetic checks and does not establish real website acceptance.
 ## Go graph qualification
 
 `npm run verify` builds the production Windows helper and an owned host-platform
-helper used only by synthetic source tests. It runs the Go tests, both compiler
+helper used only by synthetic source tests. It runs the Go tests, all seven compiler
 faces and plugin regressions. The source tests use explicit per-test process
 providers; the production adapter always consumes the mounted Host subprocess
 service. No test helper is a runtime fallback.
@@ -62,7 +62,7 @@ service. No test helper is a runtime fallback.
 On Windows x64, run the target-artifact fixture with explicit inputs:
 
 ```text
-node tests/target-graph-host.mjs <target-checkout> <private-receipt> [git-executable]
+node --import tsx/esm tests/target-graph-host.ts <target-checkout> <private-receipt> [git-executable]
 ```
 
 It requires the fixed target revision and a clean tracked source tree. It checks
@@ -71,3 +71,7 @@ crash-without-replay, reconstruction and quiescent disposal. Its synthetic page
 inventory is a fixture; it does not prove manual authorization or website
 acceptance. Normal Agent runs and actual Desktop identities must be recorded
 separately in private evidence. Preserve failed receipts alongside later runs.
+
+Compiler checks include the test fixtures. Synthetic JSON assertions narrow dynamic
+page and IPC results; intentional static counterexamples use local, documented
+`@ts-expect-error` lines. No compiler face disables strict checking for fixtures.
