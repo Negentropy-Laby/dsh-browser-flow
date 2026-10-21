@@ -80,3 +80,11 @@ Task cancellation and revision return their durable journal result without
 waiting for retirement. `active_context.graph.cleanup` separately reports
 pending or failed process cleanup. Disposal still joins every owned range and
 reports failure if exit cannot be confirmed.
+
+Replay updates causal adjacency and live-intent ancestor sets incrementally.
+Only nodes affected by a journal transition update their cold stamps. Final
+grouping shares node/version indexes across digests. Projection identity depends
+on the complete sanitized input, including current Host document identity, and
+does not depend on the view's character budget. View and detail RPCs share the
+prepared projection through a serial queue bounded by `queueLimit`; the original
+request deadline includes queueing. An expired queued read cannot dispatch later.

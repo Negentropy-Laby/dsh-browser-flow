@@ -35,6 +35,7 @@ export interface GraphConfig {
     graphTerminateGraceMs: number;
     graphColdRounds: number;
     graphMinGroup: number;
+    queueLimit: number;
 }
 /** Sanitized closed event; original asset data cannot enter a worker. */
 export interface GraphEvent {

@@ -35,16 +35,20 @@ declare class Worker {
         budget: number;
         value: JsonRecord;
     } | undefined;
-    flight: {
-        key: string;
-        promise: Promise<JsonRecord>;
-    } | undefined;
+    private ready;
+    private prepared;
+    private queue;
+    private queued;
     /** @param runtime - actual Host service. @param config - resolved limits. @param binary - verified package artifact. @param input - initial run. @param now - Host monotonic clock. */
     constructor(runtime: SubprocessPort, config: GraphConfig, binary: Binary, input: GraphInput, now: () => number);
     private fail;
     private receive;
     /** @param op - fixed RPC. @param input - safe snapshot. @param hash - its identity. @param budget - view size. @param deadline - Host monotonic deadline. @param ref - scoped projection detail. @returns Validated envelope payload. */
     rpc(op: GraphRequest['op'], input: GraphInput, hash: string, budget: number, deadline: number, ref?: string): Promise<unknown>;
+    /** @param job - serial RPC operation. @param deadline - original request deadline. @param current - live binding. @returns One bounded queued operation; expired work never dispatches. */
+    run<T>(job: () => Promise<T>, deadline: number, current: () => boolean): Promise<T>;
+    /** @param input - complete safe input. @param hash - projection identity. @param budget - optional requested view budget. @param deadline - original deadline. @param current - current binding. @returns Validated view, or no view when already prepared for a detail read. */
+    load(input: GraphInput, hash: string, budget: number | undefined, deadline: number, current: () => boolean): Promise<JsonRecord | undefined>;
     /** @returns Completion only after the managed range is empty. */
     stop(): Promise<void>;
 }

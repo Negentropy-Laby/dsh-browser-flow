@@ -51,19 +51,19 @@ type Event struct {
 
 // Input is a complete sanitized replay snapshot plus current proof references.
 type Input struct {
- LiveDocumentToken string `json:"liveDocumentToken"`
-	Scope       Scope       `json:"scope"`
-	Version     int64       `json:"version"`
-	TailHash    string      `json:"tailHash"`
-	Goal        string      `json:"goal"`
-	Constraints []string    `json:"constraints"`
-	Criteria    []Criterion `json:"criteria"`
-	Events      []Event     `json:"events"`
-	Protected   []string    `json:"protected"`
-	ProofRef    string      `json:"proofRef"`
-	ProofSeq    int64       `json:"proofSeq"`
-	ColdRounds  int         `json:"coldRounds"`
-	MinGroup    int         `json:"minGroup"`
+	LiveDocumentToken string      `json:"liveDocumentToken"`
+	Scope             Scope       `json:"scope"`
+	Version           int64       `json:"version"`
+	TailHash          string      `json:"tailHash"`
+	Goal              string      `json:"goal"`
+	Constraints       []string    `json:"constraints"`
+	Criteria          []Criterion `json:"criteria"`
+	Events            []Event     `json:"events"`
+	Protected         []string    `json:"protected"`
+	ProofRef          string      `json:"proofRef"`
+	ProofSeq          int64       `json:"proofSeq"`
+	ColdRounds        int         `json:"coldRounds"`
+	MinGroup          int         `json:"minGroup"`
 }
 
 // Node preserves opaque public identifiers; integer IDs exist only inside algorithms.
@@ -110,15 +110,16 @@ type Digest struct {
 
 // Projection is disposable and reconstructable from Input; it owns no task facts.
 type Projection struct {
-	Input    Input
-	ID       string
-	Nodes    []*Node
-	Edges    []Edge
-	Attempts []*Attempt
-	Digests  []Digest
-	Round    int64
-	index    map[string]*Node
-	covered  map[string]bool
+	Input        Input
+	ID           string
+	Nodes        []*Node
+	Edges        []Edge
+	Attempts     []*Attempt
+	Digests      []Digest
+	replayVisits int
+	Round        int64
+	index        map[string]*Node
+	covered      map[string]bool
 }
 
 func pageWrite(action string) bool {
@@ -153,12 +154,21 @@ func goalID(s Scope) string { return fmt.Sprintf("goal-%s-r%d", s.TaskID, s.Scop
 
 // Build replays the journal without incrementing rounds for reads or restarts.
 func Build(ctx context.Context, in Input, id string) (*Projection, error) {
+	return buildReplay(ctx, in, id, nil)
+}
+
+func buildReplay(ctx context.Context, in Input, id string, oracle func(*Projection, map[int64]*int64)) (*Projection, error) {
 	if in.Version != int64(len(in.Events)) || in.ColdRounds < 1 || in.MinGroup < 2 || in.Scope.TaskID == "" {
 		return nil, errors.New("invalid_input")
 	}
 	p := &Projection{Input: in, ID: id, index: map[string]*Node{}, covered: map[string]bool{}, Edges: []Edge{}, Nodes: []*Node{}, Attempts: []*Attempt{}, Digests: []Digest{}}
 	attempts := map[string]*Attempt{}
 	stamps := map[int64]*int64{}
+	replay := newReplay()
+	protected := map[string]bool{}
+	for _, ref := range in.Protected {
+		protected[ref] = true
+	}
 	for i, event := range in.Events {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -208,27 +218,12 @@ func Build(ctx context.Context, in Input, id string) (*Projection, error) {
 		default:
 			return nil, errors.New("unsupported_event")
 		}
-		// Replay every transition: an unfinished intent keeps its chain hot even
-		// when it is created and settled within the same journal round.
-		g := p.causal()
-		cold := g.structuralCold(g.hotSet())
-		protected := map[int64]bool{}
-		for _, ref := range in.Protected {
-			if n := p.index[ref]; n != nil {
-				protected[n.key] = true
-			}
+		if oracle != nil {
+			oracle(p, stamps)
+		} else if err := replay.apply(ctx, p, event, stamps, protected); err != nil {
+			return nil, err
 		}
-		for key := range protected {
-			delete(cold, key)
-		}
-		for _, op := range computeStampOps(cold, stamps, p.Round) {
-			if op.Set {
-				v := op.Round
-				stamps[op.ID] = &v
-			} else {
-				delete(stamps, op.ID)
-			}
-		}
+
 	}
 	if len(in.Events) > 0 && in.TailHash != in.Events[len(in.Events)-1].Hash {
 		return nil, errors.New("invalid_tail")
@@ -258,13 +253,23 @@ func Build(ctx context.Context, in Input, id string) (*Projection, error) {
 			partitions[n.run][n.key] = true
 		}
 	}
+	versions := map[int64]int{}
+	byKey := map[int64]*Node{}
+	for _, n := range p.Nodes {
+		versions[n.key] = int(n.SourceSeq)
+		byKey[n.key] = n
+	}
 	for _, set := range partitions {
 		for _, block := range g.group(set, coldParams{in.ColdRounds, in.MinGroup}) {
-			p.digest(block)
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			p.digest(block, versions, byKey)
 		}
 	}
 	sort.Slice(p.Digests, func(i, j int) bool { return p.Digests[i].ID < p.Digests[j].ID })
-	return p, nil
+	p.replayVisits = replay.visits
+	return p, ctx.Err()
 }
 func (p *Projection) causal() *coldGraph {
 	nodes := make([]cgNode, 0, len(p.Nodes))
@@ -298,14 +303,8 @@ func (p *Projection) causal() *coldGraph {
 	}
 	return newColdGraph(nodes, edges)
 }
-func (p *Projection) digest(block block) {
+func (p *Projection) digest(block block, versions map[int64]int, byKey map[int64]*Node) {
 	d := Digest{Members: []string{}, Anchors: []string{}, Outcomes: map[string]int{}, SourceSeqs: []int64{}}
-	versions := map[int64]int{}
-	byKey := map[int64]*Node{}
-	for _, n := range p.Nodes {
-		byKey[n.key] = n
-		versions[n.key] = int(n.SourceSeq)
-	}
 	signatures := []string{blockSignature(block, versions)}
 	for _, key := range block.Members {
 		n := byKey[key]

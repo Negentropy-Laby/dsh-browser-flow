@@ -109,20 +109,28 @@ func Serve(reader io.Reader, writer io.Writer, maxFrame int) error {
 					fail("not_bound")
 					break
 				}
-				sum := sha256.Sum256(q.Input)
-				var in Input
-				if hex.EncodeToString(sum[:]) != q.InputHash || decode(q.Input, &in) != nil || in.Scope != q.Scope || in.Version != q.Version || in.TailHash != q.TailHash {
+				p := current
+				if p == nil || p.ID != q.InputHash {
+					sum := sha256.Sum256(q.Input)
+					var in Input
+					if hex.EncodeToString(sum[:]) != q.InputHash || decode(q.Input, &in) != nil || in.Scope != q.Scope || in.Version != q.Version || in.TailHash != q.TailHash {
+						fail("invalid_input")
+						break
+					}
+					ctx, cancel := context.WithTimeout(context.Background(), time.Duration(q.BudgetMS)*time.Millisecond)
+					var err error
+					p, err = Build(ctx, in, q.InputHash)
+					cancel()
+					if err != nil {
+						fail("projection_failed")
+						break
+					}
+					current = p
+				} else if p.Input.Version != q.Version || p.Input.TailHash != q.TailHash {
 					fail("invalid_input")
 					break
 				}
-				ctx, cancel := context.WithTimeout(context.Background(), time.Duration(q.BudgetMS)*time.Millisecond)
-				p, err := Build(ctx, in, q.InputHash)
-				cancel()
-				if err != nil {
-					fail("projection_failed")
-					break
-				}
-				current = p
+
 				r.OK = true
 				r.Value = p.View(q.Budget)
 			case "detail":

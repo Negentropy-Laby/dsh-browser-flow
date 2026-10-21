@@ -25,6 +25,10 @@ func TestWireBindingHashAndTruncation(t *testing.T) {
 	q.Op = "project"
 	q.Input = raw
 	input := append(hello, encodeFrame(q)...)
+	q.ID = "view-other-budget"
+	q.Budget = 6000
+	q.Input = nil
+	input = append(input, encodeFrame(q)...)
 	q.ID = "3"
 	q.Op = "detail"
 	q.Input = nil
@@ -34,7 +38,7 @@ func TestWireBindingHashAndTruncation(t *testing.T) {
 	if err := Serve(bytes.NewReader(input), &out, 8*1024*1024); err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 4; i++ {
 		var p [4]byte
 		out.Read(p[:])
 		b := make([]byte, binary.BigEndian.Uint32(p[:]))

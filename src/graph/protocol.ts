@@ -18,7 +18,7 @@ export interface ProcessHandle {
 export interface GraphConfig {
   graphMaxWorkers: number; graphIdleMs: number; graphRequestTimeoutMs: number
   graphMaxFrameBytes: number; graphStderrBytes: number; graphTerminateGraceMs: number
-  graphColdRounds: number; graphMinGroup: number
+  graphColdRounds: number; graphMinGroup: number; queueLimit: number
 }
 /** Sanitized closed event; original asset data cannot enter a worker. */
 export interface GraphEvent {

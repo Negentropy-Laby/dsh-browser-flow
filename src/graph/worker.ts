@@ -33,7 +33,8 @@ class Worker {
   private readonly decoder: Frames;private readonly onData: (chunk: Buffer)=>void
   private readonly onEnd: ()=>void;private readonly onError: ()=>void
   cached: {hash:string;budget:number;value: JsonRecord} | undefined
-  flight: {key:string;promise:Promise<JsonRecord>} | undefined
+  private ready=false;private prepared:string|undefined
+  private queue:Promise<void>=Promise.resolve();private queued=0
   /** @param runtime - actual Host service. @param config - resolved limits. @param binary - verified package artifact. @param input - initial run. @param now - Host monotonic clock. */
   constructor(runtime: SubprocessPort,private readonly config: GraphConfig,binary: Binary,input: GraphInput,private readonly now:()=>number) {
     this.scope={...input.scope}
@@ -69,6 +70,32 @@ class Worker {
       if(!this.handle.stdin||!this.handle.stdout){this.fail('worker_io');return}
       this.handle.stdin.write(encoded,error=>{if(error)this.fail('worker_io')})
     })}finally{this.busy=false;if(!this.closing){this.idle=setTimeout(()=>{void this.stop().catch(()=>{})},this.config.graphIdleMs);this.idle.unref()}}
+  }
+  /** @param job - serial RPC operation. @param deadline - original request deadline. @param current - live binding. @returns One bounded queued operation; expired work never dispatches. */
+  run<T>(job:()=>Promise<T>,deadline:number,current:()=>boolean):Promise<T>{
+    if(this.closing)return Promise.reject(new GraphError('cleanup_pending'))
+    if(this.queued>=this.config.queueLimit)return Promise.reject(new GraphError('graph_busy'))
+    this.queued++
+    const result=this.queue.then(async()=>{
+      this.queued--
+      if(this.closing)throw new GraphError('cleanup_pending')
+      if(this.now()>=deadline)throw new GraphError('graph_timeout')
+      if(!current())throw new GraphError('stale_projection')
+      return job()
+    })
+    this.queue=result.then(()=>{},()=>{});return result
+  }
+  /** @param input - complete safe input. @param hash - projection identity. @param budget - optional requested view budget. @param deadline - original deadline. @param current - current binding. @returns Validated view, or no view when already prepared for a detail read. */
+  async load(input:GraphInput,hash:string,budget:number|undefined,deadline:number,current:()=>boolean):Promise<JsonRecord|undefined>{
+    if(!this.ready){const hello=await this.rpc('hello',input,hash,0,deadline);if(!record(hello)||hello.kernelVersion!=='1'||hello.rulesVersion!=='structural-v1')throw new GraphError('protocol_mismatch');this.ready=true}
+    if(this.cached?.hash===hash&&this.cached.budget===budget)return this.cached.value
+    if(this.prepared===hash&&budget===undefined)return
+    const value=validateView(await this.rpc('project',input,hash,budget??0,deadline),input,hash)
+    if(this.closing||!current())throw new GraphError('stale_projection')
+    if(this.now()>=deadline)throw new GraphError('graph_timeout')
+    this.prepared=hash
+    if(budget!==undefined)this.cached={hash,budget,value}
+    return value
   }
   /** @returns Completion only after the managed range is empty. */
   stop(): Promise<void> {
@@ -143,29 +170,27 @@ export class GraphWorkers {
     if(this.closed)throw new GraphError('graph_closed');if(!this.runtime)throw new GraphError('subprocess_unavailable')
     const hash=graphHash(JSON.stringify(input));const {worker,fresh}=await this.bounded(this.worker(input,deadline,current,signal),deadline,signal)
     if(!current()||signal?.aborted){if(fresh)void worker.stop().catch(()=>{});throw new GraphError('stale_projection')}
-    const key=hash+':'+budget
-    if(worker.cached?.hash===hash&&worker.cached.budget===budget)return worker.cached.value
-    let promise: Promise<JsonRecord>
-    if(worker.flight){if(worker.flight.key!==key)throw new GraphError('graph_busy');promise=worker.flight.promise}
-    else {
-      promise=(async()=>{try{
-        if(fresh){const hello=await worker.rpc('hello',input,hash,budget,deadline);if(!record(hello)||hello.kernelVersion!=='1'||hello.rulesVersion!=='structural-v1')throw new GraphError('protocol_mismatch')}
-        const value=validateView(await worker.rpc('project',input,hash,budget,deadline),input,hash);if(worker.closing||!current())throw new GraphError('stale_projection')
-        worker.cached={hash,budget,value};return value
-      }catch(error){void worker.stop().catch(()=>{});throw error}finally{worker.flight=undefined}})()
-      worker.flight={key,promise}
-    }
-    const value=await this.bounded(promise,deadline,signal)
-    if(worker.closing||!current())throw new GraphError('stale_projection')
+    const guard=()=>current()&&!signal?.aborted
+    const value=await this.bounded(worker.run(async()=>{
+      try{const value=await worker.load(input,hash,budget,deadline,guard);if(!value)throw new GraphError('invalid_response');return value}
+      catch(error){void worker.stop().catch(()=>{});throw error}
+    },deadline,guard),deadline,signal)
+    if(worker.closing||!guard())throw new GraphError('stale_projection')
     return value
   }
   /** @param input - current snapshot. @param ref - task-owned projection reference. @param current - current binding check. @param signal - caller cancellation. @returns Sanitized immutable detail. */
   async detail(input:GraphInput,ref:string,current:()=>boolean,signal?:AbortSignal): Promise<unknown> {
-    const deadline=this.now()+this.config.graphRequestTimeoutMs
-    await this.bounded(this.project(input,8000,current,signal),deadline,signal)
-    const worker=this.workers.get(input.scope.taskId);if(!worker)throw new GraphError('graph_unavailable')
-    const hash=graphHash(JSON.stringify(input))
-    try{const value=await this.bounded(worker.rpc('detail',input,hash,8000,deadline,ref),deadline,signal);if(worker.closing||!current())throw new GraphError('stale_projection');return validateDetail(value,ref,input,hash)}catch(error){void worker.stop().catch(()=>{});throw error}
+    const deadline=this.now()+this.config.graphRequestTimeoutMs,hash=graphHash(JSON.stringify(input)),guard=()=>current()&&!signal?.aborted
+    const {worker}=await this.bounded(this.worker(input,deadline,guard,signal),deadline,signal)
+    return this.bounded(worker.run(async()=>{
+      try{
+        await worker.load(input,hash,undefined,deadline,guard)
+        const value=await worker.rpc('detail',input,hash,0,deadline,ref)
+        if(worker.closing||!guard())throw new GraphError('stale_projection')
+        if(this.now()>=deadline)throw new GraphError('graph_timeout')
+        return validateDetail(value,ref,input,hash)
+      }catch(error){void worker.stop().catch(()=>{});throw error}
+    },deadline,guard),deadline,signal)
   }
   private async bounded<T>(promise:Promise<T>,deadline:number,signal?:AbortSignal):Promise<T> {
     const remaining=Math.floor(deadline-this.now())

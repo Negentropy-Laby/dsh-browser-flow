@@ -28,6 +28,12 @@ it('reuses same-input projection, binds details and joins actual helper exit',as
  assert.equal(expectRecord(expectList(expectRecord(detail).nodes)[0]).taskId,a.scope.taskId)
  await workers.close();assert.ok(runtime.handles[0].child.exitCode!==null||runtime.handles[0].child.signalCode!==null)
 })
+it('shares preparation across concurrent view budgets and detail reads',async t=>{
+ const {workers,runtime}=setup(t);const a=input()
+ const [summary,detail,expanded]=await Promise.all([workers.project(a,6000,()=>true),workers.detail(a,'graph',()=>true),workers.project(a,8000,()=>true)])
+ assert.ok(summary.active_context);assert.ok(expanded.active_context);assert.ok(expectList(expectRecord(detail).nodes).length)
+ assert.equal(runtime.handles.length,1)
+})
 it('keeps task, run and generation separate and never sends one task to another process',async t=>{
  const {workers,runtime}=setup(t)
  const a=input(),b=input(runScope({...scope,taskId:'task-22222222-2222-4222-8222-222222222222',ownerSessionId:'other'}))
