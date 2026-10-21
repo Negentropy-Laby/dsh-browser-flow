@@ -1,0 +1,15 @@
+{
+  "protocolVersion": 1,
+  "kernelVersion": "1",
+  "rulesVersion": "structural-v1",
+  "goVersion": "go1.26.5",
+  "platform": "win32",
+  "arch": "x64",
+  "flags": [
+    "-trimpath",
+    "-buildvcs=false",
+    "-ldflags=-s -w -buildid="
+  ],
+  "sourceSha256": "68dcebb6aec6b5438f20216f753b353dabff9506258785d88d462466fd7f3a78",
+  "sha256": "49534e68cf69678c474b1070b321d134f2ae089f5377f511687f45e0211be60c"
+}

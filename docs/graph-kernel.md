@@ -29,3 +29,20 @@ include the projection identity and content signature. Recomputing replaces the
 active coverage set; originals remain available. An old digest reference is
 rejected after the input changes. No generated summary establishes business
 success, and no model call is used for compression.
+
+## Worker ownership
+
+The Host consumes its mounted subprocess service through a small structural
+TypeScript interface matching the supported API. Workers are lazy, task-owned
+and replaced on run changes. IPC v1 uses a four-byte big-endian length and UTF-8
+JSON, with request, generation, RunScope, journal position and input hash checks.
+
+Limits are validated plugin settings: four workers, 60-second idle lifetime,
+five-second request budget, 8 MiB frames, 16 KiB stderr and one-second termination
+grace by default. Startup and waiting consume the request budget. A failed RPC
+is not replayed. Unloading joins the managed process ranges before releasing the
+provider. Raw stderr and executable paths never enter tool failures.
+
+Only Windows x64 has a packaged production helper. Other platforms report an
+unavailable graph while loading the plugin and keeping safe Host operations.
+The test-only process provider and host-platform helper are not runtime fallbacks.

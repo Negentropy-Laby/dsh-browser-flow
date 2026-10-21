@@ -2,7 +2,11 @@
   "//": "Typecheck for JSDoc-typed ESM without emission. src/node-ambient.d.ts references this package's development-only Node declarations; no sibling source enters this program.",
   "compilerOptions": {
     "target": "es2022",
-    "lib": ["es2023", "dom", "dom.iterable"],
+    "lib": [
+      "es2023",
+      "dom",
+      "dom.iterable"
+    ],
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "resolveJsonModule": true,
@@ -16,7 +20,11 @@
     "useUnknownInCatchVariables": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "types": []
+    "types": [],
+    "allowImportingTsExtensions": true
   },
-  "include": ["src/**/*.js", "src/**/*.d.ts"]
+  "include": [
+    "src/**/*.js",
+    "src/**/*.ts"
+  ]
 }

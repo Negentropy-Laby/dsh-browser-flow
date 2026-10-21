@@ -24,12 +24,28 @@ import { isAbsolute } from 'node:path'
  * @property {number} pollWaitMs - longest single panel poll.
  * @property {number} connectionIdleMs - idle window before a panel's leases expire.
  * @property {number} importWindowMs - relative lifetime for one passive import collection.
+ * @property {number} graphMaxWorkers - graph worker deployment setting.
+ * @property {number} graphIdleMs - graph worker deployment setting.
+ * @property {number} graphRequestTimeoutMs - graph worker deployment setting.
+ * @property {number} graphMaxFrameBytes - graph worker deployment setting.
+ * @property {number} graphStderrBytes - graph worker deployment setting.
+ * @property {number} graphTerminateGraceMs - graph worker deployment setting.
+ * @property {number} graphColdRounds - graph worker deployment setting.
+ * @property {number} graphMinGroup - graph worker deployment setting.
  * @property {string} localTasksDir - absolute local task directory; empty uses profileContext.home/browser-flow/tasks.
  * @property {string} importEvidenceDir - legacy configuration accepted for compatibility; new evidence is always under the bound task.
  */
 
 /** Defaults applied when a field is omitted. @type {Readonly<BrowserFlowConfig>} */
 export const DEFAULTS = Object.freeze({
+  graphMaxWorkers: 4,
+  graphIdleMs: 60000,
+  graphRequestTimeoutMs: 5000,
+  graphMaxFrameBytes: 8388608,
+  graphStderrBytes: 16384,
+  graphTerminateGraceMs: 1000,
+  graphColdRounds: 6,
+  graphMinGroup: 2,
   commandBudgetMs: 15_000,
   observeMaxChars: 8_000,
   observeMaxNodes: 400,
@@ -45,6 +61,14 @@ export const DEFAULTS = Object.freeze({
 
 /** Accepted range of every numeric field. @type {Readonly<Record<Exclude<keyof BrowserFlowConfig,'importEvidenceDir'|'localTasksDir'>, readonly [number, number]>>} */
 const RANGES = Object.freeze({
+  graphMaxWorkers: [1, 32],
+  graphIdleMs: [1000, 600000],
+  graphRequestTimeoutMs: [100, 300000],
+  graphMaxFrameBytes: [65536, 33554432],
+  graphStderrBytes: [1024, 1048576],
+  graphTerminateGraceMs: [1, 60000],
+  graphColdRounds: [1, 10000],
+  graphMinGroup: [2, 10000],
   commandBudgetMs: [500, 300_000],
   observeMaxChars: [200, 100_000],
   observeMaxNodes: [10, 5_000],

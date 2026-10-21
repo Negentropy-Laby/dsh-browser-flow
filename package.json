@@ -36,20 +36,22 @@
   "scripts": {
     "build": "node scripts/build-client.mjs",
     "typecheck": "node scripts/typecheck.mjs",
-    "test": "node scripts/build-client.mjs && node --test \"tests/*.test.js\"",
-    "test:coverage": "node scripts/build-client.mjs && node --test --experimental-test-coverage \"tests/*.test.js\"",
+    "test": "node scripts/build-client.mjs && node scripts/build-graph.mjs --test-helper && node --import tsx/esm --test \"tests/*.test.js\"",
+    "test:coverage": "node scripts/build-client.mjs && node scripts/build-graph.mjs --test-helper && node --import tsx/esm --test --experimental-test-coverage \"tests/*.test.js\"",
     "smoke:live": "node scripts/live-host-smoke.mjs",
     "evidence:host": "node scripts/extract-installed-host.mjs",
-    "verify": "node scripts/build-client.mjs && node scripts/typecheck.mjs && node --test \"tests/*.test.js\""
+    "verify": "node scripts/build-client.mjs && node scripts/build-graph.mjs --test-helper && node scripts/typecheck.mjs && node --import tsx/esm --test \"tests/*.test.js\""
   },
   "dependencies": {
+    "@deepseek-ai/dsh-atomic-write": "file:vendor/deepseek-ai-dsh-atomic-write-0.2.1-rc.2.tgz",
     "adm-zip": "0.6.1",
-    "saxes": "6.0.0",
-    "@deepseek-ai/dsh-atomic-write": "file:vendor/deepseek-ai-dsh-atomic-write-0.2.1-rc.2.tgz"
+    "saxes": "6.0.0"
   },
   "devDependencies": {
     "@types/adm-zip": "0.5.8",
-    "@types/node": "22.20.5"
+    "@types/node": "22.20.5",
+    "tsx": "4.23.13",
+    "typescript": "6.0.3"
   },
   "bundleDependencies": [
     "@deepseek-ai/dsh-atomic-write"
