@@ -2,7 +2,7 @@ import { after } from 'node:test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { TaskStore } from '../../src/task-store.js'
+import { TaskStore } from '../../src/task-store.ts'
 import { syntheticDefinition } from './task-definition.js'
 
 /** Explicitly prepare a synthetic task for tests of an already-authorized page. */

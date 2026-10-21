@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { it } from 'node:test'
 import { writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { listDefinitions } from '../src/task-definitions.js'
+import { listDefinitions } from '../src/task-definitions.ts'
 import { syntheticDefinition } from './helpers/task-definition.js'
 
 it('isolates a definition whose skill name is invalid for the real Harness registry',()=>{

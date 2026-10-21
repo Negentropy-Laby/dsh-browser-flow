@@ -1,6 +1,17 @@
+export type Artifact = {
+    role: string;
+    path: string;
+    sha256: string;
+    bytes: number;
+};
+export type CheckedProof = {
+    value: Record<string, unknown>;
+    files: Map<string, Buffer>;
+};
+
 /** Trusted predicates over task-owned originals; labels alone never prove a criterion. */
 import { sameRunScope, validRunScope } from './task-scope.ts'
-import { taskRecord } from './task-journal.js'
+import { taskRecord } from './task-journal.ts'
 import { navigationVerdict } from './task-adapters.js'
 import { decodeImportEvidence } from './import-evidence.js'
 import { importScope, extractIdentity, judgeIdentity, judgeImport } from './import-rules.js'
@@ -9,24 +20,29 @@ import { parseWorkbook } from './import-workbook.js'
 /** @typedef {{ role:string, path:string, sha256:string, bytes:number }} Artifact */
 /** @typedef {{ value:Record<string,unknown>, files:Map<string,Buffer> }} CheckedProof */
 /** @param {unknown} value - disk reference. @returns {value is Artifact} bounded, relative evidence file reference. */
-export function validArtifact(value) {
+export function validArtifact(value: unknown) : value is Artifact {
   return taskRecord(value)&&typeof value.role==='string'&&typeof value.path==='string'&&value.path.length<512
     && value.path.split('/').every(part=>part!==''&&part!=='.'&&part!=='..')&&!/[\\:\x00-\x1f]/.test(value.path)
     && typeof value.sha256==='string'&&/^[a-f0-9]{64}$/.test(value.sha256)&&typeof value.bytes==='number'&&Number.isSafeInteger(value.bytes)&&value.bytes>0&&value.bytes<=16_000_000
 }
-/** @param {import('./task-store.js').Manifest} manifest - current owner. @returns {{id:string,validatorId:string,version:number,label:string} | undefined} code-owned criterion. */
-export function trustedCriterion(manifest) {
+/** @param {import('./task-store.ts').Manifest} manifest - current owner. @returns {{id:string,validatorId:string,version:number,label:string} | undefined} code-owned criterion. */
+export function trustedCriterion(manifest: import('./task-store.ts').Manifest) : {
+    id: string;
+    validatorId: string;
+    version: number;
+    label: string;
+} | undefined {
   if(manifest.adapter!=='bjrsj'||manifest.adapterVersion!==1||!['navigation','import'].includes(manifest.workflowRef))return undefined
   const validatorId=manifest.workflowRef==='navigation'?'bjrsj-navigation-entry':'bjrsj-import-confirmed'
   return {id:`criterion-${manifest.scope.taskId}-r${manifest.scope.scopeRevision}-${validatorId}`,validatorId,version:1,label:manifest.workflowRef==='navigation'?'Reach the verified upload entry':'Confirm the scoped import'}
 }
-/** @param {import('./task-store.js').TaskData} task - opened task. @param {string} id - local reference. @param {string} kind - required kind. @param {import('./task-scope.ts').RunScope} run - exact run. @returns {Record<string,unknown> | undefined} owned current asset. */
-function assetData(task,id,kind,run) {
+/** @param {import('./task-store.ts').TaskData} task - opened task. @param {string} id - local reference. @param {string} kind - required kind. @param {import('./task-scope.ts').RunScope} run - exact run. @returns {Record<string,unknown> | undefined} owned current asset. */
+function assetData(task: import('./task-store.ts').TaskData,id: string,kind: string,run: import('./task-scope.ts').RunScope) : Record<string, unknown> | undefined {
   const row=task.events.find(event=>event.type==='asset'&&event.data.id===id)?.data
   return row?.kind===kind&&validRunScope(row.run)&&sameRunScope(row.run,run)&&taskRecord(row.data)?row.data:undefined
 }
-/** @param {import('./task-store.js').TaskData} task - opened task. @param {Record<string,unknown>} row - journal judgment. @returns {string} verified current verdict or unverified. */
-export function evidenceVerdict(task,row) {
+/** @param {import('./task-store.ts').TaskData} task - opened task. @param {Record<string,unknown>} row - journal judgment. @returns {string} verified current verdict or unverified. */
+export function evidenceVerdict(task: import('./task-store.ts').TaskData,row: Record<string, unknown>) : string {
   const criterion=trustedCriterion(task.manifest),run={...task.manifest.scope,runId:task.manifest.runId,workflowRef:task.manifest.workflowRef}
   if(!criterion||task.readOnly||task.unhealthy||task.blocked||row.source!=='code_verified'||row.criterionId!==criterion.id||row.validatorId!==criterion.validatorId||row.validatorVersion!==criterion.version
     ||!validRunScope(row.run)||!sameRunScope(row.run,run)||typeof row.proofRef!=='string')return 'unverified'
@@ -52,7 +68,7 @@ export function evidenceVerdict(task,row) {
     if(!Array.isArray(binding)||!validRunScope(binding[0])||!sameRunScope(binding[0],run)||binding[6]!==proof.documentToken)return 'unverified'
     const scope=importScope(proof.scope),input=parseWorkbook(bytes),evidence=decodeImportEvidence(proof.evidence)
     if(input.firstRow!==scope.firstRow||input.lastRow!==scope.lastRow||file.kind!==scope.kind||file.rows!==input.people.length||evidence.fileGrantId!==proof.fileGrantId||!evidence.coverage||!evidence.closed||evidence.cleanupFailed||evidence.unitPending!==0)return 'unverified'
-    const unitIds=new Set(),legalIdentities=new Set()
+    const unitIds=new Set<string>(),legalIdentities=new Set<string>()
     for(const body of evidence.unitBodies){const actual=extractIdentity(JSON.parse(body));actual.unitIds.forEach(id=>unitIds.add(id));actual.legalIdentities.forEach(id=>legalIdentities.add(id))}
     return judgeIdentity({unitIds:[...unitIds],legalIdentities:[...legalIdentities]},scope)==='verified'&&judgeImport(scope,input.people,evidence.facts).verdict==='import_confirmed'?'import_confirmed':'unverified'
   }catch(error){void error;return 'unverified'}

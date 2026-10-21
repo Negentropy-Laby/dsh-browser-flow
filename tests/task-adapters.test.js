@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { it } from 'node:test'
 import { navigationVerdict, pagePolicy } from '../src/task-adapters.js'
-import { validateDefinition } from '../src/task-definitions.js'
+import { validateDefinition } from '../src/task-definitions.ts'
 import { taskHost } from './helpers/task-host.js'
 import { syntheticDefinition } from './helpers/task-definition.js'
 import { writeFile } from 'node:fs/promises'

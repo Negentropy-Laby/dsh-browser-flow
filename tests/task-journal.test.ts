@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict'
-import { it } from 'node:test'
+import { it, type TestContext } from 'node:test'
 import { mkdtemp, readFile, writeFile, readdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createHash } from 'node:crypto'
-import { TaskStore } from '../src/task-store.js'
+import { TaskStore } from '../src/task-store.ts'
 
-const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex')
-async function fixture(t) {
+const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
+async function fixture(t: TestContext) {
   const root=await mkdtemp(join(tmpdir(),'bf-journal-'))
   const profile={name:'test',home:join(root,'home')}
   const store=new TaskStore(root,profile,100)
@@ -15,9 +15,10 @@ async function fixture(t) {
   const access=await store.create('owner',{goal:'Synthetic history',origins:['https://one.example']})
   const dir=store.openTask(access).dir
   const journal=join(dir,'basic_law_index/events.jsonl')
-  return {root,profile,store,access,dir,journal}
+  assert.ok(store.runtime)
+  return {root,profile,store,access,dir,journal,runtime:store.runtime}
 }
-async function reopen(t,f) {
+async function reopen(t: TestContext,f: Awaited<ReturnType<typeof fixture>>) {
   const store=new TaskStore(f.root,f.profile,100)
   t.after(()=>store.close())
   return {store,access:await store.forSession('owner')}
@@ -25,9 +26,9 @@ async function reopen(t,f) {
 it('versions the manifest, ownership record and every hash-linked event',async t=>{
   const f=await fixture(t)
   assert.equal(JSON.parse(await readFile(join(f.dir,'manifest.json'),'utf8')).schemaVersion,1)
-  const registry=join(f.store.runtime,'registry')
+  const registry=join(f.runtime,'registry')
   assert.equal(JSON.parse(await readFile(join(registry,(await readdir(registry))[0]),'utf8')).schemaVersion,1)
-  const [event]=(await readFile(f.journal,'utf8')).trim().split('\n').map(JSON.parse)
+  const [event]=(await readFile(f.journal,'utf8')).trim().split('\n').map(line=>JSON.parse(line))
   assert.equal(event.schemaVersion,1)
   const {hash,...unsigned}=event
   assert.equal(hash,digest(unsigned))
@@ -43,7 +44,7 @@ it('blocks only the affected task for well-hashed unknown events, versions and i
     const attempt=await f.store.beginAttempt(f.access,'click')
     await f.store.receipt(f.access,attempt,'not_executed')
     await f.store.close()
-    const rows=(await readFile(f.journal,'utf8')).trim().split('\n').map(JSON.parse)
+    const rows=(await readFile(f.journal,'utf8')).trim().split('\n').map(line=>JSON.parse(line))
     const last=rows.at(-1)
     const unsigned={...(last.schemaVersion===undefined?{}:{schemaVersion:last.schemaVersion}),seq:last.seq+1,prev:last.hash,type:'attempt',data:{attemptId:'attempt-unknown',action:'click',run:f.access.run},...patch}
     rows.push({...unsigned,hash:digest(unsigned)})
@@ -60,7 +61,7 @@ it('retains unversioned history and Session ownership read-only without promotin
   await f.store.close()
   const manifest=JSON.parse(await readFile(join(f.dir,'manifest.json'),'utf8'));delete manifest.schemaVersion
   await writeFile(join(f.dir,'manifest.json'),JSON.stringify(manifest)+'\n')
-  const registry=join(f.store.runtime,'registry'),path=join(registry,(await readdir(registry))[0])
+  const registry=join(f.runtime,'registry'),path=join(registry,(await readdir(registry))[0])
   const owner=JSON.parse(await readFile(path,'utf8'));delete owner.schemaVersion
   await writeFile(path,JSON.stringify(owner)+'\n')
   const created={seq:1,prev:'',type:'created',data:{manifest}}

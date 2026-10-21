@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { it } from 'node:test'
 import { taskHost } from './helpers/task-host.js'
-import { graphInput } from '../src/task-projections.js'
+import { graphInput } from '../src/task-projections.ts'
 import { GraphWorkers } from '../src/graph/worker.ts'
 import { validateView, validateDetail } from '../src/graph/validation.ts'
 

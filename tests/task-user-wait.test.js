@@ -3,7 +3,7 @@ import { it } from 'node:test'
 import { readFile, rename, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { taskHost } from './helpers/task-host.js'
-import { TaskStore } from '../src/task-store.js'
+import { TaskStore } from '../src/task-store.ts'
 
 const request={action:'await_user',wait:{kind:'other_user_input',reason:'A synthetic user decision is missing',resumeCondition:'The user supplies a new decision'}}
 const resume=(env,task,waitId,userInput)=>env.post('authorize',{instanceId:'panel-a',connectionGeneration:1,sessionId:'session-a',taskOperation:'resume',task,waitId,...(userInput===undefined?{}:{userInput})})

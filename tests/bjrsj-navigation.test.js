@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, writeFileSync, mkdirSync, symlinkSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
-import { definitionSkills, loadDefinition, listDefinitions, tasksRoot } from '../src/task-definitions.js'
+import { definitionSkills, loadDefinition, listDefinitions, tasksRoot } from '../src/task-definitions.ts'
 import { syntheticDefinition } from './helpers/task-definition.js'
 
 describe('local declarative task definitions',()=>{

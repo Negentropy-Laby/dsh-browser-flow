@@ -21,7 +21,7 @@ import { join, resolve } from 'node:path'
 import { describe, it, after } from 'node:test'
 import { pathToFileURL } from 'node:url'
 import { apply, inject, name } from '../src/index.js'
-import { listDefinitions, definitionSkills } from '../src/task-definitions.js'
+import { listDefinitions, definitionSkills } from '../src/task-definitions.ts'
 import { syntheticDefinition } from './helpers/task-definition.js'
 
 /** Checkout used for the real Host artifacts. */

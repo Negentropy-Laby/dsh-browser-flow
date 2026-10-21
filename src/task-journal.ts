@@ -1,18 +1,18 @@
 /** Versioned disk vocabulary. Unknown events cannot be interpreted as harmless history. */
 import { validRunScope, sameRunScope } from './task-scope.ts'
 import { validUserWait } from './task-wait.ts'
-import { validOrigins } from './task-definitions.js'
+import { validOrigins } from './task-definitions.ts'
 
 /** The first explicit task storage generation; unversioned predecessors are read-only. */
 export const TASK_FORMAT_VERSION = 1
 /** @param {unknown} value - JSON. @returns {value is Record<string, unknown>} object. */
-export const taskRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value)
+export const taskRecord = (value: unknown) : value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value)
 /** @param {unknown} value - text. @param {number} max - maximum length. @returns {value is string} bounded text. */
-const text = (value,max=1000) => typeof value==='string' && value.length>0 && value.length<=max
+const text = (value: unknown,max: number=1000) : value is string => typeof value==='string' && value.length>0 && value.length<=max
 /** @param {unknown} value - declared conditions. @returns {value is string[]} bounded conditions. */
-const conditions = value => Array.isArray(value) && value.length<=32 && value.every(item=>text(item))
-/** @param {unknown} raw - manifest from disk. @param {boolean} [legacy] - accept the predecessor's missing version only for inspection. @returns {raw is import('./task-store.js').Manifest} supported manifest fields. */
-export function validTaskManifest(raw,legacy=false) {
+const conditions = (value: unknown) : value is string[] => Array.isArray(value) && value.length<=32 && value.every(item=>text(item))
+/** @param {unknown} raw - manifest from disk. @param {boolean} [legacy] - accept the predecessor's missing version only for inspection. @returns {raw is import('./task-store.ts').Manifest} supported manifest fields. */
+export function validTaskManifest(raw: unknown,legacy: boolean=false) : raw is import('./task-store.ts').Manifest {
   if(!taskRecord(raw) || !(raw.schemaVersion===TASK_FORMAT_VERSION || (legacy && (raw.schemaVersion===undefined||Number.isSafeInteger(raw.schemaVersion))))
     || !taskRecord(raw.scope) || !validRunScope({...raw.scope,runId:raw.runId,workflowRef:raw.workflowRef}) || !text(raw.goal,2000)
     || !conditions(raw.constraints) || !conditions(raw.criteria) || !validOrigins(raw.origins)
@@ -20,10 +20,13 @@ export function validTaskManifest(raw,legacy=false) {
   if(raw.adapter==='bjrsj' && !['navigation','import'].includes(String(raw.workflowRef)))return false
   return raw.definitionId===undefined || (text(raw.definitionId,100)&&text(raw.definitionVersion,100)&&typeof raw.definitionDigest==='string'&&/^[a-f0-9]{64}$/.test(raw.definitionDigest))
 }
-/** @param {string} type - event discriminator. @param {Record<string,unknown>} row - disk payload. @param {import('./task-store.js').Manifest} manifest - preceding manifest. @param {string | undefined} pending - original pending write. @param {import('./task-wait.ts').UserWait} [waiting] - active human dependency. @param {{kind:string,inputRef:string}} [waitInput] - input observed after the wait. @returns {boolean} understood event semantics. */
-export function validTaskEvent(type,row,manifest,pending,waiting,waitInput) {
+/** @param {string} type - event discriminator. @param {Record<string,unknown>} row - disk payload. @param {import('./task-store.ts').Manifest} manifest - preceding manifest. @param {string | undefined} pending - original pending write. @param {import('./task-wait.ts').UserWait} [waiting] - active human dependency. @param {{kind:string,inputRef:string}} [waitInput] - input observed after the wait. @returns {boolean} understood event semantics. */
+export function validTaskEvent(type: string,row: Record<string, unknown>,manifest: import('./task-store.ts').Manifest,pending: string | undefined,waiting?: import('./task-wait.ts').UserWait,waitInput?: {
+    kind: string;
+    inputRef: string;
+}) : boolean {
   const fields={wait_requested:['id','kind','reason','resumeCondition','owner','source','run'],wait_input:['waitId','kind','inputRef','source','run'],wait_resolved:['waitId','source','inputRef','userInput','run'],created:['manifest'],revise:['manifest'],attempt:['attemptId','action','run'],receipt:['attemptId','outcome','run','fileGrantId'],status:['state','run'],asset:['id','kind','data','source','run'],edge:['id','from','to','relation','run'],waiting:['condition','for','source','run'],business_verdict:['verdict','qualified','source','run','pageRef','resultRef','reason','proofRef','criterionId','validatorId','validatorVersion']}
-  const allowed=/** @type {Record<string,string[]>} */(fields)[type]
+  const allowed=/** @type {Record<string,string[]>} */(fields as Record<string, string[]>)[type]
   if(!allowed || Object.keys(row).some(key=>!allowed.includes(key)))return false
   if(type==='created')return validTaskManifest(row.manifest) && JSON.stringify(row.manifest)===JSON.stringify(manifest)
   if(type==='revise'){

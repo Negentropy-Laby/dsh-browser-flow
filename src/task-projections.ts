@@ -1,14 +1,14 @@
 /** Host safety facts plus optional Go projections. This module contains no graph algorithm. */
-import { taskFacts } from './task-facts.js'
+import { taskFacts } from './task-facts.ts'
 import { validRunScope } from './task-scope.ts'
 
-/** @param {import('./task-store.js').TaskData} task - opened task. @param {import('./graph/protocol.ts').GraphConfig} config - resolved graph limits. @returns {import('./graph/protocol.ts').GraphInput} safe replay input without original assets or physical paths. */
-export function graphInput(task,config) {
+/** @param {import('./task-store.ts').TaskData} task - opened task. @param {import('./graph/protocol.ts').GraphConfig} config - resolved graph limits. @returns {import('./graph/protocol.ts').GraphInput} safe replay input without original assets or physical paths. */
+export function graphInput(task: import('./task-store.ts').TaskData,config: import('./graph/protocol.ts').GraphConfig) : import('./graph/protocol.ts').GraphInput {
   const run={...task.manifest.scope,runId:task.manifest.runId,workflowRef:task.manifest.workflowRef},facts=taskFacts(task)
   const events=task.events.map(event=>{
-    const row=event.data,declared=(event.type==='created'||event.type==='revise')&&row.manifest&&typeof row.manifest==='object'?/** @type {import('./task-store.js').Manifest} */(row.manifest):undefined
+    const row=event.data,declared=(event.type==='created'||event.type==='revise')&&row.manifest&&typeof row.manifest==='object'?/** @type {import('./task-store.ts').Manifest} */(row.manifest as import('./task-store.ts').Manifest):undefined
     const scope=declared?{...declared.scope,runId:declared.runId,workflowRef:declared.workflowRef}:validRunScope(row.run)?row.run:run
-    /** @type {import('./graph/protocol.ts').GraphEvent} */ const safe={seq:event.seq,hash:event.hash,type:event.type,run:scope}
+    /** @type {import('./graph/protocol.ts').GraphEvent} */ const safe: import('./graph/protocol.ts').GraphEvent={seq:event.seq,hash:event.hash,type:event.type,run:scope}
     if(declared)safe.goal=declared.goal.slice(0,4000)
     if(event.type==='asset'){safe.id=String(row.id);safe.kind=String(row.kind);safe.source=String(row.source);if(row.kind==='page'&&row.data&&typeof row.data==='object'&&'documentToken' in row.data&&typeof row.data.documentToken==='string')safe.documentToken=row.data.documentToken.slice(0,200)}
     if(event.type==='attempt'){safe.id=String(row.attemptId);safe.action=String(row.action)}
@@ -21,8 +21,8 @@ export function graphInput(task,config) {
   protectedRefs.delete('')
   return {scope:run,version:events.length,tailHash:events.at(-1)?.hash??'',goal:task.manifest.goal.slice(0,4000),constraints:task.manifest.constraints,criteria:facts.criteria,events,protected:[...protectedRefs].sort(),proofRef:facts.proofRef??'',proofSeq:facts.sourceSeq??0,coldRounds:config.graphColdRounds,minGroup:config.graphMinGroup,liveDocumentToken:task.liveDocumentToken??''}
 }
-/** @param {import('./task-store.js').TaskData} task - current Host data. @param {number} budget - optional display budget. @param {Record<string,unknown>|undefined} derived - validated Go view. @param {string} reason - component status. @param {boolean} writable - current durable writer availability. @param {string} [projectionId] - exact safe input hash. @returns {Record<string,unknown>} five-module view with Host authority over safety and criteria. */
-export function taskView(task,budget,derived,reason,writable,projectionId) {
+/** @param {import('./task-store.ts').TaskData} task - current Host data. @param {number} budget - optional display budget. @param {Record<string,unknown>|undefined} derived - validated Go view. @param {string} reason - component status. @param {boolean} writable - current durable writer availability. @param {string} [projectionId] - exact safe input hash. @returns {Record<string,unknown>} five-module view with Host authority over safety and criteria. */
+export function taskView(task: import('./task-store.ts').TaskData,budget: number,derived: Record<string, unknown> | undefined,reason: string,writable: boolean,projectionId?: string) {
   const facts=taskFacts(task),scope=task.manifest.scope
   const state=task.readOnly?'read_only':task.blocked||task.unhealthy?'write_blocked':task.waiting&&task.state==='active'?'awaiting_user':task.state
   const sources=task.events.slice(-8).map(event=>({seq:event.seq,hash:event.hash,type:event.type}))
@@ -31,7 +31,7 @@ export function taskView(task,budget,derived,reason,writable,projectionId) {
   const active={pageControl:task.liveDocumentToken?'authorized':'unavailable',waiting,waitingRef:waiting?'waiting':null,taskId:scope.taskId,contextVersion:task.events.length,state,goal:task.manifest.goal.slice(0,1000),writeBlocked:!!task.readOnly||task.blocked||task.unhealthy||!writable,logHealthy:!task.unhealthy,businessVerdict:facts.verdict,sourceSeq:facts.sourceSeq,
     storage:{schemaVersion:task.manifest.schemaVersion??null,readOnly:!!task.readOnly,issue:task.storageIssue??null},evidenceIssues:task.evidenceIssues??[],unmetCriteria:facts.criteria.filter(row=>row.status!=='passed').map(row=>row.id),criteriaRef:'criteria',currentRun:task.manifest.runId,pendingAttempts:task.pendingWrite?[task.pendingWrite]:[],unknownOutcomes:unknown,sources,
     graph:{status:derived?'ready':'unavailable',reason,...(projectionId?{projectionId}:{}),kernelVersion:'1'},complete:false}
-  const procedural=/** @type {Record<string,unknown>} */(derived?.procedural_law_index??{}),technical=/** @type {Record<string,unknown>} */(derived?.technical_law_index??{}),graph=/** @type {Record<string,unknown>} */(derived?.knowledge_graph??{}),selection=/** @type {Record<string,unknown>} */(derived?.active_context??{})
+  const procedural=/** @type {Record<string,unknown>} */((derived?.procedural_law_index??{}) as Record<string, unknown>),technical=/** @type {Record<string,unknown>} */((derived?.technical_law_index??{}) as Record<string, unknown>),graph=/** @type {Record<string,unknown>} */((derived?.knowledge_graph??{}) as Record<string, unknown>),selection=/** @type {Record<string,unknown>} */((derived?.active_context??{}) as Record<string, unknown>)
   const history=task.events.filter(event=>['waiting','wait_requested','wait_resolved'].includes(event.type)).slice(-4).map(event=>({sourceSeq:event.seq,type:event.type}))
   const value={basic_law_index:{events:task.events.length,healthy:!task.unhealthy,recent:sources},procedural_law_index:{...procedural,goal:{text:task.manifest.goal,source:'user_declared'},constraints:task.manifest.constraints,criteria:facts.criteria,waiting:waiting?[waiting]:[],historicalWaiting:history},technical_law_index:technical,knowledge_graph:graph,active_context:{...selection,...active,complete:!!derived&&selection.complete===true}}
   if(JSON.stringify(value).length<=budget)return value

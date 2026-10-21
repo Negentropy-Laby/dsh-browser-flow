@@ -71,8 +71,8 @@ export class BrowserFlowService {
     own(operation: () => Promise<object>): Promise<any>;
     /** @param {any} lease - live lease. @returns {string} immutable comparison for every asynchronous resumption. */
     leaseStamp(lease: any): string;
-    /** @param {ResolvedCaller} caller - original Agent. @param {import('./task-store.js').TaskAccess} access - original task/run. @param {any} lease - original lease. @param {string} stamp - captured binding. @param {boolean} [write] - enforce task write admission. @returns {void} no changed authorization is allowed to reach a guest. */
-    assertCurrent(caller: ResolvedCaller, access: import("./task-store.js").TaskAccess, lease: any, stamp: string, write?: boolean): void;
+    /** @param {ResolvedCaller} caller - original Agent. @param {import('./task-store.ts').TaskAccess} access - original task/run. @param {any} lease - original lease. @param {string} stamp - captured binding. @param {boolean} [write] - enforce task write admission. @returns {void} no changed authorization is allowed to reach a guest. */
+    assertCurrent(caller: ResolvedCaller, access: import("./task-store.ts").TaskAccess, lease: any, stamp: string, write?: boolean): void;
     /**
      * Token for one live Agent object, minted on first sight.
      * @param {object} agent - live Agent object.
@@ -88,12 +88,12 @@ export class BrowserFlowService {
      * @returns {any} caller verdict.
      */
     resolveCaller(exec: ToolExec): any;
-    /** @param {ResolvedCaller} caller - exact live caller. @param {boolean} [write] - page mutation or file grant. @returns {import('./task-store.js').TaskAccess} current task capability. */
-    taskOf(caller: ResolvedCaller, write?: boolean): import("./task-store.js").TaskAccess;
+    /** @param {ResolvedCaller} caller - exact live caller. @param {boolean} [write] - page mutation or file grant. @returns {import('./task-store.ts').TaskAccess} current task capability. */
+    taskOf(caller: ResolvedCaller, write?: boolean): import("./task-store.ts").TaskAccess;
     /** @param {unknown} error - expected task failure or unexpected defect. @returns {ReturnType<typeof failure>} sanitized failure. */
     taskFailure(error: unknown): ReturnType<typeof failure>;
-    /** @param {import('./task-store.js').TaskAccess} access - verified task. @param {boolean} [withGraph] - explicitly request derived graph computation. @param {AbortSignal} [signal] - caller cancellation. @returns {Promise<object>} logged task summary. */
-    taskSummary(access: import("./task-store.js").TaskAccess, withGraph?: boolean, signal?: AbortSignal): Promise<object>;
+    /** @param {import('./task-store.ts').TaskAccess} access - verified task. @param {boolean} [withGraph] - explicitly request derived graph computation. @param {AbortSignal} [signal] - caller cancellation. @returns {Promise<object>} logged task summary. */
+    taskSummary(access: import("./task-store.ts").TaskAccess, withGraph?: boolean, signal?: AbortSignal): Promise<object>;
     /** @param {ResolvedCaller} caller - tool caller. @param {any} result - owned canonical result. @returns {any} task identity/state attached without reading any other task. */
     annotate(caller: ResolvedCaller, result: any): any;
     /**
@@ -312,11 +312,11 @@ export type HostContext = {
     /**
      * - optional launcher context lookup.
      */
-    get?: ((name: string, strict: boolean) => import("./task-definitions.js").Profile | undefined) | undefined;
+    get?: ((name: string, strict: boolean) => import("./task-definitions.ts").Profile | undefined) | undefined;
     /**
      * - actual dsh profile identity and home.
      */
-    profileContext?: import("./task-definitions.js").Profile | undefined;
+    profileContext?: import("./task-definitions.ts").Profile | undefined;
     /**
      * - tool registry.
      */
@@ -333,7 +333,7 @@ export type HostContext = {
      * - Optional existing skill registry; its registrations are Cordis effects.
      */
     skills?: {
-        register: (skill: import("./task-definitions.js").LocalSkill) => () => void;
+        register: (skill: import("./task-definitions.ts").LocalSkill) => () => void;
     } | undefined;
     /**
      * - optional managed process provider.
@@ -463,7 +463,7 @@ export type ControlStore = {
 };
 import { Config } from './config.ts';
 import { GraphWorkers } from './graph/worker.ts';
-import { TaskStore } from './task-store.js';
+import { TaskStore } from './task-store.ts';
 import { ImportFiles } from './import-files.js';
 import { monotonicNow } from './state.js';
 import { failure } from './protocol.ts';

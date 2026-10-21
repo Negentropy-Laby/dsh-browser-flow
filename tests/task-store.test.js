@@ -3,7 +3,7 @@ import { mkdtemp, rm, readFile, appendFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { it } from 'node:test'
-import { TaskStore } from '../src/task-store.js'
+import { TaskStore } from '../src/task-store.ts'
 import { syntheticDefinition } from './helpers/task-definition.js'
 
 async function fixture(t) {

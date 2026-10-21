@@ -1,12 +1,62 @@
+export type TaskScope = import("./task-scope.ts").TaskScope;
+export type RunScope = import("./task-scope.ts").RunScope;
+export type Manifest = {
+    schemaVersion?: number;
+    scope: TaskScope;
+    runId: import("./task-scope.ts").RunId;
+    workflowRef: string;
+    goal: string;
+    constraints: string[];
+    criteria: string[];
+    origins: string[];
+    adapter: string;
+    adapterVersion: number;
+    definitionId?: string;
+    definitionDigest?: string;
+    definitionVersion?: string;
+};
+export type TaskEvent = {
+    schemaVersion?: number;
+    seq: number;
+    prev: string;
+    type: string;
+    data: Record<string, unknown>;
+    hash: string;
+};
+export type TaskData = {
+    manifest: Manifest;
+    snapshot?: import("./task-definitions.ts").DefinitionSnapshot;
+    events: TaskEvent[];
+    dir: string;
+    blocked: boolean;
+    unhealthy: boolean;
+    state: string;
+    pendingWrite?: string;
+    readOnly?: boolean;
+    storageIssue?: string;
+    checkedProofs?: Map<string, import("./task-criteria.ts").CheckedProof>;
+    evidenceIssues?: string[];
+    liveDocumentToken?: string;
+    waiting?: import("./task-wait.ts").UserWait;
+    waitInput?: {
+        kind: string;
+        inputRef: string;
+    };
+};
+export type TaskAccess = {
+    readonly scope: TaskScope;
+    readonly run: RunScope;
+};
+
 /** Profile-owned task store. Durable ownership never grants page control or replays commands. */
-import { graphInput, taskView } from './task-projections.js'
-import { taskFacts, taskReferences } from './task-facts.js'
+import { graphInput, taskView } from './task-projections.ts'
+import { taskFacts, taskReferences } from './task-facts.ts'
 import { GraphError } from './graph/protocol.ts'
 import { graphHash } from './graph/worker.ts'
 import { resolveConfig } from './config.ts'
 import { validUserWait } from './task-wait.ts'
-import { trustedCriterion, validArtifact } from './task-criteria.js'
-import { TASK_FORMAT_VERSION, validTaskManifest, validTaskEvent } from './task-journal.js'
+import { trustedCriterion, validArtifact } from './task-criteria.ts'
+import { TASK_FORMAT_VERSION, validTaskManifest, validTaskEvent } from './task-journal.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { open, readFile, mkdir, readdir, lstat } from 'node:fs/promises'
 import { hostname } from 'node:os'
@@ -14,37 +64,57 @@ import { join, dirname, resolve, relative, isAbsolute } from 'node:path'
 import { validTaskScope, validRunScope, sameTaskScope, sameRunScope } from './task-scope.ts'
 import { withFileLock } from '@deepseek-ai/dsh-atomic-write'
 import { privateDirectory } from './import-files.js'
-import { loadDefinition, noLinks, validOrigins, validateDefinition } from './task-definitions.js'
+import { loadDefinition, noLinks, validOrigins, validateDefinition } from './task-definitions.ts'
 
 /** @typedef {import('./task-scope.ts').TaskScope} TaskScope */
 /** @typedef {import('./task-scope.ts').RunScope} RunScope */
 /** @typedef {{ schemaVersion?: number, scope: TaskScope, runId: import('./task-scope.ts').RunId, workflowRef: string, goal: string, constraints: string[], criteria: string[], origins: string[], adapter: string, adapterVersion: number, definitionId?: string, definitionDigest?: string, definitionVersion?: string }} Manifest */
 /** @typedef {{ schemaVersion?: number, seq: number, prev: string, type: string, data: Record<string, unknown>, hash: string }} TaskEvent */
-/** @typedef {{ manifest: Manifest, snapshot?: import('./task-definitions.js').DefinitionSnapshot, events: TaskEvent[], dir: string, blocked: boolean, unhealthy: boolean, state: string, pendingWrite?: string, readOnly?: boolean, storageIssue?: string, checkedProofs?: Map<string,import('./task-criteria.js').CheckedProof>, evidenceIssues?: string[], liveDocumentToken?: string, waiting?: import('./task-wait.ts').UserWait, waitInput?: {kind:string,inputRef:string} }} TaskData */
+/** @typedef {{ manifest: Manifest, snapshot?: import('./task-definitions.ts').DefinitionSnapshot, events: TaskEvent[], dir: string, blocked: boolean, unhealthy: boolean, state: string, pendingWrite?: string, readOnly?: boolean, storageIssue?: string, checkedProofs?: Map<string,import('./task-criteria.ts').CheckedProof>, evidenceIssues?: string[], liveDocumentToken?: string, waiting?: import('./task-wait.ts').UserWait, waitInput?: {kind:string,inputRef:string} }} TaskData */
 /** @typedef {{ readonly scope: TaskScope, readonly run: RunScope }} TaskAccess */
 
 /** Expected task failures are sanitized at the tool/HTTP boundary. */
 export class TaskError extends Error {
+code: string;
+
   /** @param {string} code - machine identity. @param {string} message - public next step. */
-  constructor(code, message) { super(message); this.code = code }
+  constructor(code: string, message: string) { super(message); this.code = code }
 }
 /** @param {string | Uint8Array} value - complete content. @returns {string} digest. */
-const hash = value => createHash('sha256').update(value).digest('hex')
+const hash = (value: string | Uint8Array) : string => createHash('sha256').update(value).digest('hex')
 /** @param {unknown} value - JSON value. @returns {value is Record<string, unknown>} record. */
-const record = value => value !== null && typeof value === 'object' && !Array.isArray(value)
+const record = (value: unknown) : value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value)
 /** @param {unknown} value - bounded user text. @param {number} max - limit. @returns {value is string} safe nonempty text. */
-const text = (value,max) => typeof value === 'string' && value.length > 0 && value.length <= max
+const text = (value: unknown,max: number) : value is string => typeof value === 'string' && value.length > 0 && value.length <= max
 /** @param {unknown} value - list of conditions. @returns {value is string[]} bounded list. */
-const conditions = value => Array.isArray(value) && value.length <= 32 && value.every(item => text(item,1000))
+const conditions = (value: unknown) : value is string[] => Array.isArray(value) && value.length <= 32 && value.every(item => text(item,1000))
 
 /** The service owns one writer lease, access capabilities and a serialized append queue. */
 export class TaskStore {
-  /** @param {string | undefined} root - localTasksDir. @param {import('./task-definitions.js').Profile | undefined} profile - actual dsh profile. @param {number} waitMs - bounded writer acquisition. @param {import('./graph/worker.ts').GraphWorkers|undefined} [graph] - optional derived view service. @param {import('./graph/protocol.ts').GraphConfig} [graphConfig] - resolved limits. */
-  constructor(root, profile, waitMs, graph=undefined, graphConfig=resolveConfig(undefined)) {
+graph: import("./graph/worker.ts").GraphWorkers | undefined;
+graphConfig: import("./graph/protocol.ts").GraphConfig;
+controlDocument: ((access: TaskAccess) => string | undefined) | undefined;
+root: string | undefined;
+profileId: import("./task-scope.ts").ProfileId | undefined;
+runtime: string | undefined;
+waitMs: number;
+tasks: Map<string, TaskData>;
+bindings: Map<string, string>;
+handles: WeakMap<TaskAccess, TaskData>;
+ready: Promise<void> | undefined;
+writer: Promise<unknown> | undefined;
+releaseWriter: (() => void) | undefined;
+abort: AbortController;
+closed: boolean;
+writable: boolean;
+tail: Promise<void>;
+
+  /** @param {string | undefined} root - localTasksDir. @param {import('./task-definitions.ts').Profile | undefined} profile - actual dsh profile. @param {number} waitMs - bounded writer acquisition. @param {import('./graph/worker.ts').GraphWorkers|undefined} [graph] - optional derived view service. @param {import('./graph/protocol.ts').GraphConfig} [graphConfig] - resolved limits. */
+  constructor(root: string | undefined, profile: import('./task-definitions.ts').Profile | undefined, waitMs: number, graph: import('./graph/worker.ts').GraphWorkers | undefined=undefined, graphConfig: import('./graph/protocol.ts').GraphConfig=resolveConfig(undefined)) {
     this.graph=graph;this.graphConfig=graphConfig
     /** @type {((access:TaskAccess)=>string|undefined)|undefined} */ this.controlDocument=undefined
     this.root = root
-    this.profileId = profile ? /** @type {import('./task-scope.ts').ProfileId} */('profile-'+hash(JSON.stringify([profile.name,resolve(profile.home)])).slice(0,32)) : undefined
+    this.profileId = profile ? /** @type {import('./task-scope.ts').ProfileId} */('profile-'+hash(JSON.stringify([profile.name,resolve(profile.home)])).slice(0,32) as import('./task-scope.ts').ProfileId) : undefined
     this.runtime = root && this.profileId ? join(root,'.runtime',this.profileId) : undefined
     this.waitMs = waitMs
     /** @type {Map<string, TaskData>} */ this.tasks = new Map()
@@ -59,7 +129,7 @@ export class TaskStore {
     this.tail = Promise.resolve()
   }
   /** @param {string} path - owned descendant. @returns {Promise<void>} private directory after all existing ancestors have passed link checks. */
-  async directory(path) {
+  async directory(path: string) : Promise<void> {
     if(!this.root)throw new TaskError('task_unavailable','task root unavailable')
     const rel=relative(resolve(this.root),resolve(path))
     if(rel.startsWith('..')||isAbsolute(rel))throw new TaskError('task_unavailable','task path escaped its root')
@@ -72,14 +142,14 @@ export class TaskStore {
     noLinks(this.root,path)
   }
   /** @returns {Promise<void>} lazy initialization; failure prevents writes without impairing revocation. */
-  initialize() {
+  initialize() : Promise<void> {
     if (this.closed) return Promise.reject(new TaskError('task_unavailable','task storage is closed; hand off safely'))
     if (this.ready) return this.ready
     this.ready = this.initializeOwned()
     return this.ready
   }
   /** @returns {Promise<void>} writer ready after existing ownership and journals have been read. */
-  async initializeOwned() {
+  async initializeOwned() : Promise<void> {
     if (!this.root || !this.runtime || !this.profileId) throw new TaskError('task_unavailable','launch with a dsh profile and configure localTasksDir before creating a task')
     const runtime = this.runtime
     try {
@@ -92,7 +162,7 @@ export class TaskStore {
       const host=JSON.parse(await readFile(namespace,'utf8'))
       if (host.platform !== process.platform || host.hostname !== hostname()) throw new Error('task-writer-host-mismatch')
       let readyResolve=()=>{}
-      /** @type {(reason: unknown) => void} */ let readyReject=()=>{}
+      /** @type {(reason: unknown) => void} */ let readyReject: (reason: unknown) => void=(): void =>{}
       const ready=new Promise((resolve,reject)=>{readyResolve=()=>resolve(undefined);readyReject=reject})
       const lifetime=new Promise(resolve=>{this.releaseWriter=()=>resolve(undefined)})
       this.writer=withFileLock(join(runtime,'writer'),async()=>{
@@ -110,20 +180,20 @@ export class TaskStore {
     }
   }
   /** @param {string} path - owned new file. @param {unknown} value - complete JSON. @returns {Promise<void>} synced new content. */
-  async writeNew(path,value) {
+  async writeNew(path: string,value: unknown) : Promise<void> {
     await mkdir(dirname(path),{recursive:true,mode:0o700})
     if(this.root) noLinks(this.root,dirname(path))
     const handle=await open(path,'wx',0o600)
     try { await handle.writeFile(JSON.stringify(value)+'\n'); await handle.sync() } finally { await handle.close() }
   }
   /** @template T @param {() => Promise<T>} operation - serialized mutation. @returns {Promise<T>} operation result. */
-  serial(operation) {
+  serial<T>(operation: () => Promise<T>) : Promise<T> {
     const result=this.tail.then(operation)
     this.tail=result.then(()=>{},()=>{})
     return result
   }
   /** @param {string} sessionId - caller's verified Session. @param {unknown} raw - user task declaration. @returns {Promise<TaskAccess>} newly created task, permanently owned by this Session. */
-  async create(sessionId,raw) {
+  async create(sessionId: string,raw: unknown) : Promise<TaskAccess> {
     await this.initialize()
     return this.serial(async()=>{
       if (this.closed || !this.writable || !this.root || !this.runtime || !this.profileId) throw new TaskError('task_unavailable','task storage is closed')
@@ -139,13 +209,13 @@ export class TaskStore {
       if (snapshot && !workflow) throw new TaskError('definition_unavailable','select an available workflow in this definition')
       const origins=snapshot?.definition.origins ?? raw.origins
       if (!validOrigins(origins) || (snapshot && raw.origins !== undefined)) throw new TaskError('invalid_request','supply exact allowed origins for a generic task')
-      const taskId=/** @type {import('./task-scope.ts').TaskId} */('task-'+randomUUID())
+      const taskId=/** @type {import('./task-scope.ts').TaskId} */('task-'+randomUUID() as import('./task-scope.ts').TaskId)
       const scope={profileId:this.profileId,taskId,ownerSessionId:sessionId,scopeRevision:1}
-      /** @type {Manifest} */ const manifest={schemaVersion:TASK_FORMAT_VERSION,scope,runId:/** @type {import('./task-scope.ts').RunId} */('run-'+randomUUID()),workflowRef:workflow?.id ?? 'generic',goal:raw.goal,constraints:/** @type {string[]} */(raw.constraints ?? []),criteria:/** @type {string[]} */(raw.criteria ?? []),origins:[...origins],adapter:snapshot?.definition.adapter ?? 'generic',adapterVersion:1,
+      /** @type {Manifest} */ const manifest: Manifest={schemaVersion:TASK_FORMAT_VERSION,scope,runId:/** @type {import('./task-scope.ts').RunId} */('run-'+randomUUID() as import('./task-scope.ts').RunId),workflowRef:workflow?.id ?? 'generic',goal:raw.goal,constraints:/** @type {string[]} */((raw.constraints ?? []) as string[]),criteria:/** @type {string[]} */((raw.criteria ?? []) as string[]),origins:[...origins],adapter:snapshot?.definition.adapter ?? 'generic',adapterVersion:1,
         ...(snapshot?{definitionId:snapshot.definition.id,definitionDigest:snapshot.digest,definitionVersion:snapshot.definition.version}:{})}
       const dir=join(this.runtime,'tasks',taskId)
       await this.directory(dir)
-      /** @type {TaskData} */ const data={manifest,snapshot,dir,events:[],blocked:false,unhealthy:false,state:'active'}
+      /** @type {TaskData} */ const data: TaskData={manifest,snapshot,dir,events:[],blocked:false,unhealthy:false,state:'active'}
       if(snapshot)for(const [name,body] of Object.entries(snapshot.files)){
         const file=join(dir,'definition-snapshot',name)
         await mkdir(dirname(file),{recursive:true,mode:0o700})
@@ -160,14 +230,14 @@ export class TaskStore {
     })
   }
   /** @param {TaskData} data - owned data. @returns {TaskAccess} unforgeable in-process capability. */
-  access(data) {
+  access(data: TaskData) : TaskAccess {
     const scope=Object.freeze({...data.manifest.scope})
     const handle=Object.freeze({scope,run:Object.freeze({...scope,runId:data.manifest.runId,workflowRef:data.manifest.workflowRef})})
     this.handles.set(handle,data)
     return handle
   }
   /** @param {string} sessionId - actual caller. @param {unknown} [requested] - optional scope to compare, never an authority source. @returns {Promise<TaskAccess>} verified current ownership. */
-  async forSession(sessionId,requested) {
+  async forSession(sessionId: string,requested?: unknown) : Promise<TaskAccess> {
     await this.initialize()
     const taskId=this.bindings.get(sessionId)
     const data=taskId ? this.tasks.get(taskId) : undefined
@@ -176,13 +246,13 @@ export class TaskStore {
     return this.access(data)
   }
   /** @param {string} sessionId - verified Session. @returns {TaskAccess | undefined} current in-memory binding; use forSession to recover after restart. */
-  current(sessionId) {
+  current(sessionId: string) : TaskAccess | undefined {
     const id=this.bindings.get(sessionId)
     const data=id ? this.tasks.get(id) : undefined
     return data ? this.access(data) : undefined
   }
   /** @param {TaskAccess} access - store-issued capability. @param {boolean} [write] - operation can change a page or file authority. @returns {TaskData} private data available only after full verification. */
-  openTask(access,write=false) {
+  openTask(access: TaskAccess,write: boolean=false) : TaskData {
     const data=this.handles.get(access)
     if (!data || !sameRunScope(access.run,{...data.manifest.scope,runId:data.manifest.runId,workflowRef:data.manifest.workflowRef}) || this.closed) throw new TaskError('task_not_bound','task binding is no longer current')
     if(write && data.readOnly)throw new TaskError('task_read_only','this task uses unsupported or legacy storage; read its history, revoke and hand off in a new Session')
@@ -192,7 +262,7 @@ export class TaskStore {
     return data
   }
   /** @param {TaskAccess} access - verified task. @param {string} url - actual page address. @returns {void} allowed source with supported adapter version. */
-  assertPage(access,url) {
+  assertPage(access: TaskAccess,url: string) : void {
     const data=this.openTask(access)
     let origin
     try {origin=new URL(url).origin}catch{throw new TaskError('task_scope_mismatch','page is outside the task’s allowed sites')}
@@ -200,7 +270,7 @@ export class TaskStore {
     if(data.manifest.adapterVersion!==1 || !data.manifest.origins.includes(origin))throw new TaskError('task_scope_mismatch','page is outside the task’s supported sites')
   }
   /** @param {TaskData} data - private task. @param {string} type - event category. @param {Record<string,unknown>} payload - bounded event facts. @returns {Promise<TaskEvent>} durable append. */
-  async appendOwned(data,type,payload) {
+  async appendOwned(data: TaskData,type: string,payload: Record<string, unknown>) : Promise<TaskEvent> {
     if(data.readOnly)throw new TaskError('task_read_only','legacy task history is immutable; read, revoke and hand off')
     if((type==='created'&&data.events.length!==0)||!validTaskEvent(type,payload,data.manifest,data.pendingWrite,data.waiting,data.waitInput))throw new TaskError('invalid_request','unsupported task event or invalid event payload')
     if(!this.writable && data.events.length>0)throw new TaskError('task_unavailable','task storage has no writer; only read, revoke and hand off')
@@ -222,8 +292,8 @@ export class TaskStore {
     }catch(error){data.unhealthy=true;data.blocked=true;throw new TaskError('task_storage_failed','task log could not be synchronized; writes are blocked, revoke and hand off')}
   }
   /** @param {TaskData} data - recovered or live task. @param {TaskEvent} event - validated event. @returns {void} monotonic state projection. */
-  reduce(data,event) {
-    if(event.type==='wait_requested'){data.waiting=/** @type {import('./task-wait.ts').UserWait} */(event.data);delete data.waitInput}
+  reduce(data: TaskData,event: TaskEvent) : void {
+    if(event.type==='wait_requested'){data.waiting=/** @type {import('./task-wait.ts').UserWait} */(event.data as import('./task-wait.ts').UserWait);delete data.waitInput}
     if(event.type==='wait_input')data.waitInput={kind:String(event.data.kind),inputRef:String(event.data.inputRef)}
     if(event.type==='wait_resolved'){delete data.waiting;delete data.waitInput}
     if(event.type==='attempt')data.pendingWrite=String(event.data.attemptId)
@@ -231,13 +301,13 @@ export class TaskStore {
       if(event.data.outcome==='unknown_outcome')data.blocked=true
       if(data.pendingWrite===event.data.attemptId)delete data.pendingWrite
     }
-    if(event.type==='revise' && record(event.data.manifest))data.manifest=/** @type {Manifest} */(event.data.manifest)
+    if(event.type==='revise' && record(event.data.manifest))data.manifest=/** @type {Manifest} */(event.data.manifest as Manifest)
     if(event.type==='status' && typeof event.data.state==='string')data.state=event.data.state
   }
   /** @param {TaskAccess} access - capability. @param {string} type - event. @param {Record<string,unknown>} payload - facts. @returns {Promise<TaskEvent>} appended event. */
-  append(access,type,payload) {return this.serial(()=>this.appendOwned(this.openTask(access),type,payload))}
+  append(access: TaskAccess,type: string,payload: Record<string, unknown>) : Promise<TaskEvent> {return this.serial(()=>this.appendOwned(this.openTask(access),type,payload))}
   /** @param {TaskAccess} access - capability. @param {string} action - fixed action kind, never private text. @returns {Promise<string>} durable attempt id before any write-related work. */
-  beginAttempt(access,action) {
+  beginAttempt(access: TaskAccess,action: string) : Promise<string> {
     return this.serial(async()=>{
       const data=this.openTask(access,true)
       if(data.waiting&&!['prepare_file','confirm_file'].includes(action))throw new TaskError('awaiting_user','this task awaits user input; inspect view=task, read safely, revoke or hand off')
@@ -248,36 +318,38 @@ export class TaskStore {
     })
   }
   /** @param {TaskAccess} access - original run. @param {string} attemptId - original attempt. @param {string} outcome - known result or unknown. @param {{fileGrantId?:string}} [details] - verified file acknowledgement binding. @returns {Promise<void>} durable settlement; unknown is sticky. */
-  async receipt(access,attemptId,outcome,details={}) {
+  async receipt(access: TaskAccess,attemptId: string,outcome: string,details: {
+    fileGrantId?: string;
+}={}) : Promise<void> {
     const data=this.openTask(access)
     if(outcome==='unknown_outcome')data.blocked=true
     await this.append(access,'receipt',{attemptId,outcome,run:access.run,...details})
   }
   /** @param {TaskAccess} access - current owner. @returns {void} page mutations require no outstanding human dependency. */
-  assertReady(access) {
+  assertReady(access: TaskAccess) : void {
     if(this.openTask(access,true).waiting)throw new TaskError('awaiting_user','this task awaits user input; inspect view=task, read safely, revoke or hand off')
   }
   /** @param {TaskAccess} access - owner. @param {import('./task-wait.ts').UserWaitRequest} request - model declaration. @returns {Promise<import('./task-wait.ts').UserWait>} synchronized wait; identical repeats do not append. */
-  declareWait(access,request) {
+  declareWait(access: TaskAccess,request: import('./task-wait.ts').UserWaitRequest) : Promise<import('./task-wait.ts').UserWait> {
     return this.serial(async()=>{
       const data=this.openTask(access,true)
       if(!validUserWait(request))throw new TaskError('invalid_request','provide a bounded user dependency, reason and resume condition')
       if(data.pendingWrite)throw new TaskError('task_busy','settle the pending write before declaring a user dependency')
       if(data.waiting){if(data.waiting.kind===request.kind&&data.waiting.reason===request.reason&&data.waiting.resumeCondition===request.resumeCondition)return data.waiting;throw new TaskError('task_busy','resolve or hand off the existing user dependency first')}
-      const waiting={...request,id:'wait-'+randomUUID(),owner:/** @type {const} */('user'),source:/** @type {const} */('model_declared'),run:access.run}
+      const waiting={...request,id:'wait-'+randomUUID(),owner:/** @type {const} */('user' as const),source:/** @type {const} */('model_declared' as const),run:access.run}
       await this.appendOwned(data,'wait_requested',waiting)
       return waiting
     })
   }
   /** @param {TaskAccess} access - owner. @param {string} kind - actual prerequisite supplied through the panel. @param {string} inputRef - exact current capability or file fingerprint. @returns {Promise<void>} task-owned new input, never an authorization itself. */
-  noteWaitInput(access,kind,inputRef) {
+  noteWaitInput(access: TaskAccess,kind: string,inputRef: string) : Promise<void> {
     return this.serial(async()=>{
       const data=this.openTask(access)
       if(data.waiting?.kind===kind&&data.state==='active')await this.appendOwned(data,'wait_input',{waitId:data.waiting.id,kind,inputRef,source:'host_verified',run:access.run})
     })
   }
   /** @param {TaskAccess} access - owner. @param {unknown} waitId - panel reference. @param {unknown} userInput - explicit human input for non-verifiable dependencies. @param {(kind:string,inputRef:string)=>boolean} current - Host rechecks current supplied capabilities. @returns {Promise<void>} records resolution without restoring page control. */
-  resumeWait(access,waitId,userInput,current) {
+  resumeWait(access: TaskAccess,waitId: unknown,userInput: unknown,current: (kind: string, inputRef: string) => boolean) : Promise<void> {
     return this.serial(async()=>{
       const data=this.openTask(access,true),waiting=data.waiting
       if(!waiting||data.state!=='active'||waitId!==waiting.id)throw new TaskError('task_not_bound','the user dependency is inaccessible or no longer current')
@@ -288,7 +360,7 @@ export class TaskStore {
     })
   }
   /** @param {TaskAccess} access - original run. @param {string} state - user task lifecycle request. @returns {Promise<TaskAccess>} status, never a business verdict. */
-  async end(access,state) {
+  async end(access: TaskAccess,state: string) : Promise<TaskAccess> {
     if(!['cancelled','handed_off'].includes(state))throw new TaskError('invalid_request','ending a task records cancelled or handed_off, never business success')
     if(this.openTask(access).readOnly)return access
     await this.append(access,'status',{state,run:access.run})
@@ -296,7 +368,7 @@ export class TaskStore {
     return access
   }
   /** @param {TaskAccess} access - user-owned task. @param {unknown} raw - explicit revised goal/scope or new run. @returns {Promise<TaskAccess>} new revision; unknown write remains blocked. */
-  revise(access,raw) {
+  revise(access: TaskAccess,raw: unknown) : Promise<TaskAccess> {
     return this.serial(async()=>{
       const data=this.openTask(access)
       if(data.readOnly)throw new TaskError('task_read_only','legacy task history cannot be revised; use a new Session')
@@ -304,15 +376,15 @@ export class TaskStore {
       if(data.pendingWrite)throw new TaskError('task_busy','a write is pending; revoke control and hand off before revising')
       if(!record(raw)||Object.keys(raw).some(key=>!['goal','constraints','criteria','origins','newRun'].includes(key)) || (raw.goal!==undefined&&!text(raw.goal,2000))
         || (raw.constraints!==undefined&&!conditions(raw.constraints)) || (raw.criteria!==undefined&&!conditions(raw.criteria)) || (raw.origins!==undefined&&(!validOrigins(raw.origins)||data.manifest.adapter!=='generic')))throw new TaskError('invalid_request','task revision must be bounded and cannot change its adapter or definition')
-      const manifest={...data.manifest,scope:{...data.manifest.scope,scopeRevision:data.manifest.scope.scopeRevision+1},runId:/** @type {import('./task-scope.ts').RunId} */('run-'+randomUUID()),
-        ...(raw.goal===undefined?{}:{goal:raw.goal}),...(raw.constraints===undefined?{}:{constraints:/** @type {string[]} */(raw.constraints)}),...(raw.criteria===undefined?{}:{criteria:/** @type {string[]} */(raw.criteria)}),...(raw.origins===undefined?{}:{origins:/** @type {string[]} */(raw.origins)})}
+      const manifest={...data.manifest,scope:{...data.manifest.scope,scopeRevision:data.manifest.scope.scopeRevision+1},runId:/** @type {import('./task-scope.ts').RunId} */('run-'+randomUUID() as import('./task-scope.ts').RunId),
+        ...(raw.goal===undefined?{}:{goal:raw.goal}),...(raw.constraints===undefined?{}:{constraints:/** @type {string[]} */(raw.constraints as string[])}),...(raw.criteria===undefined?{}:{criteria:/** @type {string[]} */(raw.criteria as string[])}),...(raw.origins===undefined?{}:{origins:/** @type {string[]} */(raw.origins as string[])})}
       await this.appendOwned(data,'revise',{manifest})
       await this.graph?.retire(access.scope.taskId)
       return this.access(data)
     })
   }
   /** @param {TaskAccess} access - capability. @param {number} budget - projection character limit. @param {AbortSignal} [signal] - caller cancellation. @returns {Promise<Record<string,unknown>>} current Host facts and optional derived graph. */
-  async view(access,budget,signal=undefined) {
+  async view(access: TaskAccess,budget: number,signal: AbortSignal | undefined=undefined) : Promise<ReturnType<typeof taskView>> {
     await this.refreshEvidence(access)
     const data=this.openTask(access)
     data.liveDocumentToken=this.controlDocument?.(access)
@@ -325,7 +397,7 @@ export class TaskStore {
     return taskView(data,budget,derived,reason,this.writable,derived?hash:undefined)
   }
   /** @param {TaskAccess} access - owner. @param {Record<string,unknown>} value - private original facts. @returns {Promise<string>} task-local evidence reference. */
-  async proof(access,value) {
+  async proof(access: TaskAccess,value: Record<string, unknown>) : Promise<string> {
     const data=this.openTask(access)
     const path=join('evidence',access.run.runId,'proof-'+randomUUID()+'.json').replaceAll('\\','/')
     await this.directory(join(data.dir,'evidence',access.run.runId))
@@ -333,13 +405,13 @@ export class TaskStore {
     const bytes=await readFile(join(data.dir,path))
     return this.asset(access,'evidence',{artifact:path,sha256:hash(bytes),bytes:bytes.length},'code_verified')
   }
-  /** @param {TaskAccess} access - owner. @param {string} path - existing private original. @param {string} role - fixed evidence role. @returns {Promise<import('./task-criteria.js').Artifact>} bound artifact without exposing its bytes. */
-  async artifact(access,path,role) {
+  /** @param {TaskAccess} access - owner. @param {string} path - existing private original. @param {string} role - fixed evidence role. @returns {Promise<import('./task-criteria.ts').Artifact>} bound artifact without exposing its bytes. */
+  async artifact(access: TaskAccess,path: string,role: string) : Promise<import('./task-criteria.ts').Artifact> {
     const data=this.openTask(access),name=relative(data.dir,path).replaceAll('\\','/')
     return this.readArtifact(data,{role,path:name,sha256:'',bytes:0},false).then(bytes=>({role,path:name,sha256:hash(bytes),bytes:bytes.length}))
   }
-  /** @param {TaskData} data - owner. @param {import('./task-criteria.js').Artifact} ref - relative reference. @param {boolean} [verify] - enforce recorded digest. @returns {Promise<Buffer>} complete bounded bytes. */
-  async readArtifact(data,ref,verify=true) {
+  /** @param {TaskData} data - owner. @param {import('./task-criteria.ts').Artifact} ref - relative reference. @param {boolean} [verify] - enforce recorded digest. @returns {Promise<Buffer>} complete bounded bytes. */
+  async readArtifact(data: TaskData,ref: import('./task-criteria.ts').Artifact,verify: boolean=true) : Promise<Buffer> {
     if(!ref.path.startsWith('evidence/')||ref.path.split('/').some(part=>!part||part==='.'||part==='..')||/[\\:\x00-\x1f]/.test(ref.path))throw new Error('task-evidence-path')
     const path=join(data.dir,ref.path);noLinks(data.dir,path)
     const info=await lstat(path)
@@ -349,7 +421,7 @@ export class TaskStore {
     return bytes
   }
   /** @param {TaskAccess} access - owner. @returns {Promise<void>} recheck recoverable originals before displaying proofs. */
-  async refreshEvidence(access) {
+  async refreshEvidence(access: TaskAccess) : Promise<void> {
     const data=this.openTask(access),checked=new Map(),issues=[]
     if(!data.readOnly&&!data.unhealthy)for(const event of data.events){
       const row=event.data
@@ -370,7 +442,7 @@ export class TaskStore {
     data.checkedProofs=checked;data.evidenceIssues=issues
   }
   /** @param {TaskAccess} access - owner. @param {Record<string,unknown>} result - trusted validator result. @param {string} proofRef - private original reference. @returns {Promise<string>} independently checked current verdict. */
-  async verdict(access,result,proofRef) {
+  async verdict(access: TaskAccess,result: Record<string, unknown>,proofRef: string) : Promise<string> {
     const criterion=trustedCriterion(this.openTask(access).manifest)
     if(!criterion)throw new TaskError('invalid_request','no trusted criterion exists for this workflow')
     await this.refreshEvidence(access)
@@ -378,14 +450,14 @@ export class TaskStore {
     return taskFacts(this.openTask(access)).verdict
   }
   /** @param {TaskAccess} access - capability. @param {string} kind - code-owned asset kind. @param {Record<string,unknown>} data - safe facts; raw personnel remain in private evidence. @param {'host'|'code_verified'} [source] - factual authority. @returns {Promise<string>} unique task-local reference, never deduplicated by name or content. */
-  async asset(access,kind,data,source='host') {
+  async asset(access: TaskAccess,kind: string,data: Record<string, unknown>,source: 'host' | 'code_verified'='host') : Promise<string> {
     if(!['page','file','unit_check','import_result','evidence'].includes(kind))throw new TaskError('invalid_request','unsupported task asset')
     const id='asset-'+randomUUID()
     await this.append(access,'asset',{id,kind,data,source,run:access.run})
     return id
   }
   /** @param {TaskAccess} access - capability. @param {string} from - existing task asset. @param {string} to - existing task asset. @param {string} relation - fixed relation. @returns {Promise<string>} journaled relation after both ownership checks. */
-  async relate(access,from,to,relation) {
+  async relate(access: TaskAccess,from: string,to: string,relation: string) : Promise<string> {
     const references=taskReferences(this.openTask(access))
     if(!references.has(from)||!references.has(to))throw new TaskError('task_not_bound','one or more task references are inaccessible')
     if(!['observed_on','validated_by','derived_from','selected_from','proves','yields'].includes(relation))throw new TaskError('invalid_request','unsupported task relation')
@@ -394,10 +466,10 @@ export class TaskStore {
     return id
   }
   /** @param {TaskAccess} access - capability. @param {string} id - task-local detail. @param {number} offset - bounded text continuation. @param {number} budget - character budget. @returns {Promise<object>} scoped immutable detail or generic refusal. */
-  async detail(access,id,offset,budget) {
+  async detail(access: TaskAccess,id: string,offset: number,budget: number) : Promise<object> {
     const data=this.openTask(access)
     const row=data.events.findLast(event=>event.type==='asset'&&event.data.id===id)
-    const asset=row?{id,taskId:data.manifest.scope.taskId,kind:row.data.kind,source:row.data.source,sourceSeq:row.seq,data:/** @type {Record<string,unknown>} */(row.data.data)}:undefined
+    const asset=row?{id,taskId:data.manifest.scope.taskId,kind:row.data.kind,source:row.data.source,sourceSeq:row.seq,data:/** @type {Record<string,unknown>} */(row.data.data as Record<string, unknown>)}:undefined
     const criterion=taskFacts(data).criteria.find(item=>item.id===id)
     let value
     if(asset)value=asset.kind==='evidence'?{...asset,data:{sha256:asset.data.sha256,bytes:asset.data.bytes,originalAvailable:data.checkedProofs?.has(asset.id)??false}}:asset
@@ -416,7 +488,7 @@ export class TaskStore {
     return {task:access.run,contextVersion:data.events.length,ref:id,offset,totalChars:serialized.length,text:serialized.slice(offset,offset+budget),complete:offset+budget>=serialized.length}
   }
   /** @returns {Promise<void>} read immutable ownership plus complete validated journal prefixes; no commands or control are restored. */
-  async recover() {
+  async recover() : Promise<void> {
     if(!this.runtime || !this.profileId || !this.root)return
     const registry=join(this.runtime,'registry')
     try{await lstat(registry)}catch(error){if(record(error)&&error.code==='ENOENT')return;throw error}
@@ -433,7 +505,7 @@ export class TaskStore {
         const manifest=JSON.parse(await readFile(join(dir,'manifest.json'),'utf8'))
         if(!validTaskManifest(manifest,true)||manifest.scope.ownerSessionId!==row.sessionId||manifest.scope.taskId!==row.taskId||manifest.scope.profileId!==this.profileId
           || !validOrigins(manifest.origins)||!text(manifest.goal,2000)||!conditions(manifest.constraints)||!conditions(manifest.criteria))throw new Error('task-manifest-invalid')
-        /** @type {TaskData} */ const data={manifest:/** @type {Manifest} */(manifest),dir,events:[],blocked:false,unhealthy:false,state:'active',readOnly:manifest.schemaVersion!==TASK_FORMAT_VERSION || row.schemaVersion!==TASK_FORMAT_VERSION,storageIssue:manifest.schemaVersion===undefined?'legacy_unversioned':manifest.schemaVersion!==TASK_FORMAT_VERSION?'unsupported_manifest_version':row.schemaVersion!==TASK_FORMAT_VERSION?'unsupported_ownership_version':undefined}
+        /** @type {TaskData} */ const data: TaskData={manifest:/** @type {Manifest} */(manifest as Manifest),dir,events:[],blocked:false,unhealthy:false,state:'active',readOnly:manifest.schemaVersion!==TASK_FORMAT_VERSION || row.schemaVersion!==TASK_FORMAT_VERSION,storageIssue:manifest.schemaVersion===undefined?'legacy_unversioned':manifest.schemaVersion!==TASK_FORMAT_VERSION?'unsupported_manifest_version':row.schemaVersion!==TASK_FORMAT_VERSION?'unsupported_ownership_version':undefined}
         if(manifest.definitionId){
           const snapshot=loadDefinition(dir, 'definition-snapshot', String(manifest.definitionId))
           if(snapshot.digest!==manifest.definitionDigest || snapshot.definition.version!==manifest.definitionVersion)throw new Error('task-snapshot-changed')
@@ -449,7 +521,7 @@ export class TaskStore {
     }
   }
   /** @param {TaskData} data - task being recovered. @returns {Promise<void>} valid history prefix, conservatively blocked on truncation/unfinished writes. */
-  async recoverJournal(data) {
+  async recoverJournal(data: TaskData) : Promise<void> {
     const path=join(data.dir,'basic_law_index','events.jsonl')
     if(this.root)noLinks(this.root,path)
     const bytes=await readFile(path,'utf8')
@@ -466,7 +538,7 @@ export class TaskStore {
           const payload={...event.data,...(event.data.manifest && record(event.data.manifest)?{manifest:{...event.data.manifest,schemaVersion:TASK_FORMAT_VERSION}}:{}),...(event.type==='status'&&event.data.run===undefined?{run:{...data.manifest.scope,runId:data.manifest.runId,workflowRef:data.manifest.workflowRef}}:{})}
           if(!validTaskEvent(event.type,payload,{...data.manifest,schemaVersion:TASK_FORMAT_VERSION},data.pendingWrite,data.waiting,data.waitInput))throw new Error('legacy-journal-unsupported-semantics')
         }
-        const accepted=/** @type {TaskEvent} */(event)
+        const accepted=/** @type {TaskEvent} */(event as TaskEvent)
         data.events.push(accepted);this.reduce(data,accepted)
       }
       if(tail!=='')throw new Error('task-journal-tail')
@@ -475,7 +547,7 @@ export class TaskStore {
     if(data.pendingWrite)data.blocked=true
   }
   /** @returns {Promise<void>} drain owned writes before releasing the profile writer lease. */
-  async close() {
+  async close() : Promise<void> {
     this.closed=true;this.abort.abort()
     await Promise.allSettled([this.ready,this.tail])
     this.releaseWriter?.()

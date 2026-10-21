@@ -4,7 +4,7 @@ import { writeFile, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { taskHost } from './helpers/task-host.js'
 import { syntheticDefinition } from './helpers/task-definition.js'
-import { TaskStore } from '../src/task-store.js'
+import { TaskStore } from '../src/task-store.ts'
 
 async function navigation(t){
   const env=await taskHost(t),def=syntheticDefinition({root:env.root})
