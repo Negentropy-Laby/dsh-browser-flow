@@ -1,8 +1,40 @@
+import type {RunScope} from './task-scope.ts'
+import type {PagePolicy} from './page/types.ts'
+interface GuestElement extends HTMLElement {executeJavaScript(source:string,userGesture?:boolean):Promise<unknown>}
+interface PanelBinding {task:RunScope;lease:string;partition:string;tabId:string;controlLeaseId:string;epoch:number;documentToken:string;url?:string;expectedSequence:number;element?:GuestElement;pagePolicy?:PagePolicy;origins?:string[];importOwner?:string}
+import {decodePanelReply,isTaskSummary,isFilePreview,type TaskSummary,type AgentSummary,type DefinitionOption,type FilePreview,type PanelError,type PanelReply,type PanelCommand} from './client-wire.ts'
+export interface ReactLike {
+ createElement(type:string|((...args:never[])=>unknown),props:object|null,...children:unknown[]):unknown
+ useState<T>(initial:T|(()=>T)):[T,(next:T|((previous:T)=>T))=>void]
+ useRef<T>(initial:T):{current:T}
+ useMemo<T>(factory:()=>T,deps?:readonly unknown[]):T
+ useCallback<T extends (...args:never[])=>unknown>(callback:T,deps?:readonly unknown[]):T
+ useEffect(callback:()=>void|(()=>void),deps?:readonly unknown[]):void
+}
+export type PagePrograms = {
+    identity: string;
+    observe: (maxChars: number, maxNodes: number) => string;
+    find: (query: object, limit: number) => string;
+    act: (input: object) => string;
+    wait: (input: object) => string;
+    import?: ((input: object) => string) | undefined;
+};
+export type ClientHelpers = typeof CORE;
+export type DiscoveredPage = {
+    lease: string;
+    partition: string;
+    sessionId: string;
+    tabId: string;
+    url: string;
+    title: string;
+    documentToken: string;
+};
+
 /**
  * The Browser Flow panel component.
  *
  * This is a normal ES module so it can be imported and tested directly. The
- * client build inlines it (with `pagecode.js` and `clientcore.js`) into the
+ * client build inlines it (with `pagecode.ts` and `clientcore.ts`) into the
  * shipped lazy-CJS bundle, so the code the browser runs and the code the tests
  * exercise are the same text.
  *
@@ -19,11 +51,11 @@ import {
   indistinguishableFrom,
   navigationEvent,
   programFor, refuseCommand,
-} from './clientcore.js'
+} from './clientcore.ts'
 import { actProgram, findProgram, identityProgram, observeProgram, waitProgram } from './pagecode.ts'
 import { importProgram } from './import-page.ts'
 import { validRunScope, sameRunScope } from './task-scope.ts'
-import { PROTOCOL_VERSION, validateCommand } from './protocol.ts'
+import { isRecord, PROTOCOL_VERSION, validateCommand } from './protocol.ts'
 
 /** Locale namespace owned by this plugin. */
 export const NS = 'browserFlow'
@@ -42,66 +74,27 @@ export const ROUTES = Object.freeze({
 /** Poll interval, in milliseconds. */
 export const POLL_INTERVAL_MS = 700
 
-/**
- * The React surface the panel uses.
- *
- * Declared structurally so the bundle inlines no React types and the tests can
- * supply a minimal stand-in.
- * @typedef {object} ReactLike
- * @property {(type: string | Function, props: object | null, ...children: any[]) => any} createElement - element factory.
- * @property {(initial: unknown) => [any, (next: unknown) => void]} useState - state hook.
- * @property {(initial: unknown) => { current: any }} useRef - ref hook.
- * @property {(factory: () => any, deps?: unknown[]) => any} useMemo - memo hook.
- * @property {(callback: Function, deps?: unknown[]) => Function} useCallback - callback hook.
- * @property {(callback: () => (() => void) | void, deps?: unknown[]) => void} useEffect - effect hook.
- */
 
-/**
- * Page-program builders, as the panel consumes them.
- * @typedef {object} PagePrograms
- * @property {string} identity - identity program source.
- * @property {(maxChars: number, maxNodes: number) => string} observe - observation program.
- * @property {(query: object, limit: number) => string} find - find program.
- * @property {(input: object) => string} act - action program.
- * @property {(input: object) => string} wait - wait program.
- * @property {(input: object) => string} [import] - scoped Beijing verifier.
- */
+
+
 
 /** Page-program builders, as the panel consumes them. @type {PagePrograms} */
-export const PAGE_CODE = Object.freeze({
+export const PAGE_CODE: PagePrograms = Object.freeze({
   identity: identityProgram(),
-  import: input => importProgram(/** @type {import('./page/types.ts').ImportInput} */ (input)),
+  import: input => importProgram(((input) as import('./page/types.ts').ImportInput)),
   observe: (maxChars, maxNodes) => observeProgram(maxChars, maxNodes),
-  find: (query, limit) => findProgram(/** @type {{ by: 'text' | 'attr' | 'role', value: string, name?: string }} */ (query), limit),
-  act: input => actProgram(/** @type {import('./page/types.ts').PageActionInput} */ (input)),
-  wait: input => waitProgram(/** @type {import('./page/types.ts').PageWaitInput} */ (input)),
+  find: (query, limit) => findProgram(((query) as {
+    by: 'text' | 'attr' | 'role';
+    value: string;
+    name?: string;
+}), limit),
+  act: input => actProgram(((input) as import('./page/types.ts').PageActionInput)),
+  wait: input => waitProgram(((input) as import('./page/types.ts').PageWaitInput)),
 })
 
-/**
- * The client helpers the panel consumes.
- *
- * These are the functions `clientcore.js` exports; the panel receives them as
- * one object so the bundle inlines a single dependency.
- * @typedef {object} ClientHelpers
- * @property {string} WEBVIEW_SELECTOR - guest selector.
- * @property {(pageCode: PagePrograms, op: any) => string} programFor - program selection.
- * @property {(element: Element) => { lease: string, partition: string, sessionId: string, tabId: string }} identityOf - element identity.
- * @property {(result: unknown) => object} classifyResult - execution outcome.
- * @property {(failure: unknown) => object} classifyThrow - thrown outcome.
- * @property {(carrier: object) => boolean} hostSupportsPageControl - host capability.
- */
 
-/**
- * One page the panel found in the Sidebar Browser.
- * @typedef {object} DiscoveredPage
- * @property {string} lease - guest lease.
- * @property {string} partition - guest partition.
- * @property {string} sessionId - owning Session.
- * @property {string} tabId - plugin tab alias.
- * @property {string} url - redacted address.
- * @property {string} title - page title.
- * @property {string} documentToken - page-minted document identity.
- */
+
+
 
 /** Client helpers, as the panel consumes them. @type {ClientHelpers} */
 export const CORE = Object.freeze({
@@ -112,10 +105,14 @@ export const CORE = Object.freeze({
  * Locale dictionaries for the panel.
  * @type {{ zh: Record<string, string>, en: Record<string, string> }}
  */
-export const COPY = Object.freeze({
+export const COPY: {
+    zh: Record<string, string>;
+    en: Record<string, string>;
+} = Object.freeze({
   zh: {
     resumeTask:'核对新输入并继续', userInput:'新提供的人工输入', waitingUser:'等待用户', taskReadOnly:'旧任务记录只读；请使用新会话开始新任务。',
-    taskTitle:'当前任务', taskGoal:'目标', taskOrigins:'允许的源站（以逗号分隔）', taskDefinition:'本地任务定义', taskGeneric:'通用任务', taskWorkflow:'操作说明', createTask:'创建并绑定任务', openTask:'打开本会话任务', reviseTask:'修订目标与范围', cancelTask:'取消任务并撤销', finishTask:'结束并人工交接', taskMissing:'先创建或打开当前会话的任务，再授权页面。', taskBlocked:'此任务的写结果未知或日志不可用：仅允许读取、撤销及人工交接。',
+    taskTitle:'当前任务', taskGoal:'目标', taskOrigins:'允许的源站（以逗号分隔）', taskDefinition:'本地任务定义', taskGeneric:'通用任务', taskWorkflow:'操作说明', createTask:'创建并绑定任务', openTask:'打开本会话任务', reviseTask:'修订目标与范围', cancelTask:'取消任务并撤销', finishTask:'结束并人工交接', invalidReply: 'Host 响应无效，请配套重载 Host 和 Client',
+    taskMissing:'先创建或打开当前会话的任务，再授权页面。', taskBlocked:'此任务的写结果未知或日志不可用：仅允许读取、撤销及人工交接。',
     title: '浏览器控制',
     empty: '没有可授权的 Browser 页面。先在右侧打开一个网页。',
     authorize: '授权控制',
@@ -142,7 +139,7 @@ export const COPY = Object.freeze({
   },
   en: {
     resumeTask:'Check new input and resume', userInput:'New user input', waitingUser:'Awaiting user', taskReadOnly:'Legacy history is read-only; start new work in a new Session.',
-    taskTitle:'Current task', taskGoal:'Goal', taskOrigins:'Allowed origins (comma separated)', taskDefinition:'Local definition', taskGeneric:'Generic task', taskWorkflow:'Instructions', createTask:'Create and bind task', openTask:'Open this session’s task', reviseTask:'Revise goal and scope', cancelTask:'Cancel task and revoke', finishTask:'End and hand off', taskMissing:'Create or open this session’s task before authorizing a page.', taskBlocked:'Unknown write or unavailable log: only read, revoke and hand off.',
+    taskTitle:'Current task', taskGoal:'Goal', taskOrigins:'Allowed origins (comma separated)', taskDefinition:'Local definition', taskGeneric:'Generic task', taskWorkflow:'Instructions', createTask:'Create and bind task', openTask:'Open this session’s task', reviseTask:'Revise goal and scope', cancelTask:'Cancel task and revoke', finishTask:'End and hand off', invalidReply:'Host response is invalid; reload the paired Host and Client', taskMissing:'Create or open this session’s task before authorizing a page.', taskBlocked:'Unknown write or unavailable log: only read, revoke and hand off.',
     title: 'Browser Flow',
     empty: 'No Browser page to authorize. Open a page in the right sidebar first.',
     authorize: 'Authorize control',
@@ -178,32 +175,39 @@ export const COPY = Object.freeze({
  * @param {PagePrograms} [input.pageCode] - page programs; defaults to {@link PAGE_CODE}.
  * @returns {Function} React component.
  */
-export function createPanel({ React, t, core = CORE, pageCode = PAGE_CODE }) {
+export function createPanel({ React, t, core = CORE, pageCode = PAGE_CODE }: {React:ReactLike;t:(key:string)=>string;core?:ClientHelpers;pageCode?:PagePrograms}) {
   const h = React.createElement
 
   /**
    * One panel instance: page discovery, authorization and the command loop.
    * @param {{ sessionId: string, useTabInfo?: () => { tab: { kind: string } } }} props - slot props.
-   * @returns {any} element tree.
+   * @returns {unknown} element tree.
    */
-  return function Panel(props) {
+  return function Panel(props: {
+    sessionId: string;
+    useTabInfo?: () => {
+        tab: {
+            kind: string;
+        };
+    };
+}) {
     const sessionId = props.sessionId
     const tabInfo = typeof props.useTabInfo === 'function' ? props.useTabInfo() : undefined
-    /** @type {[DiscoveredPage[], (next: DiscoveredPage[]) => void]} */
-    const [pages, setPages] = React.useState(/** @type {DiscoveredPage[]} */ ([]))
+
+    const [pages, setPages] = React.useState((([]) as DiscoveredPage[]))
     const [connected, setConnected] = React.useState(false)
     const [liveAgent, setLiveAgent] = React.useState(false)
-    /** @type {[any, (next: any) => void]} */
-    const [agentSummary, setAgentSummary] = React.useState(undefined)
-    const [error, setError] = React.useState(undefined)
-    const [authorized, setAuthorized] = React.useState(undefined)
+
+    const [agentSummary, setAgentSummary] = React.useState<AgentSummary|undefined>(undefined)
+    const [error, setError] = React.useState<PanelError|undefined>(undefined)
+    const [authorized, setAuthorized] = React.useState<string|undefined>(undefined)
     const [busy, setBusy] = React.useState(false)
     const [fileForm,setFileForm] = React.useState({path:'',kind:'add',unitId:'',legalIdentity:'',firstRow:'2',lastRow:'2'})
-    const [filePreview,setFilePreview] = React.useState(undefined)
-    const [supported] = React.useState(() => core.hostSupportsPageControl(/** @type {object} */ (/** @type {Record<string, unknown>} */ (globalThis).dshDesktop)))
+    const [filePreview,setFilePreview] = React.useState<FilePreview|undefined>(undefined)
+    const [supported] = React.useState(() => core.hostSupportsPageControl(((((globalThis) as Record<string, unknown>).dshDesktop) as object)))
 
-    const [taskSummary,setTaskSummary]=React.useState(undefined)
-    const [definitions,setDefinitions]=React.useState([])
+    const [taskSummary,setTaskSummary]=React.useState<TaskSummary|undefined>(undefined)
+    const [definitions,setDefinitions]=React.useState<DefinitionOption[]>([])
     const [userInput,setUserInput]=React.useState('')
     const [taskForm,setTaskForm]=React.useState({goal:'',origins:'',definitionId:'',workflowRef:''})
 
@@ -217,12 +221,12 @@ export function createPanel({ React, t, core = CORE, pageCode = PAGE_CODE }) {
     // Set when a poll or a command fails, so the next successful poll opens a new
     // connection generation instead of silently resuming the old one.
     const lostConnection = React.useRef(false)
-    const bound = React.useRef(undefined)
-    const disposeImport = React.useCallback((/** @type {any} */ binding) => {
+    const bound = React.useRef<PanelBinding|undefined>(undefined)
+    const disposeImport = React.useCallback((binding: PanelBinding | undefined) => {
       if(!binding?.importOwner || !pageCode.import || !binding.element?.isConnected)return
       const program=pageCode.import({mode:'dispose',owner:binding.importOwner})
-      void binding.element.executeJavaScript(program,true).then((/** @type {any} */ value)=>{
-        if(alive.current && value?.value?.cleanupFailed)setError({code:'internal',message:t('cleanupFailed')})
+      void binding.element.executeJavaScript(program,true).then((value: unknown)=>{
+        if(alive.current && isRecord(value) && isRecord(value.value) && value.value.cleanupFailed)setError({code:'internal',message:t('cleanupFailed')})
       },()=>{if(alive.current)setError({code:'internal',message:t('cleanupFailed')})})
     },[pageCode,t])
     const authorizationVersion = React.useRef(0)
@@ -235,10 +239,10 @@ export function createPanel({ React, t, core = CORE, pageCode = PAGE_CODE }) {
     }, [disposeImport])
     const alive = React.useRef(true)
     const busyRef = React.useRef(false)
-    /** @type {any} */
-    const abandoned = React.useRef(new Set())
 
-    const post = React.useCallback(async (/** @type {string} */ route, /** @type {object} */ body) => {
+    const abandoned = React.useRef(new Set<string>())
+
+    const post = React.useCallback(async (route: string, body: object):Promise<PanelReply> => {
       const response = await fetch(route, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -246,14 +250,14 @@ export function createPanel({ React, t, core = CORE, pageCode = PAGE_CODE }) {
         credentials: 'same-origin',
       })
       try {
-        return await response.json()
+        return decodePanelReply(await response.json())
       } catch {
         return { ok: false, error: { code: 'internal', message: `Host answered ${String(response.status)} without JSON` } }
       }
     }, [])
 
-    const elements = React.useCallback(() => [...document.querySelectorAll(core.WEBVIEW_SELECTOR)], [core])
-    const elementOf = React.useCallback((/** @type {string} */ lease) => elements().find((/** @type {Element} */ element) => element.getAttribute('name') === lease), [elements])
+    const elements = React.useCallback(() => [...document.querySelectorAll<GuestElement>(core.WEBVIEW_SELECTOR)], [core])
+    const elementOf = React.useCallback((lease: string) => elements().find((element: GuestElement) => element.getAttribute('name') === lease), [elements])
 
     /**
      * Refuse a command that does not address the authorization this panel holds.
@@ -261,8 +265,8 @@ export function createPanel({ React, t, core = CORE, pageCode = PAGE_CODE }) {
      * The Host decides what to dispatch; this decides whether *this* panel may
      * execute it. Without it a command minted for one authorization would run
      * against whatever page the panel is bound to now.
-     * @param {any} command - command envelope taken from the Host.
-     * @param {any} binding - the authorization this panel holds.
+     * @param {PanelBinding} command - command envelope taken from the Host.
+     * @param {PanelBinding} binding - the authorization this panel holds.
      * @param {number} generation - this panel's connection generation.
      * @returns {object | undefined} a refusal outcome, or undefined to proceed.
      */
@@ -274,12 +278,15 @@ export function createPanel({ React, t, core = CORE, pageCode = PAGE_CODE }) {
      * cross-origin navigation, a replaced element or a destroyed guest ends it.
      * The local binding therefore follows what the Host answered instead of
      * assuming the worst and dropping a grant the user still holds.
-     * @param {any} binding - the authorization that changed.
+     * @param {PanelBinding} binding - the authorization that changed.
      * @param {{ url?: string, documentToken?: string } | undefined} live - the document now in the guest.
      * @param {'same_origin_navigation' | 'cross_origin_navigation' | 'page_replaced' | 'page_destroyed'} [override] - event to report instead of deriving one.
      * @returns {Promise<void>} resolves once the Host has been told.
      */
-    const reportNavigation = async (binding, live, override) => {
+    const reportNavigation = async (binding: PanelBinding, live: {
+    url?: string;
+    documentToken?: string;
+} | undefined, override?: 'same_origin_navigation' | 'cross_origin_navigation' | 'page_replaced' | 'page_destroyed') : Promise<void> => {
       disposeImport(binding)
       setFilePreview(undefined)
       const event = override ?? navigationEvent(binding.url, live?.url)
@@ -293,7 +300,7 @@ export function createPanel({ React, t, core = CORE, pageCode = PAGE_CODE }) {
         })
         if (!alive.current || bound.current !== binding) return
         const affected = answer?.ok === true
-          ? (answer.value.affected ?? []).find((/** @type {any} */ entry) => entry.controlLeaseId === binding.controlLeaseId)
+          ? (answer.value.affected ?? []).find((entry: {controlLeaseId:string;state:string;epoch:number}) => entry.controlLeaseId === binding.controlLeaseId)
           : undefined
         if (affected !== undefined && affected.state === 'active' && bound.current === binding) {
           // Control survives. Adopt the Host's new epoch and the document now on
@@ -316,18 +323,18 @@ export function createPanel({ React, t, core = CORE, pageCode = PAGE_CODE }) {
 
 
     const scan = React.useCallback(async () => {
-      const found = []
+      const found: DiscoveredPage[] = []
       for (const element of elements()) {
         const identity = core.identityOf(element)
         if (identity.lease === '') continue
         if (identity.sessionId !== '' && identity.sessionId !== sessionId) continue
-        let probe
+        let probe: unknown
         try {
           probe = await element.executeJavaScript(pageCode.identity, true)
         } catch {
           continue
         }
-        if (probe?.ok !== true) continue
+        if (!isRecord(probe)||probe.ok!==true||!isRecord(probe.value)||typeof probe.value.url!=='string'||typeof probe.value.title!=='string'||typeof probe.value.documentToken!=='string') continue
         found.push({
           lease: identity.lease,
           partition: identity.partition,
@@ -341,7 +348,7 @@ export function createPanel({ React, t, core = CORE, pageCode = PAGE_CODE }) {
       return found
     }, [core, elements, pageCode, sessionId])
 
-    const execute = React.useCallback(async (/** @type {{ task: import('./task-scope.ts').RunScope, deadlineAt: number, budgetMs?: number, op: object, id: string, leaseId: string, connectionGeneration: number, epoch: number, sequence: number }} */ command, /** @type {number} */ batchReceivedAt) => {
+    const execute = React.useCallback(async (command:PanelCommand,batchReceivedAt:number) => {
       const binding = bound.current
       if (binding === undefined) {
         return { outcome: 'failed', error: { code: 'not_authorized', message: 'no page is authorized in this panel' } }
@@ -397,7 +404,7 @@ export function createPanel({ React, t, core = CORE, pageCode = PAGE_CODE }) {
         await reportNavigation(binding, undefined, 'page_replaced')
         return { outcome: 'failed', error: { code: 'page_replaced', message: 'the authorized page was replaced; authorize again' } }
       }
-      if (live?.ok !== true) {
+      if (!isRecord(live)||live.ok !== true||!isRecord(live.value)||typeof live.value.url!=='string'||typeof live.value.documentToken!=='string') {
         return { outcome: 'failed', error: { code: 'page_unavailable', message: 'the authorized document could not be read; authorize again' } }
       }
       let allowedOrigin=false
@@ -416,7 +423,7 @@ export function createPanel({ React, t, core = CORE, pageCode = PAGE_CODE }) {
       }
       const op = remaining === undefined ? command.op : capToBudget(command.op, remaining)
       // The wire validator checked the file fields; no raw model path reaches this branch.
-      const file=/** @type {any} */ (op).file
+      const file=op.file
       if(file){
         try{
           const binary=atob(file.base64);const bytes=Uint8Array.from(binary,ch=>ch.charCodeAt(0))
@@ -426,12 +433,14 @@ export function createPanel({ React, t, core = CORE, pageCode = PAGE_CODE }) {
         if(!alive.current||bound.current!==binding||command.connectionGeneration!==generation.current||command.epoch!==binding.epoch)return {outcome:'failed',error:{code:'revoked',message:'control changed while verifying the file'}}
         if(typeof command.budgetMs==='number'&&performance.now()-batchReceivedAt>=command.budgetMs)return {outcome:'dropped',error:{code:'deadline_exceeded',message:'the file command expired before page execution'}}
       }
-      if(/** @type {any} */ (op).importOwner)binding.importOwner=/** @type {any} */ (op).importOwner
+      if(op.importOwner)binding.importOwner=op.importOwner
       let source
       try {
         source = core.programFor(pageCode, op)
       } catch (failure) {
-        return { outcome: 'failed', error: { code: 'unsupported', message: String(/** @type {{ message?: unknown }} */ (failure)?.message ?? failure) } }
+        return { outcome: 'failed', error: { code: 'unsupported', message: String(((failure) as {
+    message?: unknown;
+})?.message ?? failure) } }
       }
       let result
       try {
@@ -457,7 +466,7 @@ export function createPanel({ React, t, core = CORE, pageCode = PAGE_CODE }) {
           // authorized guest either moved to another document or is gone.
           const binding = bound.current
           if (binding !== undefined) {
-            const scanned = found.find((/** @type {any} */ entry) => entry.lease === binding.lease)
+            const scanned = found.find((entry: DiscoveredPage) => entry.lease === binding.lease)
             if (scanned === undefined) {
               await reportNavigation(binding, undefined)
             } else if (elementOf(binding.lease) !== binding.element) {
@@ -497,9 +506,10 @@ export function createPanel({ React, t, core = CORE, pageCode = PAGE_CODE }) {
             setError(polled?.error)
             return
           }
-          setTaskSummary(polled.value.task ?? undefined)
+          const polledTask=isTaskSummary(polled.value.task)?polled.value.task:undefined
+          setTaskSummary(polledTask)
           setDefinitions(polled.value.definitions ?? [])
-          if(bound.current && polled.value.task?.task && !sameRunScope(bound.current.task,polled.value.task.task))suspendControl()
+          if(bound.current && polledTask && !sameRunScope(bound.current.task,polledTask.task))suspendControl()
           setConnected(true)
           setLiveAgent(true)
           setAgentSummary(polled.value.agent ?? undefined)
@@ -510,7 +520,7 @@ export function createPanel({ React, t, core = CORE, pageCode = PAGE_CODE }) {
           // stop work it can no longer report on.
           for (const id of polled.value.dropped ?? []) abandoned.current.add(id)
           const batchReceivedAt = performance.now()
-          for (const command of polled.value.commands) {
+          for (const command of polled.value.commands ?? []) {
             busyRef.current = true
             const outcome = await execute(command, batchReceivedAt)
             busyRef.current = false
@@ -538,7 +548,9 @@ export function createPanel({ React, t, core = CORE, pageCode = PAGE_CODE }) {
             lostConnection.current = true
             suspendControl()
             setConnected(false)
-            setError({ code: 'internal', message: String(/** @type {{ message?: unknown }} */ (failure)?.message ?? failure) })
+            setError({ code: 'internal', message: String(((failure) as {
+    message?: unknown;
+})?.message ?? failure) })
           }
         }
       }
@@ -554,7 +566,14 @@ export function createPanel({ React, t, core = CORE, pageCode = PAGE_CODE }) {
       }
     }, [execute, instanceId, post, scan, sessionId, supported, suspendControl])
 
-    const authorize = React.useCallback(async (/** @type {{ lease: string, partition: string, documentToken: string, tabId: string, url?: string, title?: string }} */ page) => {
+    const authorize = React.useCallback(async (page: {
+    lease: string;
+    partition: string;
+    documentToken: string;
+    tabId: string;
+    url?: string;
+    title?: string;
+}) => {
       // The user must be able to tell which physical page they are granting.
       const twins = indistinguishableFrom(pages, page)
       if (twins.length > 0) {
@@ -579,7 +598,7 @@ export function createPanel({ React, t, core = CORE, pageCode = PAGE_CODE }) {
         if (!alive.current || version !== authorizationVersion.current
           || authorizedGeneration !== generation.current) return
         if (answer?.ok === true) {
-          if(!validRunScope(answer.value.task)){setError({code:'protocol_violation',message:t('taskMissing')});return}
+          if(!validRunScope(answer.value.task)||typeof answer.value.controlLeaseId!=='string'||typeof answer.value.epoch!=='number'||typeof answer.value.documentToken!=='string'){setError({code:'protocol_violation',message:t('taskMissing')});return}
           if (elementOf(page.lease) !== authorizedElement) {
             bound.current = undefined
             setAuthorized(undefined)
@@ -614,7 +633,7 @@ export function createPanel({ React, t, core = CORE, pageCode = PAGE_CODE }) {
       }
     }, [elementOf, instanceId, pages, post, sessionId, taskSummary])
 
-    const fileOperation = async (/** @type {'prepare'|'confirm'} */ operation) => {
+    const fileOperation = async (operation: 'prepare' | 'confirm') => {
       const binding=bound.current;const version=authorizationVersion.current
       if(!binding)return
       setBusy(true)
@@ -626,7 +645,7 @@ export function createPanel({ React, t, core = CORE, pageCode = PAGE_CODE }) {
         })
         if(!alive.current||bound.current!==binding||version!==authorizationVersion.current)return
         if(answer?.ok!==true){setError(answer?.error);return}
-        setFilePreview(operation==='prepare'?answer.value:{...filePreview,confirmed:true})
+        if(operation==='prepare'){if(isFilePreview(answer.value))setFilePreview(answer.value);else setError({code:'protocol_violation',message:t('invalidReply')})}else if(filePreview)setFilePreview({...filePreview,confirmed:true})
       }catch{if(alive.current)setError({code:'connection_lost',message:t('disconnected')})}
       finally{if(alive.current)setBusy(false)}
     }
@@ -648,32 +667,32 @@ export function createPanel({ React, t, core = CORE, pageCode = PAGE_CODE }) {
       }
     }, [instanceId, post, sessionId, suspendControl])
 
-    const taskOperation=async (/** @type {'create'|'open'|'revise'|'cancel'|'finish'|'resume'} */ operation)=>{
+    const taskOperation=async (operation: 'create' | 'open' | 'revise' | 'cancel' | 'finish' | 'resume')=>{
       if(['revise','cancel','finish'].includes(operation))suspendControl()
       setBusy(true)
       try{
         const answer=await post(ROUTES.authorize,{instanceId,connectionGeneration:generation.current,sessionId,taskOperation:operation,
-          ...(operation==='create'?{spec:{goal:taskForm.goal,...(taskForm.definitionId?{definitionId:taskForm.definitionId,workflowRef:taskForm.workflowRef}:{origins:taskForm.origins.split(',').map((/** @type {string} */ part)=>part.trim()).filter(Boolean)})}}:{}),
-          ...(operation==='revise'?{task:taskSummary?.task,spec:{goal:taskForm.goal,...(taskSummary?.adapter==='generic'?{origins:taskForm.origins.split(',').map((/** @type {string} */ part)=>part.trim()).filter(Boolean)}:{})}}:{}),
+          ...(operation==='create'?{spec:{goal:taskForm.goal,...(taskForm.definitionId?{definitionId:taskForm.definitionId,workflowRef:taskForm.workflowRef}:{origins:taskForm.origins.split(',').map((part: string)=>part.trim()).filter(Boolean)})}}:{}),
+          ...(operation==='revise'?{task:taskSummary?.task,spec:{goal:taskForm.goal,...(taskSummary?.adapter==='generic'?{origins:taskForm.origins.split(',').map((part: string)=>part.trim()).filter(Boolean)}:{})}}:{}),
           ...(operation==='resume'?{task:taskSummary?.task,waitId:taskSummary?.active_context?.waiting?.id,userInput}:{}),
           ...(['cancel','finish'].includes(operation)?{task:taskSummary?.task}:{})})
         if(!alive.current)return
-        if(answer?.ok){setTaskSummary(answer.value);if(operation==='resume')setUserInput('');setError(undefined)}else setError(answer?.error)
+        if(answer?.ok&&isTaskSummary(answer.value)){setTaskSummary(answer.value);if(operation==='resume')setUserInput('');setError(undefined)}else setError(answer?.error)
       }catch{if(alive.current)setError({code:'connection_lost',message:t('disconnected')})}
       finally{if(alive.current)setBusy(false)}
     }
-    const selectedDefinition=definitions.find((/** @type {any} */ item)=>item.id===taskForm.definitionId)
+    const selectedDefinition=definitions.find((item: DefinitionOption)=>item.id===taskForm.definitionId)
     const taskPanel=h('section',{'data-browser-flow-task':''},h('h4',null,t('taskTitle')),
       taskSummary ? h('p',{'data-browser-flow-task-identity':''},`${taskSummary.task.taskId} · ${taskSummary.state} · ${taskSummary.goal}`) : h('p',null,t('taskMissing')),
       taskSummary?.writeBlocked ? h('p',{role:'alert'},taskSummary?.state==='read_only'?t('taskReadOnly'):t('taskBlocked')) : null,
-      taskSummary?.active_context?.waiting ? h('section',{'data-browser-flow-user-wait':''},h('p',null,t('waitingUser')+': '+taskSummary.active_context.waiting.reason),h('p',null,taskSummary.active_context.waiting.resumeCondition),h('label',null,t('userInput'),h('input',{'data-browser-flow-input':'user-input',value:userInput,onChange:(/** @type {any} */ event)=>setUserInput(event.target.value)})),h('button',{type:'button','data-browser-flow-action':'task-resume',disabled:busy||taskSummary.writeBlocked,onClick:()=>{void taskOperation('resume')}},t('resumeTask'))) : null,
-      h('label',null,t('taskGoal'),h('input',{'data-browser-flow-input':'task-goal',value:taskForm.goal,onChange:(/** @type {any} */ event)=>setTaskForm({...taskForm,goal:event.target.value})})),
-      h('label',null,t('taskOrigins'),h('input',{'data-browser-flow-input':'task-origins',value:taskForm.origins,onChange:(/** @type {any} */ event)=>setTaskForm({...taskForm,origins:event.target.value})})),
-      h('label',null,t('taskDefinition'),h('select',{'data-browser-flow-input':'task-definition',value:taskForm.definitionId,disabled:!!taskSummary,onChange:(/** @type {any} */ event)=>{const selected=definitions.find((/** @type {any} */ item)=>item.id===event.target.value);setTaskForm({...taskForm,definitionId:event.target.value,workflowRef:selected?.workflows[0]?.id ?? ''})}},h('option',{value:''},t('taskGeneric')),...definitions.map((/** @type {any} */ item)=>h('option',{key:item.id,value:item.id},item.id)))),
-      selectedDefinition ? h('label',null,t('taskWorkflow'),h('select',{'data-browser-flow-input':'task-workflow',value:taskForm.workflowRef,disabled:!!taskSummary,onChange:(/** @type {any} */ event)=>setTaskForm({...taskForm,workflowRef:event.target.value})},...selectedDefinition.workflows.map((/** @type {any} */ row)=>h('option',{key:row.id,value:row.id},row.description)))) : null,
-      ...(['create','open','revise','cancel','finish']).map(operation=>h('button',{type:'button','data-browser-flow-action':'task-'+operation,disabled:(['cancel','finish'].includes(operation)?false:busy)||(['revise','cancel','finish'].includes(operation)&&!taskSummary)||(operation==='create'&&!!taskSummary),onClick:()=>{void taskOperation(/** @type {'create'|'open'|'revise'|'cancel'|'finish'|'resume'} */(operation))}},t(operation+'Task'))))
+      taskSummary?.active_context?.waiting ? h('section',{'data-browser-flow-user-wait':''},h('p',null,t('waitingUser')+': '+taskSummary.active_context.waiting.reason),h('p',null,taskSummary.active_context.waiting.resumeCondition),h('label',null,t('userInput'),h('input',{'data-browser-flow-input':'user-input',value:userInput,onChange:(event: {target:HTMLInputElement|HTMLSelectElement})=>setUserInput(event.target.value)})),h('button',{type:'button','data-browser-flow-action':'task-resume',disabled:busy||taskSummary.writeBlocked,onClick:()=>{void taskOperation('resume')}},t('resumeTask'))) : null,
+      h('label',null,t('taskGoal'),h('input',{'data-browser-flow-input':'task-goal',value:taskForm.goal,onChange:(event: {target:HTMLInputElement|HTMLSelectElement})=>setTaskForm({...taskForm,goal:event.target.value})})),
+      h('label',null,t('taskOrigins'),h('input',{'data-browser-flow-input':'task-origins',value:taskForm.origins,onChange:(event: {target:HTMLInputElement|HTMLSelectElement})=>setTaskForm({...taskForm,origins:event.target.value})})),
+      h('label',null,t('taskDefinition'),h('select',{'data-browser-flow-input':'task-definition',value:taskForm.definitionId,disabled:!!taskSummary,onChange:(event: {target:HTMLInputElement|HTMLSelectElement})=>{const selected=definitions.find((item: DefinitionOption)=>item.id===event.target.value);setTaskForm({...taskForm,definitionId:event.target.value,workflowRef:selected?.workflows[0]?.id ?? ''})}},h('option',{value:''},t('taskGeneric')),...definitions.map((item: DefinitionOption)=>h('option',{key:item.id,value:item.id},item.id)))),
+      selectedDefinition ? h('label',null,t('taskWorkflow'),h('select',{'data-browser-flow-input':'task-workflow',value:taskForm.workflowRef,disabled:!!taskSummary,onChange:(event: {target:HTMLInputElement|HTMLSelectElement})=>setTaskForm({...taskForm,workflowRef:event.target.value})},...selectedDefinition.workflows.map((row: {id:string;description:string})=>h('option',{key:row.id,value:row.id},row.description)))) : null,
+      ...(['create','open','revise','cancel','finish']).map(operation=>h('button',{type:'button','data-browser-flow-action':'task-'+operation,disabled:(['cancel','finish'].includes(operation)?false:busy)||(['revise','cancel','finish'].includes(operation)&&!taskSummary)||(operation==='create'&&!!taskSummary),onClick:()=>{void taskOperation(((operation) as 'create' | 'open' | 'revise' | 'cancel' | 'finish' | 'resume'))}},t(operation+'Task'))))
 
-    const rows = pages.map((/** @type {DiscoveredPage} */ page) => h('li', { key: page.lease, 'data-browser-flow-page': page.lease },
+    const rows = pages.map((page: DiscoveredPage) => h('li', { key: page.lease, 'data-browser-flow-page': page.lease },
       h('div', { className: 'bf-page-title' }, page.title || page.url),
       h('div', { className: 'bf-page-url' }, page.url),
       // The alias is what makes two pages on the same address distinguishable.
@@ -686,9 +705,9 @@ export function createPanel({ React, t, core = CORE, pageCode = PAGE_CODE }) {
         onClick: () => { void authorize(page) },
       }, t('authorize'))))
 
-    const fileFields=['path','unitId','legalIdentity','firstRow','lastRow'].map(key=>h('label',{key},t('file_'+key),h('input',{type:'text','data-browser-flow-input':key,value:fileForm[key],disabled:busy,onChange:(/** @type {any} */ event)=>setFileForm({...fileForm,[key]:event.target.value})})))
+    const fileFields=(['path','unitId','legalIdentity','firstRow','lastRow'] as const).map(key=>h('label',{key},t('file_'+key),h('input',{type:'text','data-browser-flow-input':key,value:fileForm[key],disabled:busy,onChange:(event: {target:HTMLInputElement|HTMLSelectElement})=>setFileForm({...fileForm,[key]:event.target.value})})))
     const filePanel=authorized&&taskSummary?.adapter==='bjrsj'&&!taskSummary?.writeBlocked?h('section',{'data-browser-flow-import':''},h('h4',null,t('importTitle')),h('p',null,t('importHint')),...fileFields,
-      h('label',null,t('file_kind'),h('select',{'data-browser-flow-input':'kind',value:fileForm.kind,disabled:busy,onChange:(/** @type {any} */ event)=>setFileForm({...fileForm,kind:event.target.value})},...['add','modify','reduce'].map(kind=>h('option',{key:kind,value:kind},t('file_'+kind))))),
+      h('label',null,t('file_kind'),h('select',{'data-browser-flow-input':'kind',value:fileForm.kind,disabled:busy,onChange:(event: {target:HTMLInputElement|HTMLSelectElement})=>setFileForm({...fileForm,kind:event.target.value})},...['add','modify','reduce'].map(kind=>h('option',{key:kind,value:kind},t('file_'+kind))))),
       h('button',{type:'button','data-browser-flow-action':'prepare-file',disabled:busy,onClick:()=>{void fileOperation('prepare')}},t('prepareFile')),
       filePreview?h('div',{'data-browser-flow-file-preview':''},h('p',null,filePreview.path),h('p',null,`${t('file_kind')}: ${t('file_'+filePreview.kind)}; ${filePreview.bytes} ${t('bytes')}; ${filePreview.rows} ${t('rows')}`),h('p',null,'SHA-256: '+filePreview.sha256),h('p',null,t('stopBoundary')),
         h('button',{type:'button','data-browser-flow-action':'confirm-file',disabled:busy||filePreview.confirmed,onClick:()=>{void fileOperation('confirm')}},t(filePreview.confirmed?'fileConfirmed':'confirmFile'))):null):null

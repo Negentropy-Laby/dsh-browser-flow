@@ -19,7 +19,7 @@ import { TASK, TASK_VIEW } from './helpers/task-scope.ts'
 
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { COPY, PAGE_CODE, POLL_INTERVAL_MS, ROUTES, createPanel } from '../src/panel.js'
+import { COPY, PAGE_CODE, POLL_INTERVAL_MS, ROUTES, createPanel } from '../src/panel.ts'
 
 /**
  * Minimal React substitute: enough of `useState`, `useRef`, `useMemo`,

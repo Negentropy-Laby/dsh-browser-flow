@@ -9,7 +9,7 @@
 
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { indistinguishableFrom, navigationEvent } from '../src/clientcore.js'
+import { indistinguishableFrom, navigationEvent } from '../src/clientcore.ts'
 
 /** One candidate page. */
 function page(lease, url, title, tabId) {

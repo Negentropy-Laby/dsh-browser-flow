@@ -11,7 +11,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   WEBVIEW_SELECTOR, classifyResult, classifyThrow, hostSupportsPageControl, identityOf, programFor,
-} from '../src/clientcore.js'
+} from '../src/clientcore.ts'
 
 /** Program builders that record their arguments. */
 function recordingPageCode() {

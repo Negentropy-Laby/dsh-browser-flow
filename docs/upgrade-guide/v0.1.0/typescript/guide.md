@@ -38,3 +38,8 @@ programs retain the existing storage, credential and request restrictions.
 Synthetic HTML is static in the source tree. `npm run build:fixtures` assembles
 its compiled behavior under `.cache/fixtures/`; use those generated pages for
 local fixture execution. Historical receipts still refer to their own candidate.
+
+The Client sources are TypeScript and compile before bundle assembly. Panel
+responses are decoded at the HTTP JSON boundary, including task ownership and
+command operations. The existing poll envelope and protocol v3 are unchanged.
+Reload Host and Client together after replacing the generated artifacts.

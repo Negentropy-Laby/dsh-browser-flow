@@ -10,7 +10,7 @@
 
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { capToBudget } from '../src/clientcore.js'
+import { capToBudget } from '../src/clientcore.ts'
 
 const wait = timeoutMs => ({ kind: 'wait', condition: 'present', target: { documentToken: 'doc-1', elementRef: 'el-0' }, timeoutMs })
 

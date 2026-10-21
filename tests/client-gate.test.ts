@@ -10,7 +10,7 @@ import { TASK, TASK_VIEW } from './helpers/task-scope.ts'
 
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { navigationEvent, refuseCommand } from '../src/clientcore.js'
+import { navigationEvent, refuseCommand } from '../src/clientcore.ts'
 
 /** The authorization a panel holds. */
 const binding = {

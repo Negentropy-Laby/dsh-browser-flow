@@ -1,8 +1,23 @@
+export type ClientContext = {
+    effect: (callback: () => (() => void) | void, label?: string) => void;
+    locale: {
+        register: (namespace: string, copy: object) => () => void;
+        bind: (namespace: string) => (key: string) => string;
+    };
+    sidebarRightTabs: {
+        register: (definition: object) => () => void;
+    };
+    slots: {
+        inject: (name: string, callback: () => unknown) => unknown;
+        register: (options: object, component: (...args:never[])=>unknown) => () => void;
+    };
+};
+
 /**
  * Browser Flow panel — the client bundle entry.
  *
- * `scripts/build-client.mjs` inlines `src/panel.js`, `src/pagecode.ts` and
- * `src/clientcore.js` into the shipped `lib/client.js`, the lazy-CJS factory
+ * `scripts/build-client.ts` inlines `src/panel.ts`, `src/pagecode.ts` and
+ * `src/clientcore.ts` into the shipped `lib/client.js`, the lazy-CJS factory
  * the Harness browser loads. The panel is a normal ES module so the tests can
  * import it; the build only removes the module syntax and folds the imports in.
  *
@@ -11,24 +26,14 @@
  * and already occupied, and a second same-priority registration throws.
  */
 
-import { COPY, NS, createPanel } from './panel.js'
+import { COPY, NS, createPanel } from './panel.ts'
 
 /** Package name: also the loader row id and the tab type id. */
 export const PLUGIN_ID = '@negentropy/dsh-browser-flow'
 /** Tab kind opened through `ctx.sidebarRight.openTab`. */
 export const TAB_KIND = 'browser-flow'
 
-/**
- * The client root context this plugin registers into.
- *
- * Declared structurally: the plugin never imports the client services, it only
- * calls the documented registration methods.
- * @typedef {object} ClientContext
- * @property {(callback: () => (() => void) | void, label?: string) => void} effect - effect-scoped registration.
- * @property {{ register: (namespace: string, copy: object) => () => void, bind: (namespace: string) => (key: string) => string }} locale - locale registry.
- * @property {{ register: (definition: object) => () => void }} sidebarRightTabs - sidebar tab types.
- * @property {{ inject: (name: string, callback: () => unknown) => unknown, register: (options: object, component: Function) => () => void }} slots - slot registry.
- */
+
 
 /**
  * Register the panel's locale, tab type, body and title.
@@ -42,10 +47,10 @@ export const TAB_KIND = 'browser-flow'
  * Every registration is an effect, so unloading the plugin removes the UI with
  * it; nothing is registered at module scope.
  * @param {ClientContext} ctx - client root context.
- * @param {import('./panel.js').ReactLike} React - platform React instance.
+ * @param {import('./panel.ts').ReactLike} React - platform React instance.
  * @returns {void}
  */
-export function registerPanel(ctx, React) {
+export function registerPanel(ctx: ClientContext, React: import('./panel.ts').ReactLike) : void {
   const t = ctx.locale.bind(NS)
   ctx.effect(() => ctx.locale.register(NS, COPY), 'browser-flow: copy')
   ctx.effect(() => ctx.sidebarRightTabs.register({

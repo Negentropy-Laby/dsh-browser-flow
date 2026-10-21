@@ -1,9 +1,9 @@
 {
   "extends": "./tsconfig.base.json",
   "include": [
-    "src/client.js",
-    "src/clientcore.js",
-    "src/panel.js",
+    "src/client.ts",
+    "src/clientcore.ts",
+    "src/panel.ts",
     "src/pagecode.ts",
     "src/import-page.ts",
     "src/task-scope.ts",
@@ -11,7 +11,8 @@
     "src/node-ambient.d.ts",
     "src/import-rules.ts",
     "src/page/types.ts",
-    "src/page/program-sources.d.ts"
+    "src/page/program-sources.d.ts",
+    "src/client-wire.ts"
   ],
   "compilerOptions": {
     "composite": true,

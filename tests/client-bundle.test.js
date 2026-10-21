@@ -129,7 +129,7 @@ describe('client bundle registration', () => {
   })
 
   it('applies against a realistic client context and registers its four contributions', () => {
-    // This is the only path that executes `src/client.js`: the bundle's own
+    // This is the only path that executes `src/client.ts`: the bundle's own
     // `apply`. It asserts the exact registrations the Harness slot system
     // requires, using a fake context with the same shape the shipped client
     // services expose.

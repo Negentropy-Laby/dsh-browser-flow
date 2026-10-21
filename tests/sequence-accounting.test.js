@@ -11,7 +11,7 @@ import { TASK } from './helpers/task-scope.ts'
 
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { refuseCommand } from '../src/clientcore.js'
+import { refuseCommand } from '../src/clientcore.ts'
 
 /** One panel binding, as the panel holds it after authorization. */
 function bindingAt(sequence) {

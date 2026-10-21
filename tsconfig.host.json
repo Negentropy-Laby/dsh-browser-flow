@@ -14,12 +14,13 @@
     "src/**/*.ts"
   ],
   "exclude": [
-    "src/client.js",
-    "src/clientcore.js",
-    "src/panel.js",
+    "src/client.ts",
+    "src/clientcore.ts",
+    "src/panel.ts",
     "src/page/runtime.ts",
     "src/page/operations.ts",
     "src/page/policy.ts",
-    "src/page/import.ts"
+    "src/page/import.ts",
+    "src/client-wire.ts"
   ]
 }
