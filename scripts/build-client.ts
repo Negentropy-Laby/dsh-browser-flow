@@ -16,12 +16,16 @@
  */
 
 import { Script } from 'node:vm'
+import { spawnSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, posix, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import ts from 'typescript'
+
+interface ModuleSource { file: string; source: string }
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
-const sourceRoot = join(root, 'src')
+const sourceRoot = join(root, '.cache', 'client-js')
 /** Bundle entry, relative to `src/`. */
 const ENTRY = 'client.js'
 /** Module that exports the plugin's `apply`. */
@@ -50,7 +54,7 @@ const LOCAL_JSON_IMPORT = /^import\s+(\w+)\s+from\s+'(\.[^']+\.json)'\s+with\s*\
  * @param {string} source - module text.
  * @returns {string} text without comments.
  */
-export function stripComments(source) {
+export function stripComments(source: string) {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/[^\n]*/g, '$1')
 }
 
@@ -61,7 +65,7 @@ export function stripComments(source) {
  * @param {string[]} order - emitted module order.
  * @returns {void}
  */
-function collect(file, seen, order) {
+function collect(file: string, seen: Set<string>, order: ModuleSource[]) {
   const normalized = posix.normalize(file)
   if (seen.has(normalized)) return
   seen.add(normalized)
@@ -82,8 +86,15 @@ function collect(file, seen, order) {
  * @param {object} module - `{ file, source }`.
  * @returns {string} body without imports/exports.
  */
-export function stripModuleSyntax({ file, source }) {
-  let body = source
+export function stripModuleSyntax({ file, source }: ModuleSource) {
+  const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.ES2022, true, ts.ScriptKind.JS)
+  const literals: { start: number; end: number }[] = []
+  const visit = (node: ts.Node): void => {
+    if (ts.isStringLiteralLike(node) || ts.isTemplateLiteralToken(node)) literals.push({ start: node.getStart(parsed), end: node.end })
+    ts.forEachChild(node, visit)
+  }
+  visit(parsed)
+  let body = source.replace(/[\t ]+$/gm, (spaces: string, offset: number) => literals.some(range => offset >= range.start && offset < range.end) ? spaces : '')
   body = body.replace(LOCAL_JSON_IMPORT, (_match, name, specifier) => {
     const path=join(sourceRoot,posix.dirname(file),specifier)
     return `const ${name} = ${JSON.stringify(JSON.parse(readFileSync(path,'utf8')))}\n`
@@ -104,8 +115,8 @@ export function stripModuleSyntax({ file, source }) {
  * @returns {string} bundle text.
  */
 export function composeBundle() {
-  const seen = new Set()
-  const order = []
+  const seen = new Set<string>()
+  const order: ModuleSource[] = []
   collect(ENTRY, seen, order)
   const bodies = order.map(stripModuleSyntax).join('\n')
   return `window.__ModuleLoader__.load({
@@ -131,7 +142,7 @@ ${bodies}
  * @param {string} bundle - bundle text.
  * @returns {{ name: string, ok: boolean, detail?: string }[]} check results.
  */
-export function checkBundle(bundle) {
+export function checkBundle(bundle: string) {
   const bare = stripComments(bundle)
   const requires = [...bundle.matchAll(/require\(\s*'([^']+)'\s*\)/g)].map(match => match[1])
   const foreign = requires.filter(specifier => !PLATFORM_MODULES.has(specifier))
@@ -177,6 +188,8 @@ export function checkBundle(bundle) {
  * @returns {{ bundle: string, checks: object[] }} built text and check results.
  */
 export function build() {
+  const compiled = spawnSync(process.execPath, [join(root, 'node_modules', 'typescript', 'bin', 'tsc'), '-p', join(root, 'tsconfig.client.emit.json')], { cwd: root, stdio: 'inherit' })
+  if (compiled.status !== 0) throw new Error('Client compilation failed')
   const bundle = composeBundle()
   const checks = checkBundle(bundle)
   const failed = checks.filter(check => !check.ok)

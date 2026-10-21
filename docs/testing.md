@@ -3,7 +3,8 @@
 Run `npm run build` to emit the Host, Client and Windows x64 Go helper.
 The build requires Go 1.26.5 and the declared local TypeScript development dependency.
 `npm run typecheck` checks both compiler faces; `npm run verify` also runs Go and
-plugin tests. Source tests use tsx; package loading tests use plain Node. Read the output for skips before claiming coverage.
+plugin tests. Source tests and development scripts use the declared `tsx/esm`
+loader; package loading tests use plain Node. Read the output for skips before claiming coverage.
 
 ## Host inputs
 

@@ -38,13 +38,13 @@
     "node": "^22.19 || >=24"
   },
   "scripts": {
-    "build": "node scripts/build-host.mjs && node scripts/build-client.mjs && node scripts/build-graph.mjs",
-    "typecheck": "node scripts/typecheck.mjs",
-    "test": "node scripts/build-client.mjs && node scripts/build-graph.mjs --test-helper && node --import tsx/esm --test \"tests/*.test.js\"",
-    "test:coverage": "node scripts/build-client.mjs && node scripts/build-graph.mjs --test-helper && node --import tsx/esm --test --experimental-test-coverage \"tests/*.test.js\"",
+    "build": "node --import tsx/esm scripts/build-host.ts && node --import tsx/esm scripts/build-client.ts && node --import tsx/esm scripts/build-graph.ts",
+    "typecheck": "node --import tsx/esm scripts/typecheck.ts",
+    "test": "node --import tsx/esm scripts/build-client.ts && node --import tsx/esm scripts/build-graph.ts --test-helper && node --import tsx/esm --test \"tests/*.test.{js,ts}\"",
+    "test:coverage": "node --import tsx/esm scripts/build-client.ts && node --import tsx/esm scripts/build-graph.ts --test-helper && node --import tsx/esm --test --experimental-test-coverage \"tests/*.test.{js,ts}\"",
     "smoke:live": "node scripts/live-host-smoke.mjs",
     "evidence:host": "node scripts/extract-installed-host.mjs",
-    "verify": "npm run build && node scripts/build-graph.mjs --test-helper && go -C native/graph-core test ./... && npm run typecheck && node --import tsx/esm --test \"tests/*.test.js\""
+    "verify": "npm run build && node --import tsx/esm scripts/build-graph.ts --test-helper && go -C native/graph-core test ./... && npm run typecheck && node --import tsx/esm --test \"tests/*.test.{js,ts}\""
   },
   "dependencies": {
     "@deepseek-ai/dsh-atomic-write": "file:vendor/deepseek-ai-dsh-atomic-write-0.2.1-rc.2.tgz",

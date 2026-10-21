@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { checkBundle } from '../scripts/build-client.mjs'
+import { checkBundle } from '../scripts/build-client.ts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const bundle = readFileSync(join(root, 'lib', 'client.js'), 'utf8')

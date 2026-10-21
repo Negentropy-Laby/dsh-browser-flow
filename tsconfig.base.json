@@ -1,5 +1,5 @@
 {
-  "//": "Typecheck for JSDoc-typed ESM without emission. src/node-ambient.d.ts references this package's development-only Node declarations; no sibling source enters this program.",
+  "//": "Shared strict source configuration; Host and Client have explicit compiler faces.",
   "compilerOptions": {
     "target": "es2022",
     "lib": [

@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.client.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "src",
+    "outDir": ".cache/client-js",
+    "rewriteRelativeImportExtensions": true,
+    "tsBuildInfoFile": ".cache/client-emit.tsbuildinfo"
+  }
+}
