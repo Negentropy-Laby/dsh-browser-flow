@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Inventory Sheet - Browser Flow sample</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 2rem; max-width: 46rem; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+  th, td { border: 1px solid #bbb; padding: .4rem .6rem; text-align: left; }
+  input { width: 6rem; padding: .2rem; }
+  #status { padding: .5rem; background: #f3f3f3; border: 1px solid #ddd; }
+  #status[data-dirty="true"] { background: #fff4d6; }
+</style>
+</head>
+<body>
+<h1>Inventory</h1>
+<p>This page is the DOM-table sample: locate a cell, edit it, save, then re-read to confirm.</p>
+<table id="inventory">
+  <thead><tr><th>Item</th><th data-cell-id="qty-head">Quantity</th><th>Unit</th></tr></thead>
+  <tbody>
+    <tr><td data-cell-id="r1c1">Bolts</td><td data-cell-id="r1c2"><input id="qty-bolts" data-cell-id="r1c2-input" type="number" value="10" aria-label="Bolts quantity"></td><td>pcs</td></tr>
+    <tr><td data-cell-id="r2c1">Nuts</td><td data-cell-id="r2c2"><input id="qty-nuts" data-cell-id="r2c2-input" type="number" value="20" aria-label="Nuts quantity"></td><td>pcs</td></tr>
+    <tr><td data-cell-id="r3c1">Washers</td><td data-cell-id="r3c2"><input id="qty-washers" data-cell-id="r3c2-input" type="number" value="5" aria-label="Washers quantity"></td><td>pcs</td></tr>
+  </tbody>
+</table>
+<button id="save" data-cell-id="save-button">Save sheet</button>
+<span id="reload" role="button" tabindex="0" style="margin-left:.6rem">Reset</span>
+<p id="status" data-dirty="false" data-cell-id="status">Not saved yet</p>
+<script>
+  const inputs = Array.from(document.querySelectorAll('#inventory input'));
+  const status = document.getElementById('status');
+  const markDirty = () => { status.dataset.dirty = 'true'; status.textContent = 'Unsaved changes'; };
+  inputs.forEach(input => input.addEventListener('input', markDirty));
+  document.getElementById('save').addEventListener('click', () => {
+    const totals = inputs.map(input => input.value.trim());
+    // A save is only accepted when every quantity is a positive number.
+    const invalid = totals.filter(value => !/^\d+$/.test(value) || Number(value) <= 0);
+    if (invalid.length > 0) {
+      status.dataset.dirty = 'true';
+      status.textContent = 'Save refused: quantities must be positive whole numbers';
+      return;
+    }
+    status.dataset.dirty = 'false';
+    status.textContent = 'Saved ' + totals.join(',') + ' at ' + new Date().toISOString();
+  });
+  document.getElementById('reload').addEventListener('click', () => { location.reload(); });
+</script>
+</body>
+</html>

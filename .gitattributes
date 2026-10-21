@@ -1,0 +1,2 @@
+# Private receipts retain their original bytes.
+/.evidence/** -text whitespace=cr-at-eol

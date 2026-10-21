@@ -1,0 +1,42 @@
+{
+  "tool": "browser_act",
+  "args": {
+    "action": "await_user",
+    "wait": {
+      "kind": "other_user_input",
+      "reason": "A synthetic user decision is missing",
+      "resumeCondition": "The user supplies a new decision"
+    }
+  },
+  "result": {
+    "ok": true,
+    "value": {
+      "wait": {
+        "kind": "other_user_input",
+        "reason": "A synthetic user decision is missing",
+        "resumeCondition": "The user supplies a new decision",
+        "id": "WAIT",
+        "owner": "user",
+        "source": "model_declared",
+        "run": {
+          "profileId": "PROFILE",
+          "taskId": "TASK",
+          "ownerSessionId": "session-a",
+          "scopeRevision": 1,
+          "runId": "RUN",
+          "workflowRef": "generic"
+        }
+      },
+      "task": {
+        "profileId": "PROFILE",
+        "taskId": "TASK",
+        "ownerSessionId": "session-a",
+        "scopeRevision": 1,
+        "runId": "RUN",
+        "workflowRef": "generic"
+      },
+      "taskState": "awaiting_user",
+      "contextVersion": 2
+    }
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "name": "@negentropy/dsh-browser-flow",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Observe and operate the user's already-open, already-authenticated DeepSeek Harness Desktop Sidebar Browser page",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./protocol": "./src/protocol.js",
+    "./state": "./src/state.js",
+    "./pagecode": "./src/pagecode.js",
+    "./config": "./src/config.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "src",
+    "cordis.patch.yml",
+    "docs",
+    "README.md",
+    "vendor"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "engines": {
+    "node": "^22.19 || >=24"
+  },
+  "scripts": {
+    "build": "node scripts/build-client.mjs",
+    "typecheck": "node scripts/typecheck.mjs",
+    "test": "node scripts/build-client.mjs && node --test \"tests/*.test.js\"",
+    "test:coverage": "node scripts/build-client.mjs && node --test --experimental-test-coverage \"tests/*.test.js\"",
+    "smoke:live": "node scripts/live-host-smoke.mjs",
+    "evidence:host": "node scripts/extract-installed-host.mjs",
+    "verify": "node scripts/build-client.mjs && node scripts/typecheck.mjs && node --test \"tests/*.test.js\""
+  },
+  "dependencies": {
+    "adm-zip": "0.6.1",
+    "saxes": "6.0.0",
+    "@deepseek-ai/dsh-atomic-write": "file:vendor/deepseek-ai-dsh-atomic-write-0.2.1-rc.2.tgz"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "0.5.8",
+    "@types/node": "22.20.5"
+  },
+  "bundleDependencies": [
+    "@deepseek-ai/dsh-atomic-write"
+  ]
+}

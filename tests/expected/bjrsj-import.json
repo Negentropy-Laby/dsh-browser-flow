@@ -1,0 +1,100 @@
+[
+  {
+    "tool": "browser_observe",
+    "args": {
+      "view": "bjrsj_import"
+    },
+    "result": {
+      "ok": true,
+      "value": {
+        "documentToken": "doc",
+        "import": {
+          "verdict": "not_dispatched",
+          "reason": "selection-not-proven",
+          "serverAcceptance": "unknown",
+          "rowValidation": "unknown",
+          "importBatch": "unknown",
+          "identity": "verified",
+          "cleanupStatus": "pending",
+          "evidenceStatus": "recorded",
+          "qualified": false
+        },
+        "task": {
+          "profileId": "PROFILE",
+          "taskId": "TASK",
+          "ownerSessionId": "session-1",
+          "scopeRevision": 1,
+          "runId": "RUN",
+          "workflowRef": "import"
+        },
+        "taskState": "active",
+        "contextVersion": 9
+      }
+    }
+  },
+  {
+    "tool": "browser_act",
+    "args": {
+      "action": "set_file",
+      "fileGrantId": "FILE_GRANT",
+      "documentToken": "doc",
+      "elementRef": "el"
+    },
+    "result": {
+      "ok": true,
+      "value": {
+        "action": "set_file",
+        "dispatched": true,
+        "fileGrantId": "FILE_GRANT",
+        "task": {
+          "profileId": "PROFILE",
+          "taskId": "TASK",
+          "ownerSessionId": "session-1",
+          "scopeRevision": 1,
+          "runId": "RUN",
+          "workflowRef": "import"
+        },
+        "taskState": "active",
+        "contextVersion": 11
+      }
+    }
+  },
+  {
+    "tool": "browser_observe",
+    "args": {
+      "view": "bjrsj_import"
+    },
+    "result": {
+      "ok": true,
+      "value": {
+        "documentToken": "doc",
+        "import": {
+          "verdict": "import_confirmed",
+          "reason": "fresh-complete-matching",
+          "serverAcceptance": "satisfied",
+          "rowValidation": "satisfied",
+          "importBatch": "satisfied",
+          "counts": {
+            "planned": 1,
+            "accepted": 1,
+            "rejected": 0
+          },
+          "identity": "verified",
+          "cleanupStatus": "complete",
+          "evidenceStatus": "recorded",
+          "qualified": true
+        },
+        "task": {
+          "profileId": "PROFILE",
+          "taskId": "TASK",
+          "ownerSessionId": "session-1",
+          "scopeRevision": 1,
+          "runId": "RUN",
+          "workflowRef": "import"
+        },
+        "taskState": "active",
+        "contextVersion": 17
+      }
+    }
+  }
+]

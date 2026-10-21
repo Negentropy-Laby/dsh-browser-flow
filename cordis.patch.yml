@@ -1,0 +1,23 @@
+# Profile layer for @negentropy/dsh-browser-flow.
+#
+# The entry id is stable so a profile can override `config` by id. The row name
+# must be the bare package name: the client module registry only treats bare
+# package names as client rows, and a subpath specifier is permanently not a
+# client row.
+#
+# Every value below is a deployment choice validated at load (lib/config.js);
+# an invalid value fails the plugin load instead of silently falling back.
+- insert:
+    - id: browser-flow
+      name: "@negentropy/dsh-browser-flow"
+      config:
+        commandBudgetMs: 15000
+        observeMaxChars: 8000
+        observeMaxNodes: 400
+        findMaxMatches: 20
+        waitMaxMs: 10000
+        queueLimit: 4
+        pollWaitMs: 20000
+        connectionIdleMs: 60000
+        importWindowMs: 25000
+        localTasksDir: ""
