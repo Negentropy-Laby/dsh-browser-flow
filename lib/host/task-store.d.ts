@@ -49,7 +49,7 @@ export type TaskAccess = {
 };
 /** Profile-owned task store. Durable ownership never grants page control or replays commands. */
 import { taskView } from './task-projections.ts';
-import type { Stats } from 'node:fs';
+import type { Stats, BigIntStats } from 'node:fs';
 /** Expected task failures are sanitized at the tool/HTTP boundary. */
 export declare class TaskError extends Error {
     code: string;
@@ -68,6 +68,7 @@ export declare class TaskStore {
     tasks: Map<string, TaskData>;
     bindings: Map<string, string>;
     private creationFailures;
+    private evidenceReads;
     handles: WeakMap<TaskAccess, TaskData>;
     ready: Promise<void> | undefined;
     writer: Promise<unknown> | undefined;
@@ -134,9 +135,11 @@ export declare class TaskStore {
     proof(access: TaskAccess, value: Record<string, unknown>): Promise<string>;
     /** @param {TaskAccess} access - owner. @param {string} path - existing private original. @param {string} role - fixed evidence role. @returns {Promise<import('./task-criteria.ts').Artifact>} bound artifact without exposing its bytes. */
     artifact(access: TaskAccess, path: string, role: string): Promise<import('./task-criteria.ts').Artifact>;
-    /** @param {TaskData} data - owner. @param {import('./task-criteria.ts').Artifact} ref - relative reference. @param {boolean} [verify] - enforce recorded digest. @returns {Promise<Buffer>} complete bounded bytes. */
+    /** @param data - opened owner. @param ref - relative evidence file. @returns Current identity and timestamps after checking private ownership and size. */
+    artifactState(data: TaskData, ref: import('./task-criteria.ts').Artifact): Promise<BigIntStats>;
+    /** @param {TaskData} data - owner. @param {import('./task-criteria.ts').Artifact} ref - relative reference. @param {boolean} [verify] - enforce recorded digest. @returns {Promise<Buffer>} complete bounded bytes from an unchanged regular file. */
     readArtifact(data: TaskData, ref: import('./task-criteria.ts').Artifact, verify?: boolean): Promise<Buffer>;
-    /** @param {TaskAccess} access - owner. @returns {Promise<void>} recheck recoverable originals before displaying proofs. */
+    /** @param {TaskAccess} access - owner. @returns {Promise<void>} one request-local verification of originals, fenced to the exact run and journal position. */
     refreshEvidence(access: TaskAccess): Promise<void>;
     /** @param {TaskAccess} access - owner. @param {Record<string,unknown>} result - trusted validator result. @param {string} proofRef - private original reference. @returns {Promise<string>} independently checked current verdict. */
     verdict(access: TaskAccess, result: Record<string, unknown>, proofRef: string): Promise<string>;

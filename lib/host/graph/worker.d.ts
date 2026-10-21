@@ -42,6 +42,7 @@ declare class Worker {
     private queued;
     /** @param runtime - actual Host service. @param config - resolved limits. @param binary - verified package artifact. @param input - initial run. @param now - Host monotonic clock. */
     constructor(runtime: SubprocessPort, config: GraphConfig, binary: Binary, input: GraphInput, now: () => number);
+    private armIdle;
     private fail;
     private receive;
     /** @param op - fixed RPC. @param input - safe snapshot. @param hash - its identity. @param budget - view size. @param deadline - Host monotonic deadline. @param ref - scoped projection detail. @returns Validated envelope payload. */

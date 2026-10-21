@@ -46,6 +46,8 @@ New storage uses format v1 for manifests, ownership and every journal record. Ap
 
 Trusted adapters add stable, task-scoped criteria. User text remains unverified unless a supported code predicate applies. A business label is not a proof: navigation rechecks its owned page observation; import rechecks the input snapshot, once-only acknowledged dispatch, identity, complete response and fresh table through the existing strict validators. Originals and their digests stay private. Missing, changed, foreign or previous-run evidence cannot certify a current criterion, including after recovery.
 
+Task views and fact details verify originals once after any graph work and before exposing facts. Identical referenced files share bytes only within that read, with file identity and timestamp checks before, after and at publication. Every new fact read and verdict checks the originals again. A changed run or journal rejects the old check; changed evidence discards the derived graph and leaves current Host facts unverified. Polling does not establish a new proof.
+
 The graph links attempts, receipts, results, originals and criteria. Read `ref:"criteria"` or `ref:"graph"` through the normal task view when the summary is truncated. IDs in the summary, graph and details are identical. Evidence details disclose availability and digests rather than private artifact paths or bytes.
 
 ## User dependencies

@@ -395,7 +395,7 @@ closing: Promise<void> | undefined;
     offset: number;projectionId?:string;
 }) {
     if(view==='task'){
-      try{const access=await this.tasks.forSession(caller.sessionId);await this.tasks.refreshEvidence(access);return success(detail ? await this.tasks.detail(access,detail.ref,detail.offset,this.config.observeMaxChars,detail.projectionId) : await this.taskSummary(access,true,signal))}catch(error){return this.taskFailure(error)}
+      try{const access=await this.tasks.forSession(caller.sessionId);return success(detail ? await this.tasks.detail(access,detail.ref,detail.offset,this.config.observeMaxChars,detail.projectionId) : await this.taskSummary(access,true,signal))}catch(error){return this.taskFailure(error)}
     }
     try{this.taskOf(caller)}catch(error){return this.taskFailure(error)}
     if (view === 'bjrsj_import') {

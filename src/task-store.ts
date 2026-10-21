@@ -59,7 +59,7 @@ import { trustedCriterion, validArtifact } from './task-criteria.ts'
 import { TASK_FORMAT_VERSION, validTaskManifest, validTaskEvent } from './task-journal.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { open, readFile, mkdir, readdir, lstat, rm } from 'node:fs/promises'
-import type { Stats } from 'node:fs'
+import type { Stats, BigIntStats } from 'node:fs'
 import { hostname } from 'node:os'
 import { join, dirname, resolve, relative, isAbsolute } from 'node:path'
 import { validTaskScope, validRunScope, sameTaskScope, sameRunScope } from './task-scope.ts'
@@ -83,6 +83,10 @@ const text = (value: unknown,max: number) : value is string => typeof value === 
 /** @param {unknown} value - list of conditions. @returns {value is string[]} bounded list. */
 const conditions = (value: unknown) : value is string[] => Array.isArray(value) && value.length <= 32 && value.every(item => text(item,1000))
 
+function sameArtifactState(left:BigIntStats,right:BigIntStats):boolean {
+  return right.isFile()&&!right.isSymbolicLink()&&left.dev===right.dev&&left.ino===right.ino&&left.size===right.size&&left.mtimeNs===right.mtimeNs&&left.ctimeNs===right.ctimeNs&&left.birthtimeNs===right.birthtimeNs
+}
+
 /** The service owns one writer lease, access capabilities and a serialized append queue. */
 export class TaskStore {
 graph: import("./graph/worker.ts").GraphWorkers | undefined;
@@ -95,6 +99,7 @@ waitMs: number;
 tasks: Map<string, TaskData>;
 bindings: Map<string, string>;
 private creationFailures = new Map<string, TaskError>();
+private evidenceReads = new WeakMap<TaskData, symbol>();
 handles: WeakMap<TaskAccess, TaskData>;
 ready: Promise<void> | undefined;
 writer: Promise<unknown> | undefined;
@@ -422,7 +427,6 @@ tail: Promise<void>;
   }
   /** @param {TaskAccess} access - capability. @param {number} budget - projection character limit. @param {AbortSignal} [signal] - caller cancellation. @returns {Promise<Record<string,unknown>>} current Host facts and optional derived graph. */
   async view(access: TaskAccess,budget: number,signal: AbortSignal | undefined=undefined) : Promise<ReturnType<typeof taskView>> {
-    await this.refreshEvidence(access)
     const data=this.openTask(access)
     data.liveDocumentToken=this.controlDocument?.(access)
     const input=graphInput(data,this.graphConfig),hash=graphHash(JSON.stringify(input))
@@ -430,7 +434,8 @@ tail: Promise<void>;
     const current=()=>{try{const now=this.openTask(access);now.liveDocumentToken=this.controlDocument?.(access);return graphHash(JSON.stringify(graphInput(now,this.graphConfig)))===hash}catch{return false}}
     try{if(this.graph&&!data.readOnly&&!data.unhealthy){derived=await this.graph.project(input,budget,current,signal);reason='ready'}}catch(error){reason=error instanceof GraphError?error.code:'graph_failed'}
     this.openTask(access);data.liveDocumentToken=this.controlDocument?.(access)
-    if(derived){await this.refreshEvidence(access);if(!current()){derived=undefined;reason='stale_projection'}}
+    await this.refreshEvidence(access)
+    if(derived&&!current()){derived=undefined;reason='stale_projection'}
     return taskView(data,budget,derived,reason,this.writable,derived?graphProjectionId(hash):undefined,this.graph?.cleanup(access.scope.taskId))
   }
   /** @param {TaskAccess} access - owner. @param {Record<string,unknown>} value - private original facts. @returns {Promise<string>} task-local evidence reference. */
@@ -447,36 +452,67 @@ tail: Promise<void>;
     const data=this.openTask(access),name=relative(data.dir,path).replaceAll('\\','/')
     return this.readArtifact(data,{role,path:name,sha256:'',bytes:0},false).then(bytes=>({role,path:name,sha256:hash(bytes),bytes:bytes.length}))
   }
-  /** @param {TaskData} data - owner. @param {import('./task-criteria.ts').Artifact} ref - relative reference. @param {boolean} [verify] - enforce recorded digest. @returns {Promise<Buffer>} complete bounded bytes. */
-  async readArtifact(data: TaskData,ref: import('./task-criteria.ts').Artifact,verify: boolean=true) : Promise<Buffer> {
+  /** @param data - opened owner. @param ref - relative evidence file. @returns Current identity and timestamps after checking private ownership and size. */
+  async artifactState(data:TaskData,ref:import('./task-criteria.ts').Artifact):Promise<BigIntStats> {
     if(!ref.path.startsWith('evidence/')||ref.path.split('/').some(part=>!part||part==='.'||part==='..')||/[\\:\x00-\x1f]/.test(ref.path))throw new Error('task-evidence-path')
     const path=join(data.dir,ref.path);noLinks(data.dir,path)
-    const info=await lstat(path)
-    if(!info.isFile()||info.size<=0||info.size>16_000_000)throw new Error('task-evidence-size')
-    const bytes=await readFile(path)
-    if(bytes.length!==info.size||(verify&&(bytes.length!==ref.bytes||hash(bytes)!==ref.sha256)))throw new Error('task-evidence-mismatch')
-    return bytes
+    const info=await lstat(path,{bigint:true})
+    if(!info.isFile()||info.isSymbolicLink()||info.size<=0n||info.size>16_000_000n)throw new Error('task-evidence-size')
+    return info
   }
-  /** @param {TaskAccess} access - owner. @returns {Promise<void>} recheck recoverable originals before displaying proofs. */
+  /** @param {TaskData} data - owner. @param {import('./task-criteria.ts').Artifact} ref - relative reference. @param {boolean} [verify] - enforce recorded digest. @returns {Promise<Buffer>} complete bounded bytes from an unchanged regular file. */
+  async readArtifact(data: TaskData,ref: import('./task-criteria.ts').Artifact,verify: boolean=true) : Promise<Buffer> {
+    const info=await this.artifactState(data,ref),handle=await open(join(data.dir,ref.path),'r')
+    try{
+      const before=await handle.stat({bigint:true})
+      if(!sameArtifactState(info,before))throw new Error('task-evidence-replaced')
+      const bytes=await handle.readFile()
+      if(!sameArtifactState(before,await handle.stat({bigint:true}))||!sameArtifactState(before,await this.artifactState(data,ref)))throw new Error('task-evidence-changed')
+      if(BigInt(bytes.length)!==info.size||(verify&&(bytes.length!==ref.bytes||hash(bytes)!==ref.sha256)))throw new Error('task-evidence-mismatch')
+      return bytes
+    }finally{await handle.close()}
+  }
+  /** @param {TaskAccess} access - owner. @returns {Promise<void>} one request-local verification of originals, fenced to the exact run and journal position. */
   async refreshEvidence(access: TaskAccess) : Promise<void> {
-    const data=this.openTask(access),checked=new Map(),issues=[]
-    if(!data.readOnly&&!data.unhealthy)for(const event of data.events){
+    const data=this.openTask(access),events=data.events.slice(),version=events.length,tail=events.at(-1)?.hash,token=Symbol()
+    this.evidenceReads.set(data,token)
+    const checked=new Map<string,import('./task-criteria.ts').CheckedProof>(),issues=new Set<string>()
+    const reads=new Map<string,{ref:import('./task-criteria.ts').Artifact;bytes:Buffer;state:BigIntStats}>(),dependencies=new Map<string,Set<string>>()
+    const read=async(ref:import('./task-criteria.ts').Artifact,used:Set<string>)=>{
+      const key=JSON.stringify([access.run,ref.path,ref.sha256,ref.bytes]);used.add(key)
+      const cached=reads.get(key),state=await this.artifactState(data,ref)
+      if(cached){if(!sameArtifactState(state,cached.state))throw new Error('task-evidence-changed');return cached.bytes}
+      const bytes=await this.readArtifact(data,ref)
+      if(!sameArtifactState(state,await this.artifactState(data,ref)))throw new Error('task-evidence-changed')
+      reads.set(key,{ref,bytes,state});return bytes
+    }
+    if(!data.readOnly&&!data.unhealthy)for(const event of events){
       const row=event.data
       if(event.type!=='asset'||row.kind!=='evidence'||typeof row.id!=='string'||!record(row.data)||typeof row.data.artifact!=='string'||!validRunScope(row.run)||!sameRunScope(row.run,access.run))continue
-      const ref={role:'proof',path:row.data.artifact,sha256:row.data.sha256,bytes:row.data.bytes}
+      const ref={role:'proof',path:row.data.artifact,sha256:row.data.sha256,bytes:row.data.bytes},used=new Set<string>()
+      dependencies.set(row.id,used)
       try{
         if(!validArtifact(ref)||!ref.path.startsWith('evidence/'+access.run.runId+'/'))throw new Error('task-evidence-reference')
-        const value=JSON.parse((await this.readArtifact(data,ref)).toString('utf8'))
+        const value:unknown=JSON.parse((await read(ref,used)).toString('utf8'))
         if(!record(value))throw new Error('task-evidence-object')
-        const files=new Map()
+        const files=new Map<string,Buffer>()
         if(value.files!==undefined){
           if(!Array.isArray(value.files)||value.files.length>2)throw new Error('task-evidence-files')
-          for(const item of value.files){if(!validArtifact(item)||!item.path.startsWith('evidence/'+access.run.runId+'/')||files.has(item.role))throw new Error('task-evidence-file');files.set(item.role,await this.readArtifact(data,item))}
+          for(const item of value.files){if(!validArtifact(item)||!item.path.startsWith('evidence/'+access.run.runId+'/')||files.has(item.role))throw new Error('task-evidence-file');files.set(item.role,await read(item,used))}
         }
         checked.set(row.id,{value,files})
-      }catch(error){void error;issues.push(row.id)}
+      }catch(error){void error;issues.add(row.id)}
     }
-    data.checkedProofs=checked;data.evidenceIssues=issues
+    const changed=new Set<string>()
+    for(const [key,item]of reads){try{if(!sameArtifactState(item.state,await this.artifactState(data,item.ref)))changed.add(key)}catch(error){void error;changed.add(key)}}
+    for(const [id,used]of dependencies)if([...used].some(key=>changed.has(key))){checked.delete(id);issues.add(id)}
+    this.openTask(access)
+    if(this.evidenceReads.get(data)!==token)throw new TaskError('task_busy','a newer evidence read superseded this result; read the current task again')
+    if(data.events.length!==version||data.events.at(-1)?.hash!==tail){
+      data.checkedProofs=new Map();data.evidenceIssues=[...dependencies.keys()]
+      throw new TaskError('task_busy','task history changed during evidence verification; read the current task again')
+    }
+    data.checkedProofs=checked;data.evidenceIssues=[...issues]
   }
   /** @param {TaskAccess} access - owner. @param {Record<string,unknown>} result - trusted validator result. @param {string} proofRef - private original reference. @returns {Promise<string>} independently checked current verdict. */
   async verdict(access: TaskAccess,result: Record<string, unknown>,proofRef: string) : Promise<string> {
@@ -507,9 +543,12 @@ tail: Promise<void>;
     const data=this.openTask(access)
     const row=data.events.findLast(event=>event.type==='asset'&&event.data.id===id)
     const asset=row?{id,taskId:data.manifest.scope.taskId,kind:row.data.kind,source:row.data.source,sourceSeq:row.seq,data:(row.data.data as Record<string, unknown>)}:undefined
-    const criterion=taskFacts(data).criteria.find(item=>item.id===id)
+    let criterion=taskFacts(data).criteria.find(item=>item.id===id)
     let value,currentProjection:string|undefined
     if(!Number.isSafeInteger(offset)||offset<0)throw new TaskError('invalid_request','detail offset must be a nonnegative safe integer')
+    if(asset||id==='waiting'||criterion||id==='criteria'||id==='goal'||data.snapshot?.definition.resources.includes(id)){
+      await this.refreshEvidence(access);this.openTask(access);criterion=taskFacts(data).criteria.find(item=>item.id===id)
+    }
     if(asset)value=asset.kind==='evidence'?{...asset,data:{sha256:asset.data.sha256,bytes:asset.data.bytes,originalAvailable:data.checkedProofs?.has(asset.id)??false}}:asset
     else if(id==='waiting')value={current:data.state==='active'?data.waiting??null:null,history:data.events.filter(event=>['wait_requested','wait_input','wait_resolved'].includes(event.type)).map(event=>({sourceSeq:event.seq,type:event.type,...event.data}))}
     else if(criterion)value={id:criterion.id,kind:'criterion',source:criterion.source,data:criterion}
@@ -528,6 +567,9 @@ tail: Promise<void>;
         const code=error instanceof GraphError?error.code:'graph_failed'
         throw new TaskError(['stale_reference','stale_projection'].includes(code)?'task_not_bound':'task_unavailable',`graph detail unavailable: ${code}`)
       }
+      await this.refreshEvidence(access)
+      this.openTask(access);data.liveDocumentToken=this.controlDocument?.(access)
+      if(graphHash(JSON.stringify(graphInput(data,this.graphConfig)))!==hash)throw new TaskError('task_not_bound','projection changed during evidence verification; restart detail at offset zero')
     }
     const serialized=JSON.stringify(value)
     if(offset>serialized.length)throw new TaskError('invalid_request','detail offset exceeds its total characters')
