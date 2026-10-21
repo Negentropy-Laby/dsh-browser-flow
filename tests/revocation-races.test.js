@@ -1,4 +1,4 @@
-import { TASK, TASK_VIEW } from './helpers/task-scope.js'
+import { TASK, TASK_VIEW } from './helpers/task-scope.ts'
 /** Revocation barriers exercised against the shipped bundle and real React/DOM. */
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'

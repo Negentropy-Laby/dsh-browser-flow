@@ -14,6 +14,11 @@ subpaths keep their existing names. Generated declarations describe the narrowed
 internal types. Wire protocol v3, Desktop bridge v1 and task journal format v1
 retain their existing parsing and persistence rules.
 
+Shared scope, configuration, wait and wire modules now expose TypeScript types.
+Handshake and command parsers retain their existing runtime checks and return
+canonical identities. Source test discovery includes both migration generations
+until the final JavaScript source batch has been removed.
+
 Client compilation emits private intermediate JavaScript before the existing
 bundle assembly. Build cleanup owns only its output directories and does not
 remove local tasks, inputs or historical receipts.

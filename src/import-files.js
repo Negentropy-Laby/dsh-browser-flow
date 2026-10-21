@@ -6,7 +6,7 @@ import { isAbsolute, resolve, join, extname, basename } from 'node:path'
 import { FILE_LIMIT, importScope } from './import-rules.js'
 import { parseWorkbook } from './import-workbook.js'
 
-/** @typedef {{ id: string, state: string, agent: object, sessionId: string, connectionInstanceId: string, connectionGeneration: number, epoch: number, documentToken: string, task?: import('./task-scope.js').RunScope, evidenceRoot?: string }} FileLease */
+/** @typedef {{ id: string, state: string, agent: object, sessionId: string, connectionInstanceId: string, connectionGeneration: number, epoch: number, documentToken: string, task?: import('./task-scope.ts').RunScope, evidenceRoot?: string }} FileLease */
 /** @typedef {{ id: string, lease: FileLease, binding: string, path: string, snapshot: string, runDir: string, bytes: Buffer, sha256: string, scope: import('./import-rules.js').ImportScope, input: ReturnType<typeof parseWorkbook>, assetRef?: string, identityVerified?: boolean, selectionAcknowledged?: boolean, selectionAttemptId?: string, state: 'prepared' | 'confirmed' | 'consumed' }} Prepared */
 
 /** @param {Uint8Array} bytes - owned bytes. @returns {string} complete SHA-256. */

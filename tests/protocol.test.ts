@@ -1,4 +1,4 @@
-import { TASK, TASK_VIEW } from './helpers/task-scope.js'
+import { TASK, TASK_VIEW } from './helpers/task-scope.ts'
 /**
  * Protocol boundary tests: everything the Host and the Client accept from each
  * other is validated structurally, and an invalid message never partially
@@ -10,10 +10,10 @@ import { describe, it } from 'node:test'
 import {
   ERROR_CODES, PROTOCOL_VERSION, encodePayload, failure, isRetryable, success,
   validateCommand, validateHello, validateResult,
-} from '../src/protocol.js'
+} from '../src/protocol.ts'
 
 /** A valid command envelope for mutation in tests. */
-function command(overrides = {}) {
+function command(overrides: Record<string, unknown> = {}) {
   return {
     kind: 'command', protocolVersion:3, task:TASK,
     id: 'cmd-1',
@@ -28,7 +28,7 @@ function command(overrides = {}) {
 }
 
 /** A valid hello envelope for mutation in tests. */
-function hello(overrides = {}) {
+function hello(overrides: Record<string, unknown> = {}) {
   return {
     kind: 'hello',
     protocolVersion: PROTOCOL_VERSION,
@@ -43,7 +43,7 @@ function hello(overrides = {}) {
 }
 
 /** A valid result envelope for mutation in tests. */
-function result(overrides = {}) {
+function result(overrides: Record<string, unknown> = {}) {
   return {
     kind: 'result', protocolVersion:3, task:TASK,
     instanceId: 'panel-1',
@@ -68,7 +68,7 @@ describe('validateCommand', () => {
   })
 
   it('rejects a non-object, a wrong kind, and a missing identity field', () => {
-    for (const [input, reason] of [
+    const cases: [unknown, RegExp][] = [
       [null, /command must be an object/],
       [command({ kind: 'other' }), /kind must be "command"/],
       [command({ id: '' }), /id is required/],
@@ -76,7 +76,8 @@ describe('validateCommand', () => {
       [command({ sequence: -1 }), /sequence is required/],
       [command({ epoch: 1.5 }), /epoch is required/],
       [command({ connectionGeneration: 'one' }), /connectionGeneration is required/],
-    ]) {
+    ]
+    for (const [input, reason] of cases) {
       const verdict = validateCommand(input)
       assert.equal(verdict.ok, false, `expected refusal for ${JSON.stringify(input)}`)
       assert.match(verdict.reason, reason)
@@ -207,7 +208,7 @@ describe('payload helpers', () => {
   })
 
   it('refuses a payload with no JSON representation', () => {
-    const cyclic = {}
+    const cyclic: {self?: object} = {}
     cyclic.self = cyclic
     const encoded = encodePayload(cyclic)
     assert.equal(encoded.ok, false)

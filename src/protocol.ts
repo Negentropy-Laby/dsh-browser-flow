@@ -1,3 +1,21 @@
+export type ErrorCode = (typeof ERROR_CODES)[number];
+/** A page identity validated during the panel handshake. */
+export interface PanelPage {
+  lease: string; partition: string; url: string; documentToken: string
+  title?: string; tabId?: string; sessionId?: string
+}
+/** Canonical panel registration; task authorization is a separate operation. */
+export interface PanelHello {
+  kind: 'hello'; protocolVersion: 3; connectionGeneration: number; sessionId: string
+  panel: { instanceId: string; pages: PanelPage[] }
+}
+/** Canonical command identity, before an operation-specific consumer narrows its payload. */
+export interface CommandEnvelope {
+  kind: 'command'; protocolVersion: 3; task: import('./task-scope.ts').RunScope
+  id: string; leaseId: string; connectionGeneration: number; epoch: number
+  sequence: number; deadlineAt: number; op: Record<string, unknown>
+}
+
 /**
  * Wire vocabulary and boundary validation shared by the Host half and the
  * Client bundle.
@@ -14,7 +32,7 @@
  * @module @negentropy/dsh-browser-flow/protocol
  */
 
-import { validRunScope } from './task-scope.js'
+import { validRunScope } from './task-scope.ts'
 
 /** Protocol revision. A mismatch fails the handshake loudly instead of guessing. */
 export const PROTOCOL_VERSION = 3
@@ -82,7 +100,7 @@ export const RETRYABLE_CODES = Object.freeze([
  * @param {string} code - failure code.
  * @returns {boolean} true when a retry after re-observing is meaningful.
  */
-export function isRetryable(code) {
+export function isRetryable(code: string) : boolean {
   return RETRYABLE_CODES.includes(code)
 }
 
@@ -93,9 +111,20 @@ export function isRetryable(code) {
  * @param {Record<string, unknown>} [details] - extra structured facts.
  * @returns {{ ok: false, error: { code: string, message: string, details?: Record<string, unknown> } }} failure.
  */
-export function failure(code, message, details) {
+export function failure(code: ErrorCode, message: string, details?: Record<string, unknown>) : {
+    ok: false;
+    error: {
+        code: string;
+        message: string;
+        details?: Record<string, unknown>;
+    };
+} {
   /** @type {{ code: string, message: string, details?: Record<string, unknown> }} */
-  const error = { code, message }
+  const error: {
+    code: string;
+    message: string;
+    details?: Record<string, unknown>;
+} = { code, message }
   if (details !== undefined) error.details = details
   return { ok: false, error }
 }
@@ -105,7 +134,10 @@ export function failure(code, message, details) {
  * @param {unknown} value - canonical result.
  * @returns {{ ok: true, value: unknown }} success.
  */
-export function success(value) {
+export function success<T>(value: T) : {
+    ok: true;
+    value: T;
+} {
   return { ok: true, value }
 }
 
@@ -117,7 +149,7 @@ export function success(value) {
  * @param {unknown} value - candidate.
  * @returns {value is Record<string, unknown>} whether it is a plain object.
  */
-export function isRecord(value) {
+export function isRecord(value: unknown) : value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
@@ -128,7 +160,7 @@ export function isRecord(value) {
  * @param {number} [max] - maximum accepted length.
  * @returns {string | undefined} the value, or undefined when absent/invalid.
  */
-export function readString(row, key, max = MAX_TEXT) {
+export function readString(row: Record<string, unknown>, key: string, max: number = MAX_TEXT) : string | undefined {
   const value = row[key]
   return typeof value === 'string' && value.length <= max ? value : undefined
 }
@@ -140,7 +172,7 @@ export function readString(row, key, max = MAX_TEXT) {
  * @param {number} [max] - maximum accepted length.
  * @returns {string | undefined} the value when it is a bounded string.
  */
-export function readOptionalString(row, key, max = MAX_TEXT) {
+export function readOptionalString(row: Record<string, unknown>, key: string, max: number = MAX_TEXT) : string | undefined {
   return row[key] === undefined ? undefined : readString(row, key, max)
 }
 
@@ -150,7 +182,7 @@ export function readOptionalString(row, key, max = MAX_TEXT) {
  * @param {string} key - field name.
  * @returns {number | undefined} the value, or undefined when absent/invalid.
  */
-export function readCount(row, key) {
+export function readCount(row: Record<string, unknown>, key: string) : number | undefined {
   const value = row[key]
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined
 }
@@ -161,7 +193,7 @@ export function readCount(row, key) {
  * @param {string} key - field name.
  * @returns {boolean | undefined} the value, or undefined when absent/not boolean.
  */
-export function readBoolean(row, key) {
+export function readBoolean(row: Record<string, unknown>, key: string) : boolean | undefined {
   const value = row[key]
   return typeof value === 'boolean' ? value : undefined
 }
@@ -183,7 +215,13 @@ export const WAIT_CONDITIONS = Object.freeze(['present', 'absent', 'text'])
  * @param {unknown} value - candidate command.
  * @returns {{ ok: true, command: Record<string, unknown> } | { ok: false, reason: string }} verdict.
  */
-export function validateCommand(value) {
+export function validateCommand(value: unknown) : {
+    ok: true;
+    command: CommandEnvelope;
+} | {
+    ok: false;
+    reason: string;
+} {
   if (!isRecord(value)) return { ok: false, reason: 'command must be an object' }
   const kind = readString(value, 'kind')
   if (kind !== 'command') return { ok: false, reason: 'kind must be "command"' }
@@ -217,8 +255,14 @@ export function validateCommand(value) {
 }
 
 /** @param {Record<string, unknown>} op - wire operation. @returns {{ok: true, fields: Record<string,unknown>} | {ok: false, reason: string}} bounded import metadata. */
-function validateImportExtension(op) {
-  /** @type {Record<string,unknown>} */ const fields = {}
+function validateImportExtension(op: Record<string, unknown>) : {
+    ok: true;
+    fields: Record<string, unknown>;
+} | {
+    ok: false;
+    reason: string;
+} {
+  /** @type {Record<string,unknown>} */ const fields: Record<string, unknown> = {}
   if(op.pagePolicy!==undefined){
     const policy=op.pagePolicy
     if(!isRecord(policy)||policy.adapter!=='bjrsj'||!['navigation','import'].includes(String(policy.workflow))||Object.keys(policy).some(key=>!['adapter','workflow','kind'].includes(key))||(policy.kind!==undefined&&!['add','modify','reduce'].includes(String(policy.kind))))return {ok:false,reason:'unsupported site action policy'}
@@ -246,7 +290,7 @@ function validateImportExtension(op) {
       || typeof file.expectedIdentity.legalIdentity !== 'string' || !/^[A-Z0-9]{18}$/.test(file.expectedIdentity.legalIdentity)
       || typeof file.bytes !== 'number' || !Number.isSafeInteger(file.bytes) || file.bytes < 1 || file.bytes > 10*1024*1024
       || typeof file.base64 !== 'string' || file.base64.length !== 4*Math.ceil(file.bytes/3) || !/^[A-Za-z0-9+/]+={0,2}$/.test(file.base64)
-      || file.kind !== /** @type {Record<string,unknown>} */ (fields.importScope).kind) return {ok:false,reason:'file envelope is invalid or exceeds its own limit'}
+      || file.kind !== /** @type {Record<string,unknown>} */ (fields.importScope as Record<string, unknown>).kind) return {ok:false,reason:'file envelope is invalid or exceeds its own limit'}
     const padding = file.bytes % 3 === 1 ? '==' : file.bytes % 3 === 2 ? '=' : ''
     if ((file.base64.match(/=*$/)?.[0] ?? '') !== padding) return {ok:false,reason:'file encoding length mismatch'}
     fields.file = { ...file }
@@ -260,7 +304,13 @@ function validateImportExtension(op) {
  * @param {Record<string, unknown>} op - candidate operation.
  * @returns {{ ok: true, op: Record<string, unknown> } | { ok: false, reason: string }} verdict.
  */
-function validateOp(kind, op) {
+function validateOp(kind: string, op: Record<string, unknown>) : {
+    ok: true;
+    op: Record<string, unknown>;
+} | {
+    ok: false;
+    reason: string;
+} {
   if (kind === 'observe') {
     const maxChars = readCount(op, 'maxChars')
     const maxNodes = readCount(op, 'maxNodes')
@@ -311,7 +361,7 @@ function validateOp(kind, op) {
       return { ok: false, reason: 'click takes no value or checked' }
     }
     /** @type {Record<string, unknown>} */
-    const result = { kind, action, target: target.target }
+    const result: Record<string, unknown> = { kind, action, target: target.target }
     if (value !== undefined && action !== 'click') result.value = value
     if (action === 'check') result.checked = op.checked
     return { ok: true, op: result }
@@ -328,7 +378,13 @@ function validateOp(kind, op) {
  * @param {unknown} value - candidate target.
  * @returns {{ ok: true, target: Record<string, unknown> } | { ok: false, reason: string }} verdict.
  */
-function validateTarget(value) {
+function validateTarget(value: unknown) : {
+    ok: true;
+    target: Record<string, unknown>;
+} | {
+    ok: false;
+    reason: string;
+} {
   if (!isRecord(value)) return { ok: false, reason: 'target is required' }
   const documentToken = readString(value, 'documentToken', MAX_TOKEN)
   if (documentToken === undefined || documentToken.length === 0) return { ok: false, reason: 'target.documentToken is required' }
@@ -342,7 +398,13 @@ function validateTarget(value) {
  * @param {unknown} value - candidate result.
  * @returns {{ ok: true, result: Record<string, unknown> } | { ok: false, reason: string }} verdict.
  */
-export function validateResult(value) {
+export function validateResult(value: unknown) : {
+    ok: true;
+    result: Record<string, unknown>;
+} | {
+    ok: false;
+    reason: string;
+} {
   if (!isRecord(value)) return { ok: false, reason: 'result must be an object' }
   if (readString(value, 'kind') !== 'result') return { ok: false, reason: 'kind must be "result"' }
   if (value.protocolVersion !== PROTOCOL_VERSION || !validRunScope(value.task)) return {ok:false,reason:'protocol v3 and complete task/run scope are required'}
@@ -391,7 +453,13 @@ export function validateResult(value) {
  * @param {unknown} value - candidate hello.
  * @returns {{ ok: true, hello: Record<string, unknown> } | { ok: false, reason: string }} verdict.
  */
-export function validateHello(value) {
+export function validateHello(value: unknown) : {
+    ok: true;
+    hello: PanelHello;
+} | {
+    ok: false;
+    reason: string;
+} {
   if (!isRecord(value)) return { ok: false, reason: 'hello must be an object' }
   if (readString(value, 'kind') !== 'hello') return { ok: false, reason: 'kind must be "hello"' }
   if (readCount(value, 'protocolVersion') !== PROTOCOL_VERSION) {
@@ -439,7 +507,7 @@ export function validateHello(value) {
 /**
  * Build a Host → Client command envelope.
  * @param {object} input - command fields.
- * @param {import('./task-scope.js').RunScope} input.task - exact immutable task/run.
+ * @param {import('./task-scope.ts').RunScope} input.task - exact immutable task/run.
  * @param {string} input.id - command id.
  * @param {string} input.leaseId - control lease.
  * @param {number} input.connectionGeneration - panel generation.
@@ -449,7 +517,7 @@ export function validateHello(value) {
  * @param {object} input.op - validated operation.
  * @returns {Record<string, unknown>} the envelope.
  */
-export function commandEnvelope(input) {
+export function commandEnvelope(input: { task: import("./task-scope.ts").RunScope; id: string; leaseId: string; connectionGeneration: number; epoch: number; sequence: number; deadlineAt: number; op: object; }) : Record<string, unknown> {
   return {
     kind: 'command',
     protocolVersion: PROTOCOL_VERSION,
@@ -469,7 +537,13 @@ export function commandEnvelope(input) {
  * @param {unknown} value - payload.
  * @returns {{ ok: true, text: string } | { ok: false, reason: string }} encoded text or refusal.
  */
-export function encodePayload(value) {
+export function encodePayload(value: unknown) : {
+    ok: true;
+    text: string;
+} | {
+    ok: false;
+    reason: string;
+} {
   let text
   try {
     text = JSON.stringify(value)

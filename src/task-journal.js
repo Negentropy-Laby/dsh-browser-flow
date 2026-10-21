@@ -1,6 +1,6 @@
 /** Versioned disk vocabulary. Unknown events cannot be interpreted as harmless history. */
-import { validRunScope, sameRunScope } from './task-scope.js'
-import { validUserWait } from './task-wait.js'
+import { validRunScope, sameRunScope } from './task-scope.ts'
+import { validUserWait } from './task-wait.ts'
 import { validOrigins } from './task-definitions.js'
 
 /** The first explicit task storage generation; unversioned predecessors are read-only. */
@@ -20,7 +20,7 @@ export function validTaskManifest(raw,legacy=false) {
   if(raw.adapter==='bjrsj' && !['navigation','import'].includes(String(raw.workflowRef)))return false
   return raw.definitionId===undefined || (text(raw.definitionId,100)&&text(raw.definitionVersion,100)&&typeof raw.definitionDigest==='string'&&/^[a-f0-9]{64}$/.test(raw.definitionDigest))
 }
-/** @param {string} type - event discriminator. @param {Record<string,unknown>} row - disk payload. @param {import('./task-store.js').Manifest} manifest - preceding manifest. @param {string | undefined} pending - original pending write. @param {import('./task-wait.js').UserWait} [waiting] - active human dependency. @param {{kind:string,inputRef:string}} [waitInput] - input observed after the wait. @returns {boolean} understood event semantics. */
+/** @param {string} type - event discriminator. @param {Record<string,unknown>} row - disk payload. @param {import('./task-store.js').Manifest} manifest - preceding manifest. @param {string | undefined} pending - original pending write. @param {import('./task-wait.ts').UserWait} [waiting] - active human dependency. @param {{kind:string,inputRef:string}} [waitInput] - input observed after the wait. @returns {boolean} understood event semantics. */
 export function validTaskEvent(type,row,manifest,pending,waiting,waitInput) {
   const fields={wait_requested:['id','kind','reason','resumeCondition','owner','source','run'],wait_input:['waitId','kind','inputRef','source','run'],wait_resolved:['waitId','source','inputRef','userInput','run'],created:['manifest'],revise:['manifest'],attempt:['attemptId','action','run'],receipt:['attemptId','outcome','run','fileGrantId'],status:['state','run'],asset:['id','kind','data','source','run'],edge:['id','from','to','relation','run'],waiting:['condition','for','source','run'],business_verdict:['verdict','qualified','source','run','pageRef','resultRef','reason','proofRef','criterionId','validatorId','validatorVersion']}
   const allowed=/** @type {Record<string,string[]>} */(fields)[type]

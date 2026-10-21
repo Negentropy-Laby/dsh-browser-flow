@@ -1,9 +1,9 @@
-import { TASK, TASK_VIEW } from './helpers/task-scope.js'
+import { TASK, TASK_VIEW } from './helpers/task-scope.ts'
 import assert from 'node:assert/strict'
 import { describe,it } from 'node:test'
-import { PROTOCOL_VERSION,validateCommand } from '../src/protocol.js'
+import { PROTOCOL_VERSION,validateCommand } from '../src/protocol.ts'
 import { createTools } from '../src/tools.js'
-import { resolveConfig } from '../src/config.js'
+import { resolveConfig } from '../src/config.ts'
 import { resolve } from 'node:path'
 
 const command=op=>({kind:'command',protocolVersion:3,task:TASK,id:'c',leaseId:'l',connectionGeneration:1,epoch:0,sequence:0,deadlineAt:1000,op})

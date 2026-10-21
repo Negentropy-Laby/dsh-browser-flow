@@ -42,7 +42,7 @@ const PLATFORM_MODULES = new Set([
 ])
 
 /** A local import: `import { a, b } from './x.js'` or `import './x.js'`. */
-const LOCAL_IMPORT = /^import\s+(?:\{([^}]*)\}\s+from\s+)?'(\.[^']+)'\s*;?\s*$/gm
+const LOCAL_IMPORT = /^import\s+(?:\{([^}]*)\}\s+from\s+)?(['"])(\.[^'"]+)\2\s*;?\s*$/gm
 /** Literal packaged JSON is embedded, never fetched by the Client. */
 const LOCAL_JSON_IMPORT = /^import\s+(\w+)\s+from\s+'(\.[^']+\.json)'\s+with\s*\{\s*type:\s*'json'\s*\}\s*;?\s*$/gm
 
@@ -73,7 +73,7 @@ function collect(file: string, seen: Set<string>, order: ModuleSource[]) {
   const source = readFileSync(absolute, 'utf8')
   const dependencies = []
   for (const match of source.matchAll(LOCAL_IMPORT)) {
-    const specifier = match[2]
+    const specifier = match[3]
     const target = posix.normalize(posix.join(posix.dirname(normalized), specifier))
     dependencies.push(target)
   }

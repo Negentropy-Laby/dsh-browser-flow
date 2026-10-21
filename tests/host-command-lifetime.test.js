@@ -3,7 +3,7 @@ import { bindTestTask } from './helpers/bind-task.js'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { BrowserFlowService } from '../src/index.js'
-import { resolveConfig } from '../src/config.js'
+import { resolveConfig } from '../src/config.ts'
 
 async function fixture() {
   const agent = { id: 'session-lifetime' }

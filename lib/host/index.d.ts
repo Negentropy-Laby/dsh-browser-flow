@@ -44,13 +44,13 @@ export const inject: string[];
 export class BrowserFlowService {
     /**
      * @param {HostContext} ctx - Host plugin context.
-     * @param {import('./config.js').BrowserFlowConfig} config - resolved config.
+     * @param {import('./config.ts').BrowserFlowConfig} config - resolved config.
      * @param {GraphWorkers} [graph] - derived graph service; defaults to the packaged helper.
      */
-    constructor(ctx: HostContext, config: import("./config.js").BrowserFlowConfig, graph?: GraphWorkers);
+    constructor(ctx: HostContext, config: import("./config.ts").BrowserFlowConfig, graph?: GraphWorkers);
     graph: GraphWorkers;
     ctx: HostContext;
-    config: import("./config.js").BrowserFlowConfig;
+    config: import("./config.ts").BrowserFlowConfig;
     tasks: TaskStore;
     importFiles: ImportFiles;
     /** @type {WeakMap<object,string>} */ instanceTokens: WeakMap<object, string>;
@@ -461,10 +461,10 @@ export type ControlStore = {
      */
     leaseCount: () => number;
 };
-import { Config } from './config.js';
+import { Config } from './config.ts';
 import { GraphWorkers } from './graph/worker.ts';
 import { TaskStore } from './task-store.js';
 import { ImportFiles } from './import-files.js';
 import { monotonicNow } from './state.js';
-import { failure } from './protocol.js';
+import { failure } from './protocol.ts';
 export { Config, monotonicNow };

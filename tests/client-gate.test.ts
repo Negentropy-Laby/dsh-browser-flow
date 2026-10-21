@@ -1,4 +1,4 @@
-import { TASK, TASK_VIEW } from './helpers/task-scope.js'
+import { TASK, TASK_VIEW } from './helpers/task-scope.ts'
 /**
  * The panel-side execution gate.
  *
@@ -35,7 +35,7 @@ const command = {
  * @param {number} generation - panel connection generation.
  * @returns {string} refusal code or 'accepted'.
  */
-function verdict(candidate, held, generation) {
+function verdict(candidate: object, held: object | undefined, generation: number) {
   const refused = refuseCommand(candidate, held, generation)
   return refused === undefined ? 'accepted' : refused.error.code
 }

@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { BrowserFlowService } from '../src/index.js'
 import { GraphWorkers } from '../src/graph/worker.ts'
 import { graphRuntime,graphBinary } from './helpers/graph-process.js'
-import { resolveConfig } from '../src/config.js'
+import { resolveConfig } from '../src/config.ts'
 import { people,scope,workbook,facts } from './import-fixture.js'
 
 const json=body=>new Request('http://localhost/api/browser-flow/authorize',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({protocolVersion:3,...body})})

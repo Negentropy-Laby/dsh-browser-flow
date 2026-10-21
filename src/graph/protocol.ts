@@ -1,6 +1,6 @@
 /** Internal graph protocol v1. Page control remains Browser Flow v3. */
 import type { Readable, Writable } from 'node:stream'
-import type { RunScope } from '../task-scope.js'
+import type { RunScope } from '../task-scope.ts'
 
 /** Consumed subset of the pinned Host subprocess service. No provider is created. */
 export interface SubprocessPort {

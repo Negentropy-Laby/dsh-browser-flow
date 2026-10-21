@@ -22,8 +22,8 @@ import {
 } from './clientcore.js'
 import { actProgram, findProgram, identityProgram, observeProgram, waitProgram } from './pagecode.js'
 import { importProgram } from './import-page.js'
-import { validRunScope, sameRunScope } from './task-scope.js'
-import { PROTOCOL_VERSION, validateCommand } from './protocol.js'
+import { validRunScope, sameRunScope } from './task-scope.ts'
+import { PROTOCOL_VERSION, validateCommand } from './protocol.ts'
 
 /** Locale namespace owned by this plugin. */
 export const NS = 'browserFlow'
@@ -341,7 +341,7 @@ export function createPanel({ React, t, core = CORE, pageCode = PAGE_CODE }) {
       return found
     }, [core, elements, pageCode, sessionId])
 
-    const execute = React.useCallback(async (/** @type {{ task: import('./task-scope.js').RunScope, deadlineAt: number, budgetMs?: number, op: object, id: string, leaseId: string, connectionGeneration: number, epoch: number, sequence: number }} */ command, /** @type {number} */ batchReceivedAt) => {
+    const execute = React.useCallback(async (/** @type {{ task: import('./task-scope.ts').RunScope, deadlineAt: number, budgetMs?: number, op: object, id: string, leaseId: string, connectionGeneration: number, epoch: number, sequence: number }} */ command, /** @type {number} */ batchReceivedAt) => {
       const binding = bound.current
       if (binding === undefined) {
         return { outcome: 'failed', error: { code: 'not_authorized', message: 'no page is authorized in this panel' } }

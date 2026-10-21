@@ -17,8 +17,8 @@
  * @module @negentropy/dsh-browser-flow/tools
  */
 
-import { validUserWait, USER_WAIT_KINDS } from './task-wait.js'
-import { failure, success } from './protocol.js'
+import { validUserWait, USER_WAIT_KINDS } from './task-wait.ts'
+import { failure, success } from './protocol.ts'
 
 /**
  * One tool call's execution context, as the Host supplies it.
@@ -67,7 +67,7 @@ const LOG_NOTICE = 'Tool arguments the model already sent may already be in the 
 /**
  * Build every tool definition bound to one service instance.
  * @param {ToolService} service - the browser-flow Host service.
- * @param {import('./config.js').BrowserFlowConfig} config - resolved config.
+ * @param {import('./config.ts').BrowserFlowConfig} config - resolved config.
  * @returns {object[]} tool definitions.
  */
 export function createTools(service, config) {
@@ -124,7 +124,7 @@ function tabsTool(service) {
   }
 }
 
-/** @param {ToolService} service - Host service. @param {import('./config.js').BrowserFlowConfig} config - config. @returns {object} `browser_observe`. */
+/** @param {ToolService} service - Host service. @param {import('./config.ts').BrowserFlowConfig} config - config. @returns {object} `browser_observe`. */
 function observeTool(service, config) {
   return {
     name: 'browser_observe',
@@ -148,7 +148,7 @@ function observeTool(service, config) {
   }
 }
 
-/** @param {ToolService} service - Host service. @param {import('./config.js').BrowserFlowConfig} config - config. @returns {object} `browser_find`. */
+/** @param {ToolService} service - Host service. @param {import('./config.ts').BrowserFlowConfig} config - config. @returns {object} `browser_find`. */
 function findTool(service, config) {
   return {
     name: 'browser_find',
@@ -256,7 +256,7 @@ function actTool(service) {
   }
 }
 
-/** @param {ToolService} service - Host service. @param {import('./config.js').BrowserFlowConfig} config - config. @returns {object} `browser_wait`. */
+/** @param {ToolService} service - Host service. @param {import('./config.ts').BrowserFlowConfig} config - config. @returns {object} `browser_wait`. */
 function waitTool(service, config) {
   return {
     name: 'browser_wait',

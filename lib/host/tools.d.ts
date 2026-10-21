@@ -1,10 +1,10 @@
 /**
  * Build every tool definition bound to one service instance.
  * @param {ToolService} service - the browser-flow Host service.
- * @param {import('./config.js').BrowserFlowConfig} config - resolved config.
+ * @param {import('./config.ts').BrowserFlowConfig} config - resolved config.
  * @returns {object[]} tool definitions.
  */
-export function createTools(service: ToolService, config: import("./config.js").BrowserFlowConfig): object[];
+export function createTools(service: ToolService, config: import("./config.ts").BrowserFlowConfig): object[];
 /**
  * One tool call's execution context, as the Host supplies it.
  */

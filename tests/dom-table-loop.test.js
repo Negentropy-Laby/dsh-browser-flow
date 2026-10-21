@@ -25,7 +25,7 @@ import { dirname, join } from 'node:path'
 import { describe, it } from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { BrowserFlowService } from '../src/index.js'
-import { resolveConfig } from '../src/config.js'
+import { resolveConfig } from '../src/config.ts'
 import { actProgram, findProgram, identityProgram, observeProgram, waitProgram } from '../src/pagecode.js'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')

@@ -1,4 +1,4 @@
-import { TASK, TASK_VIEW } from './helpers/task-scope.js'
+import { TASK, TASK_VIEW } from './helpers/task-scope.ts'
 /**
  * Panel component tests.
  *

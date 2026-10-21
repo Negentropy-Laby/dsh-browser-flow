@@ -10,7 +10,7 @@
  * @module @negentropy/dsh-browser-flow/clientcore
  */
 
-import { sameRunScope, validRunScope } from './task-scope.js'
+import { sameRunScope, validRunScope } from './task-scope.ts'
 
 /** Marker the shipped Browser UI puts on a live Electron guest element. */
 export const WEBVIEW_SELECTOR = 'webview[data-sidebar-browser-frame="webview"]'

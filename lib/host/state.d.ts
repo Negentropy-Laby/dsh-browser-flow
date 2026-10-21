@@ -155,7 +155,7 @@ export type ControlLease = {
     /**
      * - verified immutable task/run binding.
      */
-    task?: import("./task-scope.js").RunScope | undefined;
+    task?: import("./task-scope.ts").RunScope | undefined;
     /**
      * - authorized Session.
      */

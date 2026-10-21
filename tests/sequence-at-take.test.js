@@ -11,7 +11,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { createControlState } from '../src/state.js'
-import { resolveConfig } from '../src/config.js'
+import { resolveConfig } from '../src/config.ts'
 
 const page = {
   lease: 'guest-1', partition: 'part-1', url: 'https://a.test/x',

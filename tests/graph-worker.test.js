@@ -3,9 +3,9 @@ import { it } from 'node:test'
 import { PassThrough } from 'node:stream'
 import { GraphWorkers } from '../src/graph/worker.ts'
 import { Frames, frame } from '../src/graph/protocol.ts'
-import { resolveConfig } from '../src/config.js'
+import { resolveConfig } from '../src/config.ts'
 import { graphRuntime, graphBinary } from './helpers/graph-process.js'
-import { TASK } from './helpers/task-scope.js'
+import { TASK } from './helpers/task-scope.ts'
 
 const scope=TASK
 function input(run=scope){return {scope:run,version:1,tailHash:'hash-1',goal:'中文 synthetic goal',constraints:[],criteria:[],events:[{seq:1,hash:'hash-1',type:'created',run,goal:'中文 synthetic goal'}],liveDocumentToken:'',protected:[],proofRef:'',proofSeq:0,coldRounds:6,minGroup:2}}

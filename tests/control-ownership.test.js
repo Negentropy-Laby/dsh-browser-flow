@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createControlState } from '../src/state.js'
-import { resolveConfig } from '../src/config.js'
+import { resolveConfig } from '../src/config.ts'
 
 const limits = resolveConfig({ commandBudgetMs: 1000, waitMaxMs: 100 })
 const pageA = { lease: 'guest-a', partition: 'part-a', documentToken: 'doc-a', url: 'https://a.test/', tabId: 'tab-a' }

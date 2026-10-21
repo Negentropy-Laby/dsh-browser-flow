@@ -6,8 +6,8 @@
     "src/panel.js",
     "src/pagecode.js",
     "src/import-page.js",
-    "src/task-scope.js",
-    "src/protocol.js",
+    "src/task-scope.ts",
+    "src/protocol.ts",
     "src/node-ambient.d.ts",
     "src/import-rules.js"
   ],

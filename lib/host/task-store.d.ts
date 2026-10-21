@@ -1,8 +1,8 @@
-/** @typedef {import('./task-scope.js').TaskScope} TaskScope */
-/** @typedef {import('./task-scope.js').RunScope} RunScope */
-/** @typedef {{ schemaVersion?: number, scope: TaskScope, runId: import('./task-scope.js').RunId, workflowRef: string, goal: string, constraints: string[], criteria: string[], origins: string[], adapter: string, adapterVersion: number, definitionId?: string, definitionDigest?: string, definitionVersion?: string }} Manifest */
+/** @typedef {import('./task-scope.ts').TaskScope} TaskScope */
+/** @typedef {import('./task-scope.ts').RunScope} RunScope */
+/** @typedef {{ schemaVersion?: number, scope: TaskScope, runId: import('./task-scope.ts').RunId, workflowRef: string, goal: string, constraints: string[], criteria: string[], origins: string[], adapter: string, adapterVersion: number, definitionId?: string, definitionDigest?: string, definitionVersion?: string }} Manifest */
 /** @typedef {{ schemaVersion?: number, seq: number, prev: string, type: string, data: Record<string, unknown>, hash: string }} TaskEvent */
-/** @typedef {{ manifest: Manifest, snapshot?: import('./task-definitions.js').DefinitionSnapshot, events: TaskEvent[], dir: string, blocked: boolean, unhealthy: boolean, state: string, pendingWrite?: string, readOnly?: boolean, storageIssue?: string, checkedProofs?: Map<string,import('./task-criteria.js').CheckedProof>, evidenceIssues?: string[], liveDocumentToken?: string, waiting?: import('./task-wait.js').UserWait, waitInput?: {kind:string,inputRef:string} }} TaskData */
+/** @typedef {{ manifest: Manifest, snapshot?: import('./task-definitions.js').DefinitionSnapshot, events: TaskEvent[], dir: string, blocked: boolean, unhealthy: boolean, state: string, pendingWrite?: string, readOnly?: boolean, storageIssue?: string, checkedProofs?: Map<string,import('./task-criteria.js').CheckedProof>, evidenceIssues?: string[], liveDocumentToken?: string, waiting?: import('./task-wait.ts').UserWait, waitInput?: {kind:string,inputRef:string} }} TaskData */
 /** @typedef {{ readonly scope: TaskScope, readonly run: RunScope }} TaskAccess */
 /** Expected task failures are sanitized at the tool/HTTP boundary. */
 export class TaskError extends Error {
@@ -18,7 +18,7 @@ export class TaskStore {
     graphConfig: import("./graph/protocol.ts").GraphConfig;
     /** @type {((access:TaskAccess)=>string|undefined)|undefined} */ controlDocument: ((access: TaskAccess) => string | undefined) | undefined;
     root: string | undefined;
-    profileId: import("./task-scope.js").ProfileId | undefined;
+    profileId: import("./task-scope.ts").ProfileId | undefined;
     runtime: string | undefined;
     waitMs: number;
     /** @type {Map<string, TaskData>} */ tasks: Map<string, TaskData>;
@@ -67,8 +67,8 @@ export class TaskStore {
     }): Promise<void>;
     /** @param {TaskAccess} access - current owner. @returns {void} page mutations require no outstanding human dependency. */
     assertReady(access: TaskAccess): void;
-    /** @param {TaskAccess} access - owner. @param {import('./task-wait.js').UserWaitRequest} request - model declaration. @returns {Promise<import('./task-wait.js').UserWait>} synchronized wait; identical repeats do not append. */
-    declareWait(access: TaskAccess, request: import("./task-wait.js").UserWaitRequest): Promise<import("./task-wait.js").UserWait>;
+    /** @param {TaskAccess} access - owner. @param {import('./task-wait.ts').UserWaitRequest} request - model declaration. @returns {Promise<import('./task-wait.ts').UserWait>} synchronized wait; identical repeats do not append. */
+    declareWait(access: TaskAccess, request: import("./task-wait.ts").UserWaitRequest): Promise<import("./task-wait.ts").UserWait>;
     /** @param {TaskAccess} access - owner. @param {string} kind - actual prerequisite supplied through the panel. @param {string} inputRef - exact current capability or file fingerprint. @returns {Promise<void>} task-owned new input, never an authorization itself. */
     noteWaitInput(access: TaskAccess, kind: string, inputRef: string): Promise<void>;
     /** @param {TaskAccess} access - owner. @param {unknown} waitId - panel reference. @param {unknown} userInput - explicit human input for non-verifiable dependencies. @param {(kind:string,inputRef:string)=>boolean} current - Host rechecks current supplied capabilities. @returns {Promise<void>} records resolution without restoring page control. */
@@ -102,12 +102,12 @@ export class TaskStore {
     /** @returns {Promise<void>} drain owned writes before releasing the profile writer lease. */
     close(): Promise<void>;
 }
-export type TaskScope = import("./task-scope.js").TaskScope;
-export type RunScope = import("./task-scope.js").RunScope;
+export type TaskScope = import("./task-scope.ts").TaskScope;
+export type RunScope = import("./task-scope.ts").RunScope;
 export type Manifest = {
     schemaVersion?: number;
     scope: TaskScope;
-    runId: import("./task-scope.js").RunId;
+    runId: import("./task-scope.ts").RunId;
     workflowRef: string;
     goal: string;
     constraints: string[];
@@ -141,7 +141,7 @@ export type TaskData = {
     checkedProofs?: Map<string, import("./task-criteria.js").CheckedProof>;
     evidenceIssues?: string[];
     liveDocumentToken?: string;
-    waiting?: import("./task-wait.js").UserWait;
+    waiting?: import("./task-wait.ts").UserWait;
     waitInput?: {
         kind: string;
         inputRef: string;

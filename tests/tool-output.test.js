@@ -14,8 +14,8 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { createTools } from '../src/tools.js'
-import { resolveConfig } from '../src/config.js'
-import { failure, success } from '../src/protocol.js'
+import { resolveConfig } from '../src/config.ts'
+import { failure, success } from '../src/protocol.ts'
 
 /**
  * Build the six tools over a scripted service.

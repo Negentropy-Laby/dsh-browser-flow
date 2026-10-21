@@ -24,8 +24,8 @@
  * @module @negentropy/dsh-browser-flow/state
  */
 
-import { sameRunScope, validRunScope } from './task-scope.js'
-import { PROTOCOL_VERSION, ERROR_CODES, failure, success } from './protocol.js'
+import { sameRunScope, validRunScope } from './task-scope.ts'
+import { PROTOCOL_VERSION, ERROR_CODES, failure, success } from './protocol.ts'
 
 /**
  * One page the panel reports, as the Host remembers it.
@@ -82,7 +82,7 @@ import { PROTOCOL_VERSION, ERROR_CODES, failure, success } from './protocol.js'
  * One control lease: the authorization to operate one page for one Agent.
  * @typedef {object} ControlLease
  * @property {string} id - control lease identity.
- * @property {import('./task-scope.js').RunScope} [task] - verified immutable task/run binding.
+ * @property {import('./task-scope.ts').RunScope} [task] - verified immutable task/run binding.
  * @property {string} sessionId - authorized Session.
  * @property {string} agentInstanceToken - plugin-minted token of the exact Agent.
  * @property {object} agent - the exact live Agent object.
@@ -269,7 +269,7 @@ export function createControlState(options = {}) {
    * @param {object} input - binding inputs.
    * @param {string} input.connectionInstanceId - panel instance that authorizes.
    * @param {number} input.connectionGeneration - its generation.
-   * @param {import('./task-scope.js').RunScope} [input.task] - verified task/run.
+   * @param {import('./task-scope.ts').RunScope} [input.task] - verified task/run.
  * @param {string} input.sessionId - authorized Session.
    * @param {string} input.agentInstanceToken - token of the exact Agent.
    * @param {object} input.agent - the exact live Agent object.
@@ -568,7 +568,7 @@ export function createControlState(options = {}) {
    * dispatched, which is the only point where "not executed" is provable.
    * @param {ControlLease} lease - target lease.
    * @param {object} op - validated operation payload.
-   * @param {import('./config.js').BrowserFlowConfig} limits - resolved config.
+   * @param {import('./config.ts').BrowserFlowConfig} limits - resolved config.
    * @param {AbortSignal} [signal] - caller cancellation.
    * @returns {Promise<object>} settled outcome.
    */
@@ -649,7 +649,7 @@ export function createControlState(options = {}) {
   /**
    * Dispatch the next queued command when the lease is idle.
    * @param {ControlLease} lease - lease to pump.
-   * @param {import('./config.js').BrowserFlowConfig} limits - resolved config.
+   * @param {import('./config.ts').BrowserFlowConfig} limits - resolved config.
    * @returns {void}
    */
   function pump(lease, limits) {
@@ -714,7 +714,7 @@ export function createControlState(options = {}) {
 
   /**
    * Pump every lease.
-   * @param {import('./config.js').BrowserFlowConfig} limits - resolved config.
+   * @param {import('./config.ts').BrowserFlowConfig} limits - resolved config.
    * @returns {void}
    */
   function pumpAll(limits) {
@@ -728,7 +728,7 @@ export function createControlState(options = {}) {
    * without dispatch; a command already taken is never re-sent.
    * @param {string} instanceId - polling panel instance.
    * @param {number} generation - polling generation.
-   * @param {import('./config.js').BrowserFlowConfig} limits - resolved config.
+   * @param {import('./config.ts').BrowserFlowConfig} limits - resolved config.
    * @returns {object} commands and dropped ids.
    */
   function takeCommands(instanceId, generation, limits) {
@@ -821,7 +821,7 @@ export function createControlState(options = {}) {
    * and refuses the result: after a gap or a duplicate, the page's state cannot
    * be trusted.
    * @param {object} result - validated result envelope.
-   * @param {import('./task-scope.js').RunScope} [result.task] - immutable task/run echo.
+   * @param {import('./task-scope.ts').RunScope} [result.task] - immutable task/run echo.
  * @param {string} result.leaseId - control lease the result belongs to.
    * @param {number} result.connectionGeneration - panel generation that produced it.
    * @param {number} result.epoch - observation epoch the command ran under.
@@ -831,7 +831,7 @@ export function createControlState(options = {}) {
    * @param {'ok' | 'failed' | 'unknown_outcome' | 'dropped'} result.outcome - what the panel reports.
    * @param {object} [result.payload] - page value on success.
    * @param {{ code: string, message: string }} [result.error] - failure detail.
-   * @param {import('./config.js').BrowserFlowConfig} limits - resolved config.
+   * @param {import('./config.ts').BrowserFlowConfig} limits - resolved config.
    * @returns {object} settlement verdict.
    */
   function settle(result, limits) {

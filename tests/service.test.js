@@ -12,7 +12,7 @@ import { bindTestTask } from './helpers/bind-task.js'
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { BrowserFlowService, apply, inject, name } from '../src/index.js'
-import { resolveConfig } from '../src/config.js'
+import { resolveConfig } from '../src/config.ts'
 
 /** Build a fake Host context with one live Agent and a captured route table. */
 function host(options = {}) {

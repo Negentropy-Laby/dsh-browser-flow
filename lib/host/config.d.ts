@@ -1,10 +1,24 @@
-/**
- * Validate and normalize one config object.
- * @param {unknown} input - raw plugin config.
- * @returns {Readonly<BrowserFlowConfig>} validated config with defaults applied.
- * @throws {Error} naming the offending field and the accepted range.
- */
-export function resolveConfig(input: unknown): Readonly<BrowserFlowConfig>;
+export type BrowserFlowConfig = {
+    commandBudgetMs: number;
+    observeMaxChars: number;
+    observeMaxNodes: number;
+    findMaxMatches: number;
+    waitMaxMs: number;
+    queueLimit: number;
+    pollWaitMs: number;
+    connectionIdleMs: number;
+    importWindowMs: number;
+    graphMaxWorkers: number;
+    graphIdleMs: number;
+    graphRequestTimeoutMs: number;
+    graphMaxFrameBytes: number;
+    graphStderrBytes: number;
+    graphTerminateGraceMs: number;
+    graphColdRounds: number;
+    graphMinGroup: number;
+    localTasksDir: string;
+    importEvidenceDir: string;
+};
 /**
  * @typedef {object} BrowserFlowConfig
  * @property {number} commandBudgetMs - end-to-end deadline for one command, queueing included.
@@ -28,14 +42,21 @@ export function resolveConfig(input: unknown): Readonly<BrowserFlowConfig>;
  * @property {string} importEvidenceDir - legacy configuration accepted for compatibility; new evidence is always under the bound task.
  */
 /** Defaults applied when a field is omitted. @type {Readonly<BrowserFlowConfig>} */
-export const DEFAULTS: Readonly<BrowserFlowConfig>;
+export declare const DEFAULTS: Readonly<BrowserFlowConfig>;
+/**
+ * Validate and normalize one config object.
+ * @param {unknown} input - raw plugin config.
+ * @returns {Readonly<BrowserFlowConfig>} validated config with defaults applied.
+ * @throws {Error} naming the offending field and the accepted range.
+ */
+export declare function resolveConfig(input: unknown): Readonly<BrowserFlowConfig>;
 /**
  * Standard Schema wrapper so Cordis validates the config before `apply`.
  *
  * `~standard.validate` returns either the value or a list of issues; Cordis
  * throws a `ValidationError` carrying the issue messages.
  */
-export const Config: Readonly<{
+export declare const Config: Readonly<{
     '~standard': Readonly<{
         version: 1;
         vendor: "negentropy";
@@ -53,81 +74,3 @@ export const Config: Readonly<{
         };
     }>;
 }>;
-export type BrowserFlowConfig = {
-    /**
-     * - end-to-end deadline for one command, queueing included.
-     */
-    commandBudgetMs: number;
-    /**
-     * - character budget of one observation.
-     */
-    observeMaxChars: number;
-    /**
-     * - element budget of one observation.
-     */
-    observeMaxNodes: number;
-    /**
-     * - matches per find.
-     */
-    findMaxMatches: number;
-    /**
-     * - longest accepted wait.
-     */
-    waitMaxMs: number;
-    /**
-     * - pending operations per page.
-     */
-    queueLimit: number;
-    /**
-     * - longest single panel poll.
-     */
-    pollWaitMs: number;
-    /**
-     * - idle window before a panel's leases expire.
-     */
-    connectionIdleMs: number;
-    /**
-     * - relative lifetime for one passive import collection.
-     */
-    importWindowMs: number;
-    /**
-     * - graph worker deployment setting.
-     */
-    graphMaxWorkers: number;
-    /**
-     * - graph worker deployment setting.
-     */
-    graphIdleMs: number;
-    /**
-     * - graph worker deployment setting.
-     */
-    graphRequestTimeoutMs: number;
-    /**
-     * - graph worker deployment setting.
-     */
-    graphMaxFrameBytes: number;
-    /**
-     * - graph worker deployment setting.
-     */
-    graphStderrBytes: number;
-    /**
-     * - graph worker deployment setting.
-     */
-    graphTerminateGraceMs: number;
-    /**
-     * - graph worker deployment setting.
-     */
-    graphColdRounds: number;
-    /**
-     * - graph worker deployment setting.
-     */
-    graphMinGroup: number;
-    /**
-     * - absolute local task directory; empty uses profileContext.home/browser-flow/tasks.
-     */
-    localTasksDir: string;
-    /**
-     * - legacy configuration accepted for compatibility; new evidence is always under the bound task.
-     */
-    importEvidenceDir: string;
-};

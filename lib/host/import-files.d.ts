@@ -1,4 +1,4 @@
-/** @typedef {{ id: string, state: string, agent: object, sessionId: string, connectionInstanceId: string, connectionGeneration: number, epoch: number, documentToken: string, task?: import('./task-scope.js').RunScope, evidenceRoot?: string }} FileLease */
+/** @typedef {{ id: string, state: string, agent: object, sessionId: string, connectionInstanceId: string, connectionGeneration: number, epoch: number, documentToken: string, task?: import('./task-scope.ts').RunScope, evidenceRoot?: string }} FileLease */
 /** @typedef {{ id: string, lease: FileLease, binding: string, path: string, snapshot: string, runDir: string, bytes: Buffer, sha256: string, scope: import('./import-rules.js').ImportScope, input: ReturnType<typeof parseWorkbook>, assetRef?: string, identityVerified?: boolean, selectionAcknowledged?: boolean, selectionAttemptId?: string, state: 'prepared' | 'confirmed' | 'consumed' }} Prepared */
 /** @param {Uint8Array} bytes - owned bytes. @returns {string} complete SHA-256. */
 export function digest(bytes: Uint8Array): string;
@@ -83,7 +83,7 @@ export type FileLease = {
     connectionGeneration: number;
     epoch: number;
     documentToken: string;
-    task?: import("./task-scope.js").RunScope;
+    task?: import("./task-scope.ts").RunScope;
     evidenceRoot?: string;
 };
 export type Prepared = {

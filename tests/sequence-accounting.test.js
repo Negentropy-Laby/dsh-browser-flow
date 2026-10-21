@@ -1,4 +1,4 @@
-import { TASK } from './helpers/task-scope.js'
+import { TASK } from './helpers/task-scope.ts'
 /**
  * Sequence accounting must stay in step across the panel.
  *

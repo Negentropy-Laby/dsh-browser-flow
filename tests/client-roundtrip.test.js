@@ -1,4 +1,4 @@
-import { TASK, TASK_VIEW } from './helpers/task-scope.js'
+import { TASK, TASK_VIEW } from './helpers/task-scope.ts'
 /**
  * The panel's full round trip in a real DOM.
  *

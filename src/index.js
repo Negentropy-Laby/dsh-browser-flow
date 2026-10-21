@@ -20,10 +20,10 @@
 
 import { pagePolicy, navigationVerdict } from './task-adapters.js'
 import { TaskStore, TaskError } from './task-store.js'
-import { sameRunScope } from './task-scope.js'
+import { sameRunScope } from './task-scope.ts'
 import { randomUUID } from 'node:crypto'
-import { Config, resolveConfig } from './config.js'
-import { PROTOCOL_VERSION, ROUTE_PREFIX, failure, success, validateHello, validateResult } from './protocol.js'
+import { Config, resolveConfig } from './config.ts'
+import { PROTOCOL_VERSION, ROUTE_PREFIX, failure, success, validateHello, validateResult } from './protocol.ts'
 import { join } from 'node:path'
 import { ImportFiles } from './import-files.js'
 import { importScope, extractIdentity, judgeIdentity, judgeImport } from './import-rules.js'
@@ -136,7 +136,7 @@ function instanceDigest(token) {
 export class BrowserFlowService {
   /**
    * @param {HostContext} ctx - Host plugin context.
-   * @param {import('./config.js').BrowserFlowConfig} config - resolved config.
+   * @param {import('./config.ts').BrowserFlowConfig} config - resolved config.
    * @param {GraphWorkers} [graph] - derived graph service; defaults to the packaged helper.
    */
   constructor(ctx, config, graph=new GraphWorkers(config)) {

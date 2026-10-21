@@ -1,5 +1,5 @@
 /** Trusted predicates over task-owned originals; labels alone never prove a criterion. */
-import { sameRunScope, validRunScope } from './task-scope.js'
+import { sameRunScope, validRunScope } from './task-scope.ts'
 import { taskRecord } from './task-journal.js'
 import { navigationVerdict } from './task-adapters.js'
 import { decodeImportEvidence } from './import-evidence.js'
@@ -20,7 +20,7 @@ export function trustedCriterion(manifest) {
   const validatorId=manifest.workflowRef==='navigation'?'bjrsj-navigation-entry':'bjrsj-import-confirmed'
   return {id:`criterion-${manifest.scope.taskId}-r${manifest.scope.scopeRevision}-${validatorId}`,validatorId,version:1,label:manifest.workflowRef==='navigation'?'Reach the verified upload entry':'Confirm the scoped import'}
 }
-/** @param {import('./task-store.js').TaskData} task - opened task. @param {string} id - local reference. @param {string} kind - required kind. @param {import('./task-scope.js').RunScope} run - exact run. @returns {Record<string,unknown> | undefined} owned current asset. */
+/** @param {import('./task-store.js').TaskData} task - opened task. @param {string} id - local reference. @param {string} kind - required kind. @param {import('./task-scope.ts').RunScope} run - exact run. @returns {Record<string,unknown> | undefined} owned current asset. */
 function assetData(task,id,kind,run) {
   const row=task.events.find(event=>event.type==='asset'&&event.data.id===id)?.data
   return row?.kind===kind&&validRunScope(row.run)&&sameRunScope(row.run,run)&&taskRecord(row.data)?row.data:undefined

@@ -1,3 +1,25 @@
+export type BrowserFlowConfig = {
+    commandBudgetMs: number;
+    observeMaxChars: number;
+    observeMaxNodes: number;
+    findMaxMatches: number;
+    waitMaxMs: number;
+    queueLimit: number;
+    pollWaitMs: number;
+    connectionIdleMs: number;
+    importWindowMs: number;
+    graphMaxWorkers: number;
+    graphIdleMs: number;
+    graphRequestTimeoutMs: number;
+    graphMaxFrameBytes: number;
+    graphStderrBytes: number;
+    graphTerminateGraceMs: number;
+    graphColdRounds: number;
+    graphMinGroup: number;
+    localTasksDir: string;
+    importEvidenceDir: string;
+};
+
 /**
  * Deployment-varying settings, validated at plugin load.
  *
@@ -37,7 +59,7 @@ import { isAbsolute } from 'node:path'
  */
 
 /** Defaults applied when a field is omitted. @type {Readonly<BrowserFlowConfig>} */
-export const DEFAULTS = Object.freeze({
+export const DEFAULTS: Readonly<BrowserFlowConfig> = Object.freeze({
   graphMaxWorkers: 4,
   graphIdleMs: 60000,
   graphRequestTimeoutMs: 5000,
@@ -60,7 +82,10 @@ export const DEFAULTS = Object.freeze({
 })
 
 /** Accepted range of every numeric field. @type {Readonly<Record<Exclude<keyof BrowserFlowConfig,'importEvidenceDir'|'localTasksDir'>, readonly [number, number]>>} */
-const RANGES = Object.freeze({
+const RANGES: Readonly<Record<Exclude<keyof BrowserFlowConfig, 'importEvidenceDir' | 'localTasksDir'>, readonly [
+    number,
+    number
+]>> = Object.freeze({
   graphMaxWorkers: [1, 32],
   graphIdleMs: [1000, 600000],
   graphRequestTimeoutMs: [100, 300000],
@@ -86,19 +111,19 @@ const RANGES = Object.freeze({
  * @returns {Readonly<BrowserFlowConfig>} validated config with defaults applied.
  * @throws {Error} naming the offending field and the accepted range.
  */
-export function resolveConfig(input) {
+export function resolveConfig(input: unknown) : Readonly<BrowserFlowConfig> {
   if (input !== undefined && (typeof input !== 'object' || input === null || Array.isArray(input))) {
     throw new Error('browser-flow: config must be an object')
   }
   /** @type {Record<string, unknown>} */
-  const raw = input === undefined || input === null ? {} : { ...input }
+  const raw: Record<string, unknown> = input === undefined || input === null ? {} : { ...input }
   const unknown = Object.keys(raw).filter(key => !(key in RANGES) && !['importEvidenceDir','localTasksDir'].includes(key))
   if (unknown.length > 0) throw new Error(`browser-flow: unknown config field(s): ${unknown.join(', ')}`)
   /** @type {Record<string, number>} */
-  const resolved = {}
+  const resolved: Record<string, number> = {}
   for (const [key, range] of Object.entries(RANGES)) {
     const [min, max] = range
-    const value = raw[key] ?? /** @type {Record<string, number|string>} */ (DEFAULTS)[key]
+    const value = raw[key] ?? /** @type {Record<string, number|string>} */ (DEFAULTS as Record<string, number | string>)[key]
     if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < min || value > max) {
       throw new Error(`browser-flow: config ${key} must be an integer from ${min} through ${max}, received ${String(value)}`)
     }
@@ -118,7 +143,10 @@ export function resolveConfig(input) {
       throw new Error(`browser-flow: ${key} must be a local absolute path or empty`)
     }
   }
-  return Object.freeze({ .../** @type {Omit<BrowserFlowConfig,'importEvidenceDir'|'localTasksDir'>} */ (resolved), .../** @type {{importEvidenceDir:string,localTasksDir:string}} */ (paths) })
+  return Object.freeze({ .../** @type {Omit<BrowserFlowConfig,'importEvidenceDir'|'localTasksDir'>} */ (resolved as Omit<BrowserFlowConfig, 'importEvidenceDir' | 'localTasksDir'>), .../** @type {{importEvidenceDir:string,localTasksDir:string}} */ (paths as {
+    importEvidenceDir: string;
+    localTasksDir: string;
+}) })
 }
 
 /**
@@ -136,7 +164,13 @@ export const Config = Object.freeze({
      * @param {unknown} value - raw config.
      * @returns {{ value: unknown } | { issues: { message: string }[] }} result.
      */
-    validate(value) {
+    validate(value: unknown) : {
+    value: unknown;
+} | {
+    issues: {
+        message: string;
+    }[];
+} {
       try {
         return { value: resolveConfig(value) }
       } catch (error) {

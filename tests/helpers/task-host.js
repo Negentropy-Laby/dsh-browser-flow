@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { BrowserFlowService } from '../../src/index.js'
 import { GraphWorkers } from '../../src/graph/worker.ts'
 import { graphRuntime, graphBinary } from './graph-process.js'
-import { resolveConfig } from '../../src/config.js'
+import { resolveConfig } from '../../src/config.ts'
 
 export async function taskHost(t) {
   const root=await mkdtemp(join(tmpdir(),'bf-task-host-'))
