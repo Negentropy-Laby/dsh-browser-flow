@@ -20,6 +20,8 @@ Every async resumption rechecks the exact Agent, task/run, lease, document, epoc
 
 Recovery preserves valid history and damaged original bytes; it never truncates evidence or sends a command. Incomplete attempts and damaged tails block writes. Unknown results remain blocked through new runs, revisions, handoff and restart. Ending a task records user lifecycle and does not assert that its business criteria passed.
 
+Only a synchronized, valid unknown receipt sets the durable unknown-write block. Invalid or duplicate receipts leave the task state unchanged. A journal write or synchronization failure independently blocks writes until safe handoff; it cannot be treated as an unexecuted action.
+
 ## Five task modules
 
 - `basic_law_index` owns the append-only event history. Summary entries name sequence and hash; failures never rewrite old entries.

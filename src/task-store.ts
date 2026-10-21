@@ -314,8 +314,6 @@ tail: Promise<void>;
   async receipt(access: TaskAccess,attemptId: string,outcome: string,details: {
     fileGrantId?: unknown;
 }={}) : Promise<void> {
-    const data=this.openTask(access)
-    if(outcome==='unknown_outcome')data.blocked=true
     await this.append(access,'receipt',{attemptId,outcome,run:access.run,...details})
   }
   /** @param {TaskAccess} access - current owner. @returns {void} page mutations require no outstanding human dependency. */
