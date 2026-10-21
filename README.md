@@ -165,6 +165,9 @@ entry. A missing compiler fails the check. Host tests also
 report skips when their optional artifacts are unavailable. Automated checks
 and synthetic fixtures do not establish logged-in website or business acceptance.
 
+The [current task graph repair qualification](docs/qualification/task-graph-repair.md)
+records the candidate, executed checks and remaining website acceptance.
+
 See [testing](docs/testing.md) for explicit Host artifact inputs and local-only
 receipts. The package whitelist distributes `src`, `lib`, generic documentation,
 the profile patch and the pinned runtime dependency; it excludes local tasks and

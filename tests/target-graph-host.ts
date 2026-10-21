@@ -9,10 +9,11 @@ import { pathToFileURL } from 'node:url'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {performance} from 'node:perf_hooks'
-import {GraphWorkers} from '../src/graph/worker.ts'
+import {GraphWorkers} from '../lib/host/graph/worker.js'
 import {resolveConfig} from '../src/config.ts'
 import type {GraphInput} from '../src/graph/protocol.ts'
 import {TASK} from './helpers/task-scope.ts'
+import {syntheticDefinition} from './helpers/task-definition.ts'
 
 async function main(){
  if(process.platform!=='win32'||process.arch!=='x64')throw new Error('NOT_RUN: this fixture requires Windows x64')
@@ -49,6 +50,7 @@ async function main(){
    await post('authorize',{instanceId,connectionGeneration:1,sessionId,...page})
    const result=await present(context.tools.get('browser_observe')).execute({view:'task'},{agent:agents.get(sessionId),signal:new AbortController().signal})
    assert.equal(result.ok,true);assert.equal(expectRecord(expectRecord(expectRecord(result.value).active_context).graph).status,'ready',JSON.stringify(result))
+   assert.equal(expectRecord(expectRecord(expectRecord(result.value).active_context).graph).kernelVersion,'3')
    assert.equal(expectRecord(result.value).businessVerdict,'unverified');outputs[id]=result
    const exec={agent:agents.get(sessionId),signal:new AbortController().signal}
    assert.equal((await present(context.tools.get('browser_release')).execute({},exec)).ok,true)
@@ -85,6 +87,31 @@ async function main(){
    }finally{await detach();await probe.close()}
   }
   checks.push('complete detail over 64 KiB frames','16001 events within default request budget','complete detail over 8 MiB frame')
+  let clock=0,idleHandle:import('../src/graph/protocol.ts').ProcessHandle|undefined
+  const idle=new GraphWorkers(resolveConfig({graphIdleMs:1000}),undefined,()=>clock)
+  const detachIdle=idle.attach({spawn(spec){const h=runtime.spawn(spec);idleHandle=h;clock=6000;return h}})
+  try{
+   await assert.rejects(idle.project(sequential(0),6000,()=>true),/graph_timeout/)
+   await present(idleHandle).done
+   assert.equal(await present(idleHandle).waitForExit(),true)
+   checks.push('actual pre-RPC idle worker exit after acquisition timeout')
+  }finally{await detachIdle();await idle.close()}
+  const {TaskStore}=await import('../lib/host/task-store.js'),root=join(scratch,'evidence-tasks'),definition=syntheticDefinition({root})
+  await writeFile(join(definition.dir,'definition.json'),JSON.stringify({...definition.definition,adapter:'bjrsj',origins:['https://fuwu.rsj.beijing.gov.cn'],workflows:definition.definition.workflows.map(w=>({...w,id:'navigation',stopBoundary:'before_file_selection'}))}))
+  const evidenceGraph=new GraphWorkers(resolveConfig({})),detachEvidence=evidenceGraph.attach(runtime),store=new TaskStore(root,{name:'evidence',home:scratch},100,evidenceGraph)
+  try{
+   const access=await store.create('synthetic-evidence',{definitionId:'synthetic',workflowRef:'navigation',goal:'Synthetic evidence invalidation'})
+   const pageRef=await store.asset(access,'page',{url:'https://fuwu.rsj.beijing.gov.cn/zhrs/yltc/information-third-new/imp',documentToken:'synthetic-document',nodes:['模板下载','上传申报信息','批量增员','批量修改','批量减员'].map(text=>({text}))})
+   const proofRef=await store.proof(access,{schemaVersion:1,kind:'navigation',run:access.run,pageRef})
+   assert.equal(await store.verdict(access,{verdict:'entry_reached'},proofRef),'entry_reached')
+   const before=await store.view(access,8000);assert.equal(before.active_context.businessVerdict,'entry_reached')
+   const artifact=expectRecord(present(store.openTask(access).events.find(e=>e.type==='asset'&&e.data.id===proofRef)).data.data)
+   await writeFile(join(store.openTask(access).dir,expectString(artifact.artifact)),'{}\n')
+   const after=await store.view(access,8000);assert.equal(after.active_context.businessVerdict,'unverified');assert.equal(after.active_context.graph.reason,'stale_projection')
+   const details=expectRecord(await store.detail(access,'criteria',0,8000))
+   assert.ok(expectList(JSON.parse(expectString(details.text))).every(c=>expectRecord(c).status!=='passed'))
+   checks.push('private original change invalidates Host proof and stale graph','fact detail independently rechecks evidence')
+  }finally{await store.close();await detachEvidence();await evidenceGraph.close()}
   await context.fiber.dispose();assert.ok((await Promise.all(owned.map(handle=>handle.waitForExit()))).every(Boolean));assert.equal(context.tools?.schemas().filter((row)=>row.name.startsWith('browser_')).length??0,0);checks.push('awaited provider and plugin disposal')
   const manifest=JSON.parse(await readFile(new URL('../lib/native/manifest.json',import.meta.url),'utf8'))
   const result={recordedAt:new Date().toISOString(),status:'PASS',kind:'target-artifact fixture; synthetic task calls, not normal Agent or website acceptance',target:sha,node:process.version,platform:process.platform,checks,timings,native:manifest,hostSha256:createHash('sha256').update(await readFile(new URL('../lib/host/index.js',import.meta.url))).digest('hex')}
