@@ -164,3 +164,24 @@ it('does not lose the replacement worker when retiring its predecessor races wit
   assert.ok(runtime.handles.every(h=>h.child.exitCode!==null||h.child.signalCode!==null),'all replacement processes must stay owned through disposal')
  }finally{release()}
 })
+it('reclaims an acquired worker even when the caller expires or cancels before its first RPC',async t=>{
+ for(const mode of ['timeout','cancel'] as const){
+  t.mock.timers.enable({apis:['setTimeout']})
+  let now=0,rpcs=0,release!:()=>void
+  const exit=new Promise<void>(resolve=>{release=resolve}),controller=new AbortController()
+  const runtime=heldRuntime(()=>{rpcs++}),spawn=runtime.spawn
+  runtime.spawn=()=>{const h=spawn();h.waitForExit=async()=>{await exit;return true};if(mode==='timeout')now=6000;else controller.abort();return h}
+  const workers=new GraphWorkers(resolveConfig({graphIdleMs:1000,graphMaxWorkers:1}),graphBinary,()=>now);workers.attach(runtime)
+  try{
+   await assert.rejects(workers.project(input(),8000,()=>true,controller.signal),mode==='timeout'?/graph_timeout/:/graph_cancelled|stale_projection/)
+   assert.equal(rpcs,0)
+   t.mock.timers.tick(1001)
+   await new Promise(resolve=>setImmediate(resolve))
+   assert.equal(runtime.terminated,true)
+   await assert.rejects(workers.project(input(runScope({...scope,taskId:'task-22222222-2222-4222-8222-222222222222'})),8000,()=>true),/graph_capacity/)
+   let closed=false;const closing=workers.close().then(()=>{closed=true})
+   await new Promise(resolve=>setImmediate(resolve));assert.equal(closed,false)
+   release();await closing
+  }finally{release();await workers.close();t.mock.timers.reset()}
+ }
+})

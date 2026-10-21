@@ -45,6 +45,13 @@ class Worker {
     this.onError=()=>this.fail('worker_io')
     this.handle.stdout?.on('data',this.onData);this.handle.stdout?.on('end',this.onEnd);this.handle.stdout?.on('error',this.onError);this.handle.stdin?.on('error',this.onError)
     void this.handle.done.then(()=>this.fail('worker_exit'),()=>this.fail('worker_exit'))
+    this.armIdle()
+  }
+  private armIdle():void {
+    clearTimeout(this.idle)
+    if(this.closing)return
+    this.idle=setTimeout(()=>{void this.stop().catch(()=>{})},this.config.graphIdleMs)
+    this.idle.unref()
   }
   private fail(code: string): void {this.pending?.reject(new GraphError(code));void this.stop().catch(()=>{})}
   private receive(value: unknown): void {
@@ -72,7 +79,7 @@ class Worker {
       this.pending={request:q,resolve,reject,timer}
       if(!this.handle.stdin||!this.handle.stdout){this.fail('worker_io');return}
       this.handle.stdin.write(encoded,error=>{if(error)this.fail('worker_io')})
-    })}finally{this.busy=false;if(!this.closing){this.idle=setTimeout(()=>{void this.stop().catch(()=>{})},this.config.graphIdleMs);this.idle.unref()}}
+    })}finally{this.busy=false;this.armIdle()}
   }
   /** @param job - serial RPC operation. @param deadline - original request deadline. @param current - live binding. @returns One bounded queued operation; expired work never dispatches. */
   run<T>(job:()=>Promise<T>,deadline:number,current:()=>boolean):Promise<T>{

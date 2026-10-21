@@ -43,6 +43,8 @@ grace by default. Startup and waiting consume the request budget. A failed RPC
 is not replayed. Unloading joins the managed process ranges before releasing the
 provider. Raw stderr and executable paths never enter tool failures.
 
+The idle timer starts as soon as a worker is owned, including before its first RPC. Each RPC clears and rearms it. A caller that expires during acquisition cannot leave an unbounded idle process; retirement retains its capacity until managed exit is confirmed.
+
 Only Windows x64 has a packaged production helper. Other platforms report an
 unavailable graph while loading the plugin and keeping safe Host operations.
 The test-only process provider and host-platform helper are not runtime fallbacks.
