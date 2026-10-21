@@ -16,6 +16,10 @@
   "exclude": [
     "src/client.js",
     "src/clientcore.js",
-    "src/panel.js"
+    "src/panel.js",
+    "src/page/runtime.ts",
+    "src/page/operations.ts",
+    "src/page/policy.ts",
+    "src/page/import.ts"
   ]
 }

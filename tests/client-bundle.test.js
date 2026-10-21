@@ -23,7 +23,7 @@ describe('passive observer build exception',()=>{
   it('permits XHR only in the fixed observer module and preserves the credential ban',()=>{
     assert.ok(checkBundle(bundle).every(check=>check.ok))
     assert.equal(checkBundle(bundle+'\nXMLHttpRequest.prototype.send\n').find(check=>check.name.startsWith('XHR references')).ok,false)
-    const injected=bundle.replace('// ---- src/import-page.js ----','// ---- src/import-page.js ----\ndocument.cookie\n')
+    const injected=bundle.replace('// ---- src/import-page.ts ----','// ---- src/import-page.ts ----\ndocument.cookie\n')
     assert.equal(checkBundle(injected).find(check=>check.name==='page programs never read credentials or storage').ok,false)
   })
 })

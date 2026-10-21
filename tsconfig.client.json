@@ -4,12 +4,14 @@
     "src/client.js",
     "src/clientcore.js",
     "src/panel.js",
-    "src/pagecode.js",
-    "src/import-page.js",
+    "src/pagecode.ts",
+    "src/import-page.ts",
     "src/task-scope.ts",
     "src/protocol.ts",
     "src/node-ambient.d.ts",
-    "src/import-rules.js"
+    "src/import-rules.ts",
+    "src/page/types.ts",
+    "src/page/program-sources.d.ts"
   ],
   "compilerOptions": {
     "composite": true,

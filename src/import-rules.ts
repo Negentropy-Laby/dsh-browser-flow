@@ -1,3 +1,47 @@
+export type BatchKind = "add" | "modify" | "reduce";
+export type Person = {
+    name: string;
+    certificateNumber: string;
+};
+export type ImportScope = {
+    kind: BatchKind;
+    unitId: string;
+    legalIdentity: string;
+    firstRow: number;
+    lastRow: number;
+};
+export type Identity = {
+    unitIds: string[];
+    legalIdentities: string[];
+};
+export type Tables = {
+    complete: boolean;
+    fresh: boolean;
+    accepted: Person[];
+    rejected: Person[];
+};
+export type CheckResponse = {
+    status: number;
+    body: string;
+    complete: boolean;
+    requestId: string;
+    responseRequestId: string;
+    method: string;
+    url: string;
+};
+export type ImportFacts = {
+    requestCount: number;
+    pending: number;
+    interference: boolean;
+    response?: CheckResponse;
+    tables?: Tables;
+    summary?: {
+        total: number;
+        success: number;
+        failure: number;
+    };
+};
+
 /** Beijing import facts and pure judgments, independent of navigation and I/O. */
 // Code-owned safety policy; local definitions cannot override these values.
 export const IMPORT_ORIGIN = 'https://fuwu.rsj.beijing.gov.cn'
@@ -48,21 +92,13 @@ export const BODY_LIMIT = 200_000
 export const IMPORT_TABS = Object.freeze({"add": "批量增员", "modify": "批量修改", "reduce": "批量减员"})
 export const IMPORT_PATHS = Object.freeze(IMPORT_DATA.checkPaths)
 
-/** @typedef {'add' | 'modify' | 'reduce'} BatchKind */
-/** @typedef {{ name: string, certificateNumber: string }} Person */
-/** @typedef {{ kind: BatchKind, unitId: string, legalIdentity: string, firstRow: number, lastRow: number }} ImportScope */
-/** @typedef {{ unitIds: string[], legalIdentities: string[] }} Identity */
-/** @typedef {{ complete: boolean, fresh: boolean, accepted: Person[], rejected: Person[] }} Tables */
-/** @typedef {{ status: number, body: string, complete: boolean, requestId: string, responseRequestId: string, method: string, url: string }} CheckResponse */
-/** @typedef {{ requestCount: number, pending: number, interference: boolean, response?: CheckResponse, tables?: Tables, summary?: { total: number, success: number, failure: number } }} ImportFacts */
-
 /** @param {unknown} value - JSON candidate. @returns {value is Record<string, unknown>} plain object. */
-export function record(value) { return value !== null && typeof value === 'object' && !Array.isArray(value) }
+export function record(value: unknown) : value is Record<string, unknown> { return value !== null && typeof value === 'object' && !Array.isArray(value) }
 /** @param {string} value - identity token. @returns {string} normalized token. */
-export function identityToken(value) { return value.normalize('NFKC').trim().replace(/^\[|\]$/g, '').replace(/\s/g, '').toUpperCase() }
+export function identityToken(value: string) : string { return value.normalize('NFKC').trim().replace(/^\[|\]$/g, '').replace(/\s/g, '').toUpperCase() }
 
 /** @param {unknown} raw - user-entered scope. @returns {ImportScope} validated independent scope. */
-export function importScope(raw) {
+export function importScope(raw: unknown) : ImportScope {
   if (!record(raw) || Object.keys(raw).some(key => !['kind', 'unitId', 'legalIdentity', 'firstRow', 'lastRow'].includes(key))) throw new Error('import-scope-invalid')
   if (raw.kind !== 'add' && raw.kind !== 'modify' && raw.kind !== 'reduce') throw new Error('import-kind-invalid')
   if (typeof raw.unitId !== 'string' || !/^[A-Za-z0-9-]{1,64}$/.test(raw.unitId) || /^pending/i.test(raw.unitId)) throw new Error('import-unit-unenforceable')
@@ -73,8 +109,8 @@ export function importScope(raw) {
 }
 
 /** @param {unknown} raw - own unit-info response. @returns {Identity} private typed anchors. */
-export function extractIdentity(raw) {
-  const unitIds = new Set(); const legalIdentities = new Set()
+export function extractIdentity(raw: unknown) : Identity {
+  const unitIds = new Set<string>(); const legalIdentities = new Set<string>()
   if (!record(raw) || !record(raw.map) || !Array.isArray(raw.map.data)) return { unitIds: [], legalIdentities: [] }
   for (const row of raw.map.data) {
     if (!record(row)) continue
@@ -91,15 +127,15 @@ export function extractIdentity(raw) {
 }
 
 /** @param {Identity} actual - observed anchors. @param {ImportScope} expected - scope. @returns {string} verified, mismatch or unverified. */
-export function judgeIdentity(actual, expected) {
+export function judgeIdentity(actual: Identity, expected: ImportScope) : string {
   if (actual.unitIds.some(value => identityToken(value) !== expected.unitId) || actual.legalIdentities.some(value => identityToken(value) !== expected.legalIdentity)) return 'mismatch'
   return actual.unitIds.length > 0 && actual.legalIdentities.length > 0 ? 'verified' : 'unverified'
 }
 
 /** @param {Person[]} people - private rows. @returns {Set<string> | undefined} unique complete personnel keys. */
-export function personKeys(people) {
-  const keys = new Set()
-  const certificates = new Set()
+export function personKeys(people: Person[]) : Set<string> | undefined {
+  const keys = new Set<string>()
+  const certificates = new Set<string>()
   for (const row of people) {
     if (!row || typeof row.name !== 'string' || !row.name.trim() || typeof row.certificateNumber !== 'string' || !/^\d{17}[\dX]$/.test(row.certificateNumber)) return undefined
     const key = JSON.stringify([row.name.trim(), row.certificateNumber])
@@ -111,22 +147,33 @@ export function personKeys(people) {
 }
 
 /** @param {ImportScope} scope - approved scope. @param {Person[]} input - fixed file rows. @param {ImportFacts} facts - same-run observations. @returns {{ verdict: string, reason: string, serverAcceptance: string, rowValidation: string, importBatch: string, counts?: { planned: number, accepted: number, rejected: number } }} safe judgment. */
-export function judgeImport(scope, input, facts) {
+export function judgeImport(scope: ImportScope, input: Person[], facts: ImportFacts) : {
+    verdict: string;
+    reason: string;
+    serverAcceptance: string;
+    rowValidation: string;
+    importBatch: string;
+    counts?: {
+        planned: number;
+        accepted: number;
+        rejected: number;
+    };
+} {
   /** @param {string} reason - finite reason. @param {string} [verdict] - judgment. @returns {ReturnType<typeof judgeImport>} verdict. */
-  const fail = (reason, verdict = 'unknown') => ({ verdict, reason, serverAcceptance: verdict === 'rejected' ? 'violated' : 'unknown', rowValidation: 'unknown', importBatch: verdict === 'rejected' ? 'violated' : 'unknown' })
+  const fail = (reason: string, verdict: string = 'unknown') : ReturnType<typeof judgeImport> => ({ verdict, reason, serverAcceptance: verdict === 'rejected' ? 'violated' : 'unknown', rowValidation: 'unknown', importBatch: verdict === 'rejected' ? 'violated' : 'unknown' })
   const response = facts.response
   if (facts.interference || facts.requestCount !== 1 || facts.pending !== 0 || !response || response.requestId !== response.responseRequestId) return fail('request-not-uniquely-owned')
   let url
   try { url = new URL(response.url) } catch { return fail('endpoint-invalid') }
   if (url.origin !== IMPORT_ORIGIN || url.pathname !== IMPORT_PATHS[scope.kind] || response.method !== 'POST') return fail('endpoint-kind-mismatch')
   if (!response.complete || response.body.length >= BODY_LIMIT || response.status < 200 || response.status >= 300) return fail('response-incomplete')
-  /** @type {unknown} */ let body
+   let body: unknown
   try { body = JSON.parse(response.body) } catch { return fail('response-not-json') }
   if (!record(body) || (typeof body.appcode !== 'string' && typeof body.appcode !== 'number')) return fail('envelope-invalid')
   if (String(body.appcode) !== '0') return fail('server-rejected', 'rejected')
   if (!record(body.map) || !Array.isArray(body.map.data) || body.map.data.length === 0 || body.map.data.length > 10_000) return fail('rows-incomplete')
-  /** @type {Person[]} */ const accepted = []
-  /** @type {Person[]} */ const rejected = []
+   const accepted: Person[] = []
+   const rejected: Person[] = []
   for (const row of body.map.data) {
     if (!record(row) || typeof row.name !== 'string' || row.name.length > 256 || typeof row.certificateNumber !== 'string'
       || typeof row.errorMessage !== 'string' || row.errorMessage.length > 4000) return fail('row-invalid')

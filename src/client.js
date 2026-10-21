@@ -1,7 +1,7 @@
 /**
  * Browser Flow panel — the client bundle entry.
  *
- * `scripts/build-client.mjs` inlines `src/panel.js`, `src/pagecode.js` and
+ * `scripts/build-client.mjs` inlines `src/panel.js`, `src/pagecode.ts` and
  * `src/clientcore.js` into the shipped `lib/client.js`, the lazy-CJS factory
  * the Harness browser loads. The panel is a normal ES module so the tests can
  * import it; the build only removes the module syntax and folds the imports in.

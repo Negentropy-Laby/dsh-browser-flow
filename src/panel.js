@@ -20,8 +20,8 @@ import {
   navigationEvent,
   programFor, refuseCommand,
 } from './clientcore.js'
-import { actProgram, findProgram, identityProgram, observeProgram, waitProgram } from './pagecode.js'
-import { importProgram } from './import-page.js'
+import { actProgram, findProgram, identityProgram, observeProgram, waitProgram } from './pagecode.ts'
+import { importProgram } from './import-page.ts'
 import { validRunScope, sameRunScope } from './task-scope.ts'
 import { PROTOCOL_VERSION, validateCommand } from './protocol.ts'
 
@@ -70,11 +70,11 @@ export const POLL_INTERVAL_MS = 700
 /** Page-program builders, as the panel consumes them. @type {PagePrograms} */
 export const PAGE_CODE = Object.freeze({
   identity: identityProgram(),
-  import: input => importProgram(input),
+  import: input => importProgram(/** @type {import('./page/types.ts').ImportInput} */ (input)),
   observe: (maxChars, maxNodes) => observeProgram(maxChars, maxNodes),
   find: (query, limit) => findProgram(/** @type {{ by: 'text' | 'attr' | 'role', value: string, name?: string }} */ (query), limit),
-  act: input => actProgram(/** @type {{ documentToken: string, elementRef: string, action: 'click' | 'type' | 'select' | 'check', value?: string, checked?: boolean }} */ (input)),
-  wait: input => waitProgram(/** @type {{ condition: 'present' | 'absent' | 'text', target: { documentToken: string, elementRef: string }, text?: string, timeoutMs: number }} */ (input)),
+  act: input => actProgram(/** @type {import('./page/types.ts').PageActionInput} */ (input)),
+  wait: input => waitProgram(/** @type {import('./page/types.ts').PageWaitInput} */ (input)),
 })
 
 /**

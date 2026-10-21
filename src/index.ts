@@ -65,18 +65,18 @@ export type ControlStore = ReturnType<typeof createControlState>;
  * @module @negentropy/dsh-browser-flow
  */
 
-import { pagePolicy, navigationVerdict } from './task-adapters.js'
+import { pagePolicy, navigationVerdict } from './task-adapters.ts'
 import { TaskStore, TaskError } from './task-store.ts'
 import { sameRunScope } from './task-scope.ts'
 import { randomUUID } from 'node:crypto'
 import { Config, resolveConfig } from './config.ts'
 import { PROTOCOL_VERSION, ROUTE_PREFIX, failure, success, validateHello, validateResult } from './protocol.ts'
 import { join } from 'node:path'
-import { ImportFiles } from './import-files.js'
-import { importScope, extractIdentity, judgeIdentity, judgeImport } from './import-rules.js'
-import { decodeImportEvidence } from './import-evidence.js'
+import { ImportFiles } from './import-files.ts'
+import { importScope, extractIdentity, judgeIdentity, judgeImport } from './import-rules.ts'
+import { decodeImportEvidence } from './import-evidence.ts'
 import { createControlState, monotonicNow } from './state.ts'
-import { redactUrl } from './pagecode.js'
+import { redactUrl } from './pagecode.ts'
 import { createTools, type ToolDefinition } from './tools.ts'
 import { type ControlLease } from './state.ts'
 import { type Result, type PageOperation, type FindQuery, type ActionInput, type WaitInput, isRecord } from './protocol.ts'

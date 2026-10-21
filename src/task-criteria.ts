@@ -12,10 +12,10 @@ export type CheckedProof = {
 /** Trusted predicates over task-owned originals; labels alone never prove a criterion. */
 import { sameRunScope, validRunScope } from './task-scope.ts'
 import { taskRecord } from './task-journal.ts'
-import { navigationVerdict } from './task-adapters.js'
-import { decodeImportEvidence } from './import-evidence.js'
-import { importScope, extractIdentity, judgeIdentity, judgeImport } from './import-rules.js'
-import { parseWorkbook } from './import-workbook.js'
+import { navigationVerdict } from './task-adapters.ts'
+import { decodeImportEvidence } from './import-evidence.ts'
+import { importScope, extractIdentity, judgeIdentity, judgeImport } from './import-rules.ts'
+import { parseWorkbook } from './import-workbook.ts'
 
 /** @param {unknown} value - disk reference. @returns {value is Artifact} bounded, relative evidence file reference. */
 export function validArtifact(value: unknown) : value is Artifact {

@@ -38,13 +38,14 @@
     "node": "^22.19 || >=24"
   },
   "scripts": {
-    "build": "node --import tsx/esm scripts/build-host.ts && node --import tsx/esm scripts/build-client.ts && node --import tsx/esm scripts/build-graph.ts",
+    "build": "node --import tsx/esm scripts/build-page.ts && node --import tsx/esm scripts/build-host.ts && node --import tsx/esm scripts/build-client.ts && node --import tsx/esm scripts/build-graph.ts",
     "typecheck": "node --import tsx/esm scripts/typecheck.ts",
-    "test": "node --import tsx/esm scripts/build-client.ts && node --import tsx/esm scripts/build-graph.ts --test-helper && node --import tsx/esm --test \"tests/*.test.{js,ts}\"",
-    "test:coverage": "node --import tsx/esm scripts/build-client.ts && node --import tsx/esm scripts/build-graph.ts --test-helper && node --import tsx/esm --test --experimental-test-coverage \"tests/*.test.{js,ts}\"",
+    "test": "npm run build:fixtures && node --import tsx/esm scripts/build-page.ts && node --import tsx/esm scripts/build-client.ts && node --import tsx/esm scripts/build-graph.ts --test-helper && node --import tsx/esm --test \"tests/*.test.{js,ts}\"",
+    "test:coverage": "npm run build:fixtures && node --import tsx/esm scripts/build-page.ts && node --import tsx/esm scripts/build-client.ts && node --import tsx/esm scripts/build-graph.ts --test-helper && node --import tsx/esm --test --experimental-test-coverage \"tests/*.test.{js,ts}\"",
     "smoke:live": "node scripts/live-host-smoke.mjs",
     "evidence:host": "node scripts/extract-installed-host.mjs",
-    "verify": "npm run build && node --import tsx/esm scripts/build-graph.ts --test-helper && go -C native/graph-core test ./... && npm run typecheck && node --import tsx/esm --test \"tests/*.test.{js,ts}\""
+    "verify": "npm run build && node --import tsx/esm scripts/build-graph.ts --test-helper && go -C native/graph-core test ./... && npm run build:fixtures && npm run typecheck && node --import tsx/esm --test \"tests/*.test.{js,ts}\"",
+    "build:fixtures": "node --import tsx/esm scripts/build-fixtures.ts"
   },
   "dependencies": {
     "@deepseek-ai/dsh-atomic-write": "file:vendor/deepseek-ai-dsh-atomic-write-0.2.1-rc.2.tgz",
@@ -61,5 +62,11 @@
     "@deepseek-ai/dsh-atomic-write"
   ],
   "license": "Apache-2.0",
-  "types": "./lib/host/index.d.ts"
+  "types": "./lib/host/index.d.ts",
+  "imports": {
+    "#browser-flow/page-programs": {
+      "types": "./src/page/program-sources.d.ts",
+      "default": "./lib/page-programs.js"
+    }
+  }
 }

@@ -12,6 +12,12 @@
     },
     {
       "path": "./tsconfig.tests.json"
+    },
+    {
+      "path": "./tsconfig.page.json"
+    },
+    {
+      "path": "./tsconfig.fixtures.json"
     }
   ]
 }

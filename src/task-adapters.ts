@@ -1,16 +1,25 @@
-/** Trusted site policy. Definitions select supported adapters; they cannot supply validators or relax limits. */
-import { IMPORT_ORIGIN, IMPORT_TABS } from './import-rules.js'
+export type PagePolicy = {
+    adapter: "bjrsj";
+    workflow: "navigation" | "import";
+    kind?: import("./import-rules.ts").BatchKind;
+};
 
-/** @typedef {{ adapter:'bjrsj', workflow:'navigation'|'import', kind?: import('./import-rules.js').BatchKind }} PagePolicy */
-/** @param {import('./task-store.ts').Manifest} manifest - verified manifest. @param {import('./import-rules.js').BatchKind} [kind] - confirmed panel business scope. @returns {PagePolicy | undefined} fixed per-site action restrictions. */
-export function pagePolicy(manifest,kind) {
+/** Trusted site policy. Definitions select supported adapters; they cannot supply validators or relax limits. */
+import { IMPORT_ORIGIN, IMPORT_TABS } from './import-rules.ts'
+
+/** @param {import('./task-store.ts').Manifest} manifest - verified manifest. @param {import('./import-rules.ts').BatchKind} [kind] - confirmed panel business scope. @returns {PagePolicy | undefined} fixed per-site action restrictions. */
+export function pagePolicy(manifest: import('./task-store.ts').Manifest,kind?: import('./import-rules.ts').BatchKind) : PagePolicy | undefined {
   if(manifest.adapter!=='bjrsj')return undefined
   if(manifest.adapterVersion!==1 || !['navigation','import'].includes(manifest.workflowRef))throw new Error('unsupported-bjrsj-workflow')
-  return {adapter:'bjrsj',workflow:/** @type {'navigation'|'import'} */(manifest.workflowRef),...(kind?{kind}:{})}
+  return {adapter:'bjrsj',workflow:((manifest.workflowRef) as 'navigation' | 'import'),...(kind?{kind}:{})}
 }
 /** @param {import('./task-store.ts').Manifest} manifest - current task. @param {Record<string, unknown>} page - current validated main-document observation. @returns {{verdict:string,source:'code_verified',reason:string}} code facts, never a generic success fallback. */
-export function navigationVerdict(manifest,page) {
-  const fail=()=>({verdict:'unverified',source:/** @type {const} */('code_verified'),reason:'required-visible-landmarks-not-proven'})
+export function navigationVerdict(manifest: import('./task-store.ts').Manifest,page: Record<string, unknown>) : {
+    verdict: string;
+    source: 'code_verified';
+    reason: string;
+} {
+  const fail=()=>({verdict:'unverified',source:(('code_verified') as const),reason:'required-visible-landmarks-not-proven'})
   if(manifest.adapter!=='bjrsj'||manifest.workflowRef!=='navigation')return fail()
   let url
   try{url=new URL(String(page.url))}catch{return fail()}

@@ -17,7 +17,7 @@
 
 import { Script } from 'node:vm'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, posix, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
@@ -42,7 +42,7 @@ const PLATFORM_MODULES = new Set([
 ])
 
 /** A local import: `import { a, b } from './x.js'` or `import './x.js'`. */
-const LOCAL_IMPORT = /^import\s+(?:\{([^}]*)\}\s+from\s+)?(['"])(\.[^'"]+)\2\s*;?\s*$/gm
+const LOCAL_IMPORT = /^import\s+(?:\{([^}]*)\}\s+from\s+)?(['"])(\.[^'"]+|#browser-flow\/page-programs)\2\s*;?\s*$/gm
 /** Literal packaged JSON is embedded, never fetched by the Client. */
 const LOCAL_JSON_IMPORT = /^import\s+(\w+)\s+from\s+'(\.[^']+\.json)'\s+with\s*\{\s*type:\s*'json'\s*\}\s*;?\s*$/gm
 
@@ -69,12 +69,22 @@ function collect(file: string, seen: Set<string>, order: ModuleSource[]) {
   const normalized = posix.normalize(file)
   if (seen.has(normalized)) return
   seen.add(normalized)
+  if (file === '#browser-flow/page-programs') {
+    const source = readFileSync(join(root, 'lib', 'page-programs.js'), 'utf8')
+    const parsed = ts.createSourceFile('page-programs.js', source, ts.ScriptTarget.ES2022, true, ts.ScriptKind.JS)
+    for (const statement of parsed.statements) {
+      if (!ts.isVariableStatement(statement) || statement.declarationList.declarations.length !== 1) throw new Error('Unexpected generated page module')
+      const name = statement.declarationList.declarations[0].name.getText(parsed)
+      order.push({ file: name === 'PASSIVE_IMPORT_SOURCE' ? 'generated/passive-import' : 'generated/' + name, source: statement.getText(parsed) })
+    }
+    return
+  }
   const absolute = join(sourceRoot, ...normalized.split('/'))
   const source = readFileSync(absolute, 'utf8')
   const dependencies = []
   for (const match of source.matchAll(LOCAL_IMPORT)) {
     const specifier = match[3]
-    const target = posix.normalize(posix.join(posix.dirname(normalized), specifier))
+    const target = specifier === '#browser-flow/page-programs' ? specifier : posix.normalize(posix.join(posix.dirname(normalized), specifier))
     dependencies.push(target)
   }
   for (const dependency of dependencies) collect(dependency, seen, order)
@@ -107,7 +117,8 @@ export function stripModuleSyntax({ file, source }: ModuleSource) {
   if (leftover !== null) throw new Error(`${file}: unsupported export form near "${leftover[0]}"`)
   const leftoverImport = body.match(/^import\s+/m)
   if (leftoverImport !== null) throw new Error(`${file}: unsupported import form near "${leftoverImport[0]}"`)
-  return `// ---- src/${file} ----\n${body.trim()}\n`
+  const original = file.endsWith('.js') && existsSync(join(root,'src',file.slice(0,-3)+'.ts')) ? file.slice(0,-3)+'.ts' : file
+  return `// ---- ${file.startsWith('generated/') ? file : 'src/'+original} ----\n${body.trim()}\n`
 }
 
 /**
@@ -177,7 +188,7 @@ export function checkBundle(bundle: string) {
     },
     {
       name: 'XHR references confined to the fixed passive import program',
-      ok: !/XMLHttpRequest/.test(bundle.replace(/\/\/ ---- src\/import-page\.js ----[\s\S]*?(?=\/\/ ---- src\/|    Object\.assign\(exports,)/, '')),
+      ok: !/XMLHttpRequest/.test(bundle.replace(/\/\/ ---- generated\/passive-import ----[\s\S]*?(?=\/\/ ---- |    Object\.assign\(exports,)/, '')),
     },
     { name: 'registers through ctx.effect and ctx.slots.inject', ok: (bare.match(/ctx\.effect\(/g) ?? []).length >= 2 && (bare.match(/ctx\.slots\.inject\(/g) ?? []).length >= 2 },
   ]

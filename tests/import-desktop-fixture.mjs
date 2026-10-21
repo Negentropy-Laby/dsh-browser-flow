@@ -7,8 +7,8 @@ import {BrowserFlowService} from '../src/index.ts'
 import {resolveConfig} from '../src/config.ts'
 import {programFor} from '../src/clientcore.js'
 import {PAGE_CODE} from '../src/panel.js'
-import {identityProgram,findProgram,actProgram} from '../src/pagecode.js'
-import {importProgram} from '../src/import-page.js'
+import {identityProgram,findProgram,actProgram} from '../src/pagecode.ts'
+import {importProgram} from '../src/import-page.ts'
 import {workbook,scope,people} from './import-fixture.js'
 
 const [specFile,output]=process.argv.slice(2)
@@ -24,7 +24,7 @@ async function evaluate(expression){const result=await rpc('Runtime.evaluate',{e
 const requireElectron="process.getBuiltinModule('module').createRequire(process.cwd()+'/package.json')('electron')"
 const identity=await evaluate(`(()=>{const e=${requireElectron};return {pid:process.pid,versions:process.versions,appPath:e.app.getAppPath(),appVersion:e.app.getVersion()}})()`)
 assert.equal(resolve(identity.appPath).toLowerCase(),resolve(spec.cwd,'apps','desktop').toLowerCase(),'owned target Desktop')
-const html=await readFile(new URL('../fixtures/bjrsj-import.html',import.meta.url),'utf8')
+const html=await readFile(new URL('../.cache/fixtures/bjrsj-import.html',import.meta.url),'utf8')
 const root=await mkdtemp(join(resolve('.cache'),'native-import-'));const file=join(root,'input.xlsx');const bytes=workbook();await writeFile(file,bytes,{flag:'wx'})
 const tasksDir=join(root,'tasks');await mkdir(join(tasksDir,'synthetic'),{recursive:true});await writeFile(join(tasksDir,'synthetic','steps.md'),'Synthetic fixture only; stop at the strict verifier result. No final submission.\n');await writeFile(join(tasksDir,'synthetic','definition.json'),JSON.stringify({schemaVersion:1,id:'synthetic',version:'1',adapter:'bjrsj',adapterVersion:1,origins:['https://fuwu.rsj.beijing.gov.cn'],resources:['steps.md'],workflows:[{id:'import',skill:'synthetic-import',description:'Synthetic native verification',instructions:['steps.md'],resources:[],stopBoundary:'import_confirmed'}]}));
 const sha256=createHash('sha256').update(bytes).digest('hex')

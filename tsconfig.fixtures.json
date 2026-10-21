@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "checkJs": false,
+    "noEmit": false,
+    "removeComments": true,
+    "rewriteRelativeImportExtensions": true,
+    "lib": [
+      "es2023",
+      "dom",
+      "dom.iterable"
+    ],
+    "types": [],
+    "rootDir": "tests/page",
+    "outDir": ".cache/fixture-js",
+    "composite": true,
+    "tsBuildInfoFile": ".cache/fixtures.tsbuildinfo"
+  },
+  "include": [
+    "tests/page/**/*.ts"
+  ]
+}

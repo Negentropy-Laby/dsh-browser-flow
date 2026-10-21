@@ -49,7 +49,7 @@ export type ControlStore = ReturnType<typeof createControlState>;
 import { TaskStore } from './task-store.ts';
 import { Config } from './config.ts';
 import { failure } from './protocol.ts';
-import { ImportFiles } from './import-files.js';
+import { ImportFiles } from './import-files.ts';
 import { createControlState, monotonicNow } from './state.ts';
 import { type ToolDefinition } from './tools.ts';
 import { type ControlLease } from './state.ts';
@@ -367,7 +367,7 @@ export declare class BrowserFlowService {
             fileGrant?: {
                 fileGrantId?: string | undefined;
                 state: "prepared" | "confirmed" | "consumed";
-                kind: import("./import-rules.js").BatchKind;
+                kind: import("./import-rules.ts").BatchKind;
                 sha256: string;
                 rows: number;
                 boundary: string;
@@ -481,7 +481,7 @@ export declare class BrowserFlowService {
     /** @param  lease - exact live lease; the control store owns its dynamic metadata. @returns {object} fixed scope and lifetime for the Client. */
     importMetadata(lease: ControlLease): {
         importScope: {
-            kind: import("./import-rules.js").BatchKind | undefined;
+            kind: import("./import-rules.ts").BatchKind | undefined;
         };
         importOwner: string;
         windowMs: number;

@@ -1,23 +1,29 @@
+export type XmlNode = {
+    name: string;
+    attrs: Record<string, string>;
+    text: string;
+    children: XmlNode[];
+};
+
 /** Bounded XLSX parsing adapted from bjrsj-input-snapshot; no filesystem extraction. */
 import AdmZip from 'adm-zip'
 import { SaxesParser } from 'saxes'
 import { posix } from 'node:path'
-import { FILE_LIMIT, personKeys } from './import-rules.js'
+import { FILE_LIMIT, personKeys } from './import-rules.ts'
 
-/** @typedef {{ name: string, attrs: Record<string,string>, text: string, children: XmlNode[] }} XmlNode */
 /** @param {string} reason - finite rejection. @returns {never} throws. */
-function reject(reason) { throw new Error(reason) }
+function reject(reason: string) : never { throw new Error(reason) }
 
 /** @param {Uint8Array} bytes - one admitted XML part. @returns {XmlNode} bounded tree. */
-function xml(bytes) {
+function xml(bytes: Uint8Array) : XmlNode {
   const parser = new SaxesParser({ xmlns: true })
-  /** @type {XmlNode[]} */ const stack = []
-  /** @type {XmlNode | undefined} */ let root
+   const stack: XmlNode[] = []
+   let root: XmlNode | undefined
   let count = 0
   parser.on('doctype', () => reject('xml-doctype-unsupported'))
   parser.on('opentag', tag => {
     if (++count > 250_000 || stack.length > 32) reject('xml-resource-limit')
-    /** @type {XmlNode} */ const node = { name: tag.local, attrs: {}, text: '', children: [] }
+     const node: XmlNode = { name: tag.local, attrs: {}, text: '', children: [] }
     for (const attr of Object.values(tag.attributes)) node.attrs[attr.name] = attr.value
     if (stack.length) stack[stack.length - 1].children.push(node); else root = node
     stack.push(node)
@@ -29,20 +35,25 @@ function xml(bytes) {
   return root ?? reject('empty-workbook-xml')
 }
 /** @param {XmlNode} node - root. @param {string} name - local name. @returns {XmlNode[]} descendants. */
-function descendants(node, name) { return node.children.flatMap(child => [...(child.name === name ? [child] : []), ...descendants(child, name)]) }
+function descendants(node: XmlNode, name: string) : XmlNode[] { return node.children.flatMap(child => [...(child.name === name ? [child] : []), ...descendants(child, name)]) }
 /** @param {XmlNode} node - root. @param {string} name - direct child name. @returns {XmlNode} unique child. */
-function one(node, name) { const found = node.children.filter(child => child.name === name); return found.length === 1 ? found[0] : reject('ambiguous-workbook-structure') }
+function one(node: XmlNode, name: string) : XmlNode { const found = node.children.filter(child => child.name === name); return found.length === 1 ? found[0] : reject('ambiguous-workbook-structure') }
 /** @param {string} value - header. @returns {string} normalized header. */
-const headerText = value => value.normalize('NFKC').trim().replace(/^\*\s*/u, '')
+const headerText = (value: string) : string => value.normalize('NFKC').trim().replace(/^\*\s*/u, '')
 
-/** @param {Uint8Array} bytes - frozen workbook. @returns {{ sheetName: string, firstRow: number, lastRow: number, people: import('./import-rules.js').Person[] }} complete supported input. */
-export function parseWorkbook(bytes) {
+/** @param {Uint8Array} bytes - frozen workbook. @returns {{ sheetName: string, firstRow: number, lastRow: number, people: import('./import-rules.ts').Person[] }} complete supported input. */
+export function parseWorkbook(bytes: Uint8Array) : {
+    sheetName: string;
+    firstRow: number;
+    lastRow: number;
+    people: import('./import-rules.ts').Person[];
+} {
   if (bytes.byteLength === 0 || bytes.byteLength > FILE_LIMIT) reject('file-size-invalid')
-  /** @type {import('adm-zip').IZipEntry[]} */ let entries
+   let entries: import('adm-zip').IZipEntry[]
   try { entries = new AdmZip(Buffer.from(bytes)).getEntries() } catch { return reject('invalid-workbook-zip') }
   if (entries.length > 1000) reject('zip-resource-limit')
   const names = new Set(); let total = 0
-  /** @type {Map<string, Buffer>} */ const files = new Map()
+   const files: Map<string, Buffer> = new Map()
   for (const entry of entries) {
     const name = entry.entryName
     if (!name || names.has(name.toLowerCase()) || name.includes('\\') || name.startsWith('/') || name.split('/').some(segment => segment === '..' || segment === '.')) reject('ambiguous-zip-path')
@@ -57,7 +68,7 @@ export function parseWorkbook(bytes) {
     files.set(name, data)
   }
   /** @param {string} name - package part. @returns {XmlNode} parsed part. */
-  const part = name => xml(files.get(name) ?? reject('missing-workbook-part'))
+  const part = (name: string) : XmlNode => xml(files.get(name) ?? reject('missing-workbook-part'))
   if (!descendants(part('[Content_Types].xml'), 'Override').some(node => node.attrs.PartName === '/xl/workbook.xml' && node.attrs.ContentType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml')) reject('unsupported-workbook-format')
   const sheets = descendants(part('xl/workbook.xml'), 'sheet')
   if (sheets.length !== 1 || (sheets[0].attrs.state && sheets[0].attrs.state !== 'visible')) reject('ambiguous-or-hidden-sheets')
@@ -73,12 +84,21 @@ export function parseWorkbook(bytes) {
   if (descendants(doc, 'f').length) reject('formula-workbook')
   if (descendants(doc, 'col').some(col => ['1', 'true'].includes(col.attrs.hidden))) reject('hidden-workbook-columns')
   const strings = files.has('xl/sharedStrings.xml') ? descendants(part('xl/sharedStrings.xml'), 'si').map(si => descendants(si, 't').map(t => t.text).join('')) : []
-  /** @type {{ index: number, cells: Map<string, { value: string, text: boolean }> }[]} */ const rows = []
+   const rows: {
+    index: number;
+    cells: Map<string, {
+        value: string;
+        text: boolean;
+    }>;
+}[] = []
   for (const row of one(doc, 'sheetData').children) {
     if (row.name !== 'row' || ['1', 'true'].includes(row.attrs.hidden)) reject('unsupported-or-hidden-row')
     const index = Number(row.attrs.r)
     if (!Number.isSafeInteger(index) || index < 1 || index > 1_048_576 || (rows.length && rows[rows.length - 1].index >= index)) reject('ambiguous-row-order')
-    /** @type {Map<string, { value: string, text: boolean }>} */ const cells = new Map()
+     const cells: Map<string, {
+    value: string;
+    text: boolean;
+}> = new Map()
     for (const cell of row.children) {
       const match = /^([A-Z]{1,3})([1-9]\d*)$/u.exec(cell.attrs.r ?? '')
       if (cell.name !== 'c' || !match || Number(match[2]) !== index || cells.has(match[1])) reject('ambiguous-cell-address')
@@ -107,8 +127,13 @@ export function parseWorkbook(bytes) {
   if (ids.length !== 1 || namesColumns.length !== 1) reject('ambiguous-personnel-header')
   if (rows.some(row => row.index < header.index && [...row.cells.values()].some(cell => /^(\d{17}[\dX]|\d{15})$/i.test(cell.value.trim())))) reject('personnel-before-header')
   /** @param {string} column - Excel column. @returns {number} one-based index. */
-  const columnNumber = column => [...column].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0)
-  /** @type {{ left: number, right: number, top: number, bottom: number }[]} */ const ranges = []
+  const columnNumber = (column: string) : number => [...column].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0)
+   const ranges: {
+    left: number;
+    right: number;
+    top: number;
+    bottom: number;
+}[] = []
   for (const merge of descendants(doc, 'mergeCell')) {
     const match = /^([A-Z]{1,3})([1-9]\d*):([A-Z]{1,3})([1-9]\d*)$/.exec(merge.attrs.ref ?? '')
     if (!match) reject('merged-personnel-data')

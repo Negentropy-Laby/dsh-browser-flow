@@ -59,7 +59,7 @@ export type ControlLease = {
     inFlight: Map<string, InFlightRecord>;
     lastCompletedCommandId: string | undefined;
     revokedReason: string | undefined;
-    importKind?: import('./import-rules.js').BatchKind;
+    importKind?: import('./import-rules.ts').BatchKind;
     evidenceRoot?: string;
 };
 

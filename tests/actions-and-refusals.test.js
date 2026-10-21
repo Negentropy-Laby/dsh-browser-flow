@@ -21,7 +21,7 @@ import { describe, it } from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { BrowserFlowService } from '../src/index.ts'
 import { resolveConfig } from '../src/config.ts'
-import { actProgram, findProgram, identityProgram, observeProgram, waitProgram } from '../src/pagecode.js'
+import { actProgram, findProgram, identityProgram, observeProgram, waitProgram } from '../src/pagecode.ts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const checkout = process.env.DSH_CHECKOUT ?? join(root, '..', 'deepseek-harness')

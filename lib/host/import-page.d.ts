@@ -1,4 +1,5 @@
-/** @param {object | undefined} scope - Host-owned import restriction, absent for ordinary control. @returns {string} action restriction inside the common page prelude. */
-export function importActionPolicy(scope: object | undefined): string;
-/** @param {object} input - validated operation, owner and relative lifetime. @returns {string} self-contained fixed page program. */
-export function importProgram(input: object): string;
+import type { ImportInput, PagePolicy } from './page/types.ts';
+/** @param scope - code-owned restriction. @returns Fixed policy declaration for program composition. */
+export declare function importActionPolicy(scope: PagePolicy | undefined): string;
+/** @param input - validated owner, mode and relative lifetime. @returns Self-contained passive observation program. */
+export declare function importProgram(input: ImportInput): string;

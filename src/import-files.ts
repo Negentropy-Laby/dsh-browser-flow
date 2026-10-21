@@ -1,27 +1,54 @@
+export type FileLease = {
+    id: string;
+    state: string;
+    agent: object;
+    sessionId: string;
+    connectionInstanceId: string;
+    connectionGeneration: number;
+    epoch: number;
+    documentToken: string;
+    task?: import("./task-scope.ts").RunScope;
+    evidenceRoot?: string;
+};
+export type Prepared = {
+    id: string;
+    lease: FileLease;
+    binding: string;
+    path: string;
+    snapshot: string;
+    runDir: string;
+    bytes: Buffer;
+    sha256: string;
+    scope: import("./import-rules.ts").ImportScope;
+    input: ReturnType<typeof parseWorkbook>;
+    assetRef?: string;
+    identityVerified?: boolean;
+    selectionAcknowledged?: boolean;
+    selectionAttemptId?: string;
+    state: "prepared" | "confirmed" | "consumed";
+};
+
 /** Private, lease-bound file preparation. Confirmation never supplies bytes or an Agent identity. */
 import { createHash, randomUUID } from 'node:crypto'
 import { open, lstat, realpath, mkdir, mkdtemp, chmod, writeFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
 import { isAbsolute, resolve, join, extname, basename } from 'node:path'
-import { FILE_LIMIT, importScope } from './import-rules.js'
-import { parseWorkbook } from './import-workbook.js'
-
-/** @typedef {{ id: string, state: string, agent: object, sessionId: string, connectionInstanceId: string, connectionGeneration: number, epoch: number, documentToken: string, task?: import('./task-scope.ts').RunScope, evidenceRoot?: string }} FileLease */
-/** @typedef {{ id: string, lease: FileLease, binding: string, path: string, snapshot: string, runDir: string, bytes: Buffer, sha256: string, scope: import('./import-rules.js').ImportScope, input: ReturnType<typeof parseWorkbook>, assetRef?: string, identityVerified?: boolean, selectionAcknowledged?: boolean, selectionAttemptId?: string, state: 'prepared' | 'confirmed' | 'consumed' }} Prepared */
+import { FILE_LIMIT, importScope } from './import-rules.ts'
+import { parseWorkbook } from './import-workbook.ts'
 
 /** @param {Uint8Array} bytes - owned bytes. @returns {string} complete SHA-256. */
-export function digest(bytes) { return createHash('sha256').update(bytes).digest('hex') }
+export function digest(bytes: Uint8Array) : string { return createHash('sha256').update(bytes).digest('hex') }
 /** @param {FileLease} lease - exact lease. @returns {string} versioned binding key. */
-function bindingKey(lease) { return JSON.stringify([lease.task, lease.id, lease.sessionId, lease.connectionInstanceId, lease.connectionGeneration, lease.epoch, lease.documentToken]) }
+function bindingKey(lease: FileLease) : string { return JSON.stringify([lease.task, lease.id, lease.sessionId, lease.connectionInstanceId, lease.connectionGeneration, lease.epoch, lease.documentToken]) }
 /** @param {unknown} path - user-supplied local path. @returns {string} absolute path. */
-function localPath(path) {
+function localPath(path: unknown) : string {
   if (typeof path !== 'string' || path.length > 4096 || !isAbsolute(path) || /^(?:\\\\|\/\/)|[\x00-\x1f]/.test(path)
     || (process.platform === 'win32' && (!/^[a-z]:[\\/]/i.test(path) || path.slice(2).includes(':')))) throw new Error('local-path-required')
   return resolve(path)
 }
 
 /** @param {string} path - owned directory. @returns {Promise<void>} private ACL verified before raw writes. */
-export async function privateDirectory(path) {
+export async function privateDirectory(path: string) : Promise<void> {
   await mkdir(path, { recursive: true, mode: 0o700 })
   if ((await lstat(path)).isSymbolicLink()) throw new Error('private-root-link')
   if (process.platform === 'win32') {
@@ -46,7 +73,7 @@ export async function privateDirectory(path) {
 }
 
 /** @param {string} path - local regular file. @returns {Promise<Buffer>} bounded owned bytes. */
-async function readBounded(path) {
+async function readBounded(path: string) : Promise<Buffer> {
   const info = await lstat(path)
   if (!info.isFile() || info.isSymbolicLink() || info.size <= 0 || info.size > FILE_LIMIT) throw new Error('file-size-or-type-invalid')
   const resolved = await realpath(path)
@@ -69,33 +96,57 @@ async function readBounded(path) {
 
 /** One instance owns all private grant state; revoked objects are pruned, never restored. */
 export class ImportFiles {
+root: string | undefined;
+entries: Map<string, Prepared>;
+preparing: Set<FileLease>;
+closed: boolean;
+tasks: Set<Promise<unknown>>;
+
   /** @param {string | undefined} root - profile-private root; absence disables preparation. */
-  constructor(root) {
+  constructor(root: string | undefined) {
     this.root = root
-    /** @type {Map<string, Prepared>} */ this.entries = new Map()
-    /** @type {Set<FileLease>} */ this.preparing = new Set()
+     this.entries = new Map()
+     this.preparing = new Set()
     this.closed = false
-    /** @type {Set<Promise<unknown>>} */ this.tasks = new Set()
+     this.tasks = new Set()
   }
   /** @param {Prepared} entry - retained preparation. @param {FileLease} lease - current exact lease. @returns {void} validates ownership. */
-  assertLive(entry, lease) {
+  assertLive(entry: Prepared, lease: FileLease) : void {
     if (this.closed || lease.state !== 'active' || entry.lease !== lease || entry.binding !== bindingKey(lease)) throw new Error('file-binding-changed')
   }
   /** @returns {void} release references for retired leases. */
-  prune() {
+  prune() : void {
     for (const [id, entry] of this.entries) {
       if (entry.lease.state !== 'active' || entry.binding !== bindingKey(entry.lease)) this.entries.delete(id)
     }
   }
   /** @param {FileLease} lease - current lease. @returns {Prepared | undefined} same-document preparation. */
-  current(lease) { this.prune(); return [...this.entries.values()].find(entry => entry.lease === lease) }
+  current(lease: FileLease) : Prepared | undefined { this.prune(); return [...this.entries.values()].find(entry => entry.lease === lease) }
   /** @param {FileLease} lease - exact page grant. @param {unknown} path - panel-supplied path. @param {unknown} rawScope - panel scope. @returns {Promise<{ fileGrantId: string, path: string, name: string, sha256: string, bytes: number, rows: number, kind: string, boundary: string }>} private panel preview. */
-  prepare(lease, path, rawScope) {
+  prepare(lease: FileLease, path: unknown, rawScope: unknown) : Promise<{
+    fileGrantId: string;
+    path: string;
+    name: string;
+    sha256: string;
+    bytes: number;
+    rows: number;
+    kind: string;
+    boundary: string;
+}> {
     const task=this.prepareOwned(lease,path,rawScope);this.tasks.add(task)
     return task.finally(()=>this.tasks.delete(task))
   }
   /** @param {FileLease} lease - exact page grant. @param {unknown} path - panel path. @param {unknown} rawScope - raw scope. @returns {Promise<{fileGrantId:string,path:string,name:string,sha256:string,bytes:number,rows:number,kind:string,boundary:string}>} owned preparation. */
-  async prepareOwned(lease, path, rawScope) {
+  async prepareOwned(lease: FileLease, path: unknown, rawScope: unknown) : Promise<{
+    fileGrantId: string;
+    path: string;
+    name: string;
+    sha256: string;
+    bytes: number;
+    rows: number;
+    kind: string;
+    boundary: string;
+}> {
     const privateRoot=lease.evidenceRoot ?? this.root
     if (!privateRoot) throw new Error('private-root-required')
     this.prune()
@@ -116,7 +167,7 @@ export class ImportFiles {
       const snapshot = join(runDir, 'input.xlsx')
       await writeFile(snapshot, bytes, { flag: 'wx', mode: 0o600 })
       if (digest(await readBounded(snapshot)) !== sha256) throw new Error('snapshot-readback-mismatch')
-      /** @type {Prepared} */ const entry = { id: randomUUID(), lease, binding, path: source, runDir, snapshot, bytes, sha256, scope, input, state: 'prepared' }
+       const entry: Prepared = { id: randomUUID(), lease, binding, path: source, runDir, snapshot, bytes, sha256, scope, input, state: 'prepared' }
       this.assertLive(entry, lease)
       await this.write(entry, 'prepared.json', { sha256, bytes: bytes.length, scope, rows: input.people.length, binding })
       this.assertLive(entry, lease)
@@ -125,20 +176,42 @@ export class ImportFiles {
     } finally { this.preparing.delete(lease) }
   }
   /** @param {FileLease} lease - current lease. @param {string} id - preview reference. @returns {void} confirms exactly the previewed preparation. */
-  confirm(lease, id) {
+  confirm(lease: FileLease, id: string) : void {
     const entry = this.entries.get(id)
     if (!entry) throw new Error('file-grant-missing')
     this.assertLive(entry, lease)
     if (entry.state !== 'prepared') throw new Error('file-grant-already-confirmed')
     entry.state = 'confirmed'
   }
-  /** @param {FileLease} lease - current lease. @param {string} id - confirmed reference. @returns {Promise<{ fileGrantId: string, name: string, expectedIdentity: {unitId:string,legalIdentity:string}, sha256: string, base64: string, bytes: number, kind: import('./import-rules.js').BatchKind }>} one-attempt wire payload. */
-  dispatch(lease, id) {
+  /** @param {FileLease} lease - current lease. @param {string} id - confirmed reference. @returns {Promise<{ fileGrantId: string, name: string, expectedIdentity: {unitId:string,legalIdentity:string}, sha256: string, base64: string, bytes: number, kind: import('./import-rules.ts').BatchKind }>} one-attempt wire payload. */
+  dispatch(lease: FileLease, id: string) : Promise<{
+    fileGrantId: string;
+    name: string;
+    expectedIdentity: {
+        unitId: string;
+        legalIdentity: string;
+    };
+    sha256: string;
+    base64: string;
+    bytes: number;
+    kind: import('./import-rules.ts').BatchKind;
+}> {
     const task=this.dispatchOwned(lease,id);this.tasks.add(task)
     return task.finally(()=>this.tasks.delete(task))
   }
-  /** @param {FileLease} lease - exact grant. @param {string} id - confirmed file. @returns {Promise<{fileGrantId:string,name:string,expectedIdentity:{unitId:string,legalIdentity:string},sha256:string,base64:string,bytes:number,kind:import('./import-rules.js').BatchKind}>} owned single delivery. */
-  async dispatchOwned(lease, id) {
+  /** @param {FileLease} lease - exact grant. @param {string} id - confirmed file. @returns {Promise<{fileGrantId:string,name:string,expectedIdentity:{unitId:string,legalIdentity:string},sha256:string,base64:string,bytes:number,kind:import('./import-rules.ts').BatchKind}>} owned single delivery. */
+  async dispatchOwned(lease: FileLease, id: string) : Promise<{
+    fileGrantId: string;
+    name: string;
+    expectedIdentity: {
+        unitId: string;
+        legalIdentity: string;
+    };
+    sha256: string;
+    base64: string;
+    bytes: number;
+    kind: import('./import-rules.ts').BatchKind;
+}> {
     const entry = this.entries.get(id)
     if (!entry) throw new Error('file-grant-missing')
     this.assertLive(entry, lease)
@@ -155,7 +228,7 @@ export class ImportFiles {
     return { fileGrantId: id, name: basename(entry.path), expectedIdentity: {unitId:entry.scope.unitId,legalIdentity:entry.scope.legalIdentity}, sha256: entry.sha256, base64: entry.bytes.toString('base64'), bytes: entry.bytes.length, kind: entry.scope.kind }
   }
   /** @param {Prepared} entry - owned run. @param {string} name - internal fixed artifact basename. @param {unknown} value - private data. @returns {Promise<void>} read-back-verified artifact. */
-  async write(entry, name, value) {
+  async write(entry: Prepared, name: string, value: unknown) : Promise<void> {
     const bytes = Buffer.from(JSON.stringify(value) + '\n')
     const path = join(entry.runDir, name)
     await writeFile(path, bytes, { flag: 'wx', mode: 0o600 })
@@ -163,5 +236,5 @@ export class ImportFiles {
     try { if (digest(await handle.readFile()) !== digest(bytes)) throw new Error('evidence-readback-mismatch') } finally { await handle.close() }
   }
   /** @returns {Promise<void>} detach grants and await owned file I/O without deleting evidence. */
-  async close() { this.closed = true; this.entries.clear();await Promise.allSettled([...this.tasks]) }
+  async close() : Promise<void> { this.closed = true; this.entries.clear();await Promise.allSettled([...this.tasks]) }
 }

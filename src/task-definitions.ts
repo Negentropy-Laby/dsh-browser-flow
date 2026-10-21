@@ -40,7 +40,7 @@ export type Profile = {
 import { createHash } from 'node:crypto'
 import { lstatSync, readFileSync, realpathSync, readdirSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
-import { IMPORT_ORIGIN } from './import-rules.js'
+import { IMPORT_ORIGIN } from './import-rules.ts'
 
 /** @param {unknown} value - JSON value. @returns {value is Record<string, unknown>} object. */
 const object = (value: unknown) : value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value)

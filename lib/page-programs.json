@@ -1,0 +1,14 @@
+{
+  "sourceSha256": "bafc296378f3fb9a67e143bebe2062ca1b5f249adb7fbb6cbc561d146912c88a",
+  "sha256": "a920e3a2ad10bcc8c34cfa58a344d5163d55ec9e12ebe713a6b7bea1d8b15f30",
+  "programs": [
+    "PAGE_RUNTIME_SOURCE",
+    "PAGE_IDENTITY_SOURCE",
+    "PAGE_OBSERVE_SOURCE",
+    "PAGE_FIND_SOURCE",
+    "PAGE_ACTION_SOURCE",
+    "PAGE_WAIT_SOURCE",
+    "PAGE_POLICY_SOURCE",
+    "PASSIVE_IMPORT_SOURCE"
+  ]
+}

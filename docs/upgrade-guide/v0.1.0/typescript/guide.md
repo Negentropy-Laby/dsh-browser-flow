@@ -27,3 +27,14 @@ made after unload return an HTTP refusal and cannot create control.
 Client compilation emits private intermediate JavaScript before the existing
 bundle assembly. Build cleanup owns only its output directories and does not
 remove local tasks, inputs or historical receipts.
+
+Fixed page execution now comes from a DOM-only TypeScript compiler face. The
+build serializes only compiler-emitted functions into a generated package data
+module. Host and Client consume the same module; neither installation nor page
+execution invokes a TypeScript loader. Rebuild both artifacts before reloading.
+The passive import observer retains its scoped XHR exception; other fixed
+programs retain the existing storage, credential and request restrictions.
+
+Synthetic HTML is static in the source tree. `npm run build:fixtures` assembles
+its compiled behavior under `.cache/fixtures/`; use those generated pages for
+local fixture execution. Historical receipts still refer to their own candidate.

@@ -44,6 +44,13 @@ Synthetic tests and code validators can be public; local run artifacts cannot.
 Before publishing, inspect staged files, the actual package archive and reachable
 Git history. A clean working tree or an ignore rule alone does not establish this.
 
+Fixed page programs are compiled with a DOM-only TypeScript program before they
+are serialized into the Host/Client data module. Run `npm run build:fixtures` to
+assemble the three static HTML fixtures with their compiled TypeScript behavior
+under `.cache/fixtures/`. The native import fixture reads that generated page.
+Tracked HTML contains no inline executable script. Fixture generation is for
+synthetic checks and does not establish real website acceptance.
+
 ## Go graph qualification
 
 `npm run verify` builds the production Windows helper and an owned host-platform

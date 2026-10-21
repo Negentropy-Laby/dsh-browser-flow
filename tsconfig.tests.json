@@ -8,5 +8,11 @@
     "tests/**/*.ts",
     "src/**/*.ts",
     "src/**/*.js"
+  ],
+  "exclude": [
+    "src/page/runtime.ts",
+    "src/page/operations.ts",
+    "src/page/policy.ts",
+    "src/page/import.ts"
   ]
 }

@@ -18,7 +18,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   actProgram, findProgram, hasSensitiveQuery, identityProgram, observeProgram, redactUrl, waitProgram,
-} from '../src/pagecode.js'
+} from '../src/pagecode.ts'
 
 /**
  * Build one fake browser realm.

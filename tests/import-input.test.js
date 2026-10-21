@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
 import AdmZip from 'adm-zip'
-import { importScope, judgeIdentity, extractIdentity, judgeImport, BODY_LIMIT } from '../src/import-rules.js'
-import { parseWorkbook } from '../src/import-workbook.js'
-import { ImportFiles } from '../src/import-files.js'
+import { importScope, judgeIdentity, extractIdentity, judgeImport, BODY_LIMIT } from '../src/import-rules.ts'
+import { parseWorkbook } from '../src/import-workbook.ts'
+import { ImportFiles } from '../src/import-files.ts'
 import { workbook, people, scope, facts } from './import-fixture.js'
 
 describe('Beijing domain facts and frozen input', () => {

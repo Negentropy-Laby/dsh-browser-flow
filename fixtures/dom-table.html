@@ -26,24 +26,6 @@
 <button id="save" data-cell-id="save-button">Save sheet</button>
 <span id="reload" role="button" tabindex="0" style="margin-left:.6rem">Reset</span>
 <p id="status" data-dirty="false" data-cell-id="status">Not saved yet</p>
-<script>
-  const inputs = Array.from(document.querySelectorAll('#inventory input'));
-  const status = document.getElementById('status');
-  const markDirty = () => { status.dataset.dirty = 'true'; status.textContent = 'Unsaved changes'; };
-  inputs.forEach(input => input.addEventListener('input', markDirty));
-  document.getElementById('save').addEventListener('click', () => {
-    const totals = inputs.map(input => input.value.trim());
-    // A save is only accepted when every quantity is a positive number.
-    const invalid = totals.filter(value => !/^\d+$/.test(value) || Number(value) <= 0);
-    if (invalid.length > 0) {
-      status.dataset.dirty = 'true';
-      status.textContent = 'Save refused: quantities must be positive whole numbers';
-      return;
-    }
-    status.dataset.dirty = 'false';
-    status.textContent = 'Saved ' + totals.join(',') + ' at ' + new Date().toISOString();
-  });
-  document.getElementById('reload').addEventListener('click', () => { location.reload(); });
-</script>
+<!-- browser-flow fixture script -->
 </body>
 </html>
