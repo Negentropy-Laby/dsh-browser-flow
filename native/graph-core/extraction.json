@@ -1,0 +1,37 @@
+{
+  "source": "https://github.com/Autumn-27/artex",
+  "commit": "5c0dbd4bec940f3c0faf20705a56d879b57d3dfe",
+  "license": "Apache-2.0",
+  "files": [
+    {
+      "path": "agent/coldgraph.go",
+      "sha256": "ce42b66a6b1f8150380f2cbdedcd98b34d4bd404d56869ada31a67f0671475c3",
+      "adaptation": "direct algorithm extraction; local constants and package"
+    },
+    {
+      "path": "agent/coldgraph_test.go",
+      "sha256": "799845b874e86d587f8c94c7d9340abfc6bd4f7b5575ca9bbc0df186331a6bc9",
+      "adaptation": "seven original regression tests"
+    },
+    {
+      "path": "db/digest.go",
+      "sha256": "978b56082821dfc429ac7d60c08f2879d8c3f294ff29884926669822134d12f5",
+      "adaptation": "memory-only coverage, version and supersession semantics"
+    },
+    {
+      "path": "db/exploration.go",
+      "sha256": "2ae2194634cecbc49af1348b0bf2803f7fbe8c99dac4d34873b19a512c6681bb",
+      "adaptation": "task-local nodes, edges and frontier semantics"
+    },
+    {
+      "path": "db/assets.go",
+      "sha256": "7f3871305145b3927597cdc2df1e758a638b2b6d7c40bc52c2bdcd1ce5afa0dc",
+      "adaptation": "task-local association and indexing semantics"
+    },
+    {
+      "path": "agent/tools.go",
+      "sha256": "8e587546d5d3afc96b75c0a1f19f36794f2a7312d9530971e95bda738ab31429",
+      "adaptation": "bounded graph overview; no completion authority"
+    }
+  ]
+}

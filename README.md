@@ -180,3 +180,5 @@ recorded runs.
 - No arbitrary script execution, automatic business submission or write replay.
 - Task completion and a user ending a task are separate facts. Unsupported or
   missing business evidence remains unverified.
+
+Task fact authority and graph extraction are described in [Graph kernel](docs/graph-kernel.md).

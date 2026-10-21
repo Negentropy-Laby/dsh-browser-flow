@@ -1,5 +1,6 @@
 /** Profile-owned task store. Durable ownership never grants page control or replays commands. */
 import { projectTask, taskView } from './task-projections.js'
+import { taskFacts, taskReferences } from './task-facts.js'
 import { validUserWait } from './task-wait.js'
 import { trustedCriterion, validArtifact } from './task-criteria.js'
 import { TASK_FORMAT_VERSION, validTaskManifest, validTaskEvent } from './task-journal.js'
@@ -356,7 +357,7 @@ export class TaskStore {
     if(!criterion)throw new TaskError('invalid_request','no trusted criterion exists for this workflow')
     await this.refreshEvidence(access)
     await this.append(access,'business_verdict',{...result,source:'code_verified',run:access.run,proofRef,criterionId:criterion.id,validatorId:criterion.validatorId,validatorVersion:criterion.version})
-    return String(/** @type {{businessVerdict:string}} */(this.view(access,8000).active_context).businessVerdict)
+    return taskFacts(this.openTask(access)).verdict
   }
   /** @param {TaskAccess} access - capability. @param {string} kind - code-owned asset kind. @param {Record<string,unknown>} data - safe facts; raw personnel remain in private evidence. @param {'host'|'code_verified'} [source] - factual authority. @returns {Promise<string>} unique task-local reference, never deduplicated by name or content. */
   async asset(access,kind,data,source='host') {
@@ -367,8 +368,8 @@ export class TaskStore {
   }
   /** @param {TaskAccess} access - capability. @param {string} from - existing task asset. @param {string} to - existing task asset. @param {string} relation - fixed relation. @returns {Promise<string>} journaled relation after both ownership checks. */
   async relate(access,from,to,relation) {
-    const projected=projectTask(this.openTask(access))
-    if(!projected.assets.has(from)||!projected.assets.has(to))throw new TaskError('task_not_bound','one or more task references are inaccessible')
+    const references=taskReferences(this.openTask(access))
+    if(!references.has(from)||!references.has(to))throw new TaskError('task_not_bound','one or more task references are inaccessible')
     if(!['observed_on','validated_by','derived_from','selected_from','proves','yields'].includes(relation))throw new TaskError('invalid_request','unsupported task relation')
     const id='edge-'+randomUUID()
     await this.append(access,'edge',{id,from,to,relation,run:access.run})
