@@ -1,13 +1,7 @@
+import type { Binary } from './binary.ts';
 import type { GraphConfig, GraphInput, GraphRequest, JsonRecord, ProcessHandle, SubprocessPort } from './protocol.ts';
 /** @param bytes - complete input. @returns SHA-256 identity. */
 export declare function graphHash(bytes: string | Buffer): string;
-/** Packaged helper location, not an executable searched on PATH. */
-export interface Binary {
-    path: string;
-    cwd: string;
-}
-/** @returns A verified Windows x64 package artifact. */
-export declare function packagedBinary(): Binary;
 declare class Worker {
     private readonly config;
     private readonly now;

@@ -108,3 +108,13 @@ Offsets are nonnegative safe integers and cannot exceed the actual text length.
 Page asset summaries include their safe `documentToken`. Only the Host adds
 `validity`, after checking the current authorized document. Other asset kinds
 carry neither field. Revocation and navigation invalidate that live comparison.
+
+Read-only and unhealthy histories refuse derived detail reads before graph input
+construction. Host-owned goals, criteria, resource snapshots and permitted
+original assets remain readable. An unavailable graph does not reinterpret old
+journal semantics.
+
+Successful packaged-binary verification is cached for one plugin instance.
+New workers check executable and manifest file identities without rereading their
+bytes. Replacing either artifact requires a paired plugin reload; failed initial
+verification is not cached. No file watcher or runtime downloader is installed.

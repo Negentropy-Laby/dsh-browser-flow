@@ -1,27 +1,24 @@
 /** Owned task workers. Failures cannot alter journals, permissions or business facts. */
 import { createHash, randomUUID } from 'node:crypto'
-import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
+import { dirname } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { sameRunScope, validRunScope } from '../task-scope.ts'
 import { validateView, validateDetail } from './validation.ts'
+import {BinaryVerifier} from './binary.ts'
+import type {Binary} from './binary.ts'
 import { Frames, GraphError, frame, record } from './protocol.ts'
 import type { GraphConfig, GraphInput, GraphRequest, JsonRecord, ProcessHandle, SubprocessPort } from './protocol.ts'
 
 /** @param bytes - complete input. @returns SHA-256 identity. */
 export function graphHash(bytes: string | Buffer): string {return createHash('sha256').update(bytes).digest('hex')}
-/** Packaged helper location, not an executable searched on PATH. */
-export interface Binary {path: string; cwd: string}
-/** @returns A verified Windows x64 package artifact. */
-export function packagedBinary(): Binary {
+function packagedBinary():()=>Binary {
+ let verifier:BinaryVerifier|undefined
+ return ()=>{
   if(process.platform!=='win32'||process.arch!=='x64')throw new GraphError('unsupported_platform')
-  const root=dirname(createRequire(import.meta.url).resolve('@negentropy/dsh-browser-flow/package.json'))
-  const path=join(root,'lib','native','win32-x64','browser-flow-graph.exe')
-  try {const manifest: unknown=JSON.parse(readFileSync(join(root,'lib','native','manifest.json'),'utf8'))
-    if(!record(manifest)||manifest.protocolVersion!==2||manifest.kernelVersion!=='2'||manifest.rulesVersion!=='structural-v1'||manifest.sha256!==graphHash(readFileSync(path)))throw new GraphError('binary_mismatch')
-  }catch(error){if(error instanceof GraphError)throw error;throw new GraphError('binary_unavailable')}
-  return {path,cwd:root}
+  verifier??=new BinaryVerifier(dirname(createRequire(import.meta.url).resolve('@negentropy/dsh-browser-flow/package.json')))
+  return verifier.resolve()
+ }
 }
 interface Pending {request: GraphRequest; resolve: (value: unknown)=>void; reject: (error: GraphError)=>void; timer: ReturnType<typeof setTimeout>}
 class Worker {
@@ -112,7 +109,7 @@ class Worker {
     this.handle.stdout?.off('error',this.onError);this.handle.stdin?.off('error',this.onError)
     this.handle.stdout?.off('error',this.drainError);this.handle.stdin?.off('error',this.drainError)
     this.handle.stdout?.on('error',this.drainError);this.handle.stdin?.on('error',this.drainError);this.handle.stdout?.resume()
-    this.stopping=(async()=>{
+    this.stopping=Promise.resolve().then(async()=>{
       try{
         this.handle.terminate()
         if(!await this.handle.waitForExit())throw new GraphError('cleanup_failed')
@@ -121,7 +118,7 @@ class Worker {
         this.handle.stdout?.off('error',this.drainError);this.handle.stdin?.off('error',this.drainError)
       }catch{this.cleanup={state:'failed',code:'cleanup_failed'};throw new GraphError('cleanup_failed')}
       finally{this.stopping=undefined}
-    })()
+    })
     return this.stopping
   }
 }
@@ -129,7 +126,7 @@ class Worker {
 export class GraphWorkers {
   private runtime: SubprocessPort | undefined;private workers=new Map<string,Worker>();private closed=false;private acquisitions=new Map<string,Promise<void>>()
   /** @param config - resolved settings. @param binary - package resolver; tests may supply an owned helper. @param now - monotonic clock, injectable for deadline tests. */
-  constructor(private readonly config: GraphConfig,private readonly binary: ()=>Binary=packagedBinary,private readonly now:()=>number=()=>performance.now()) {}
+  constructor(private readonly config: GraphConfig,private readonly binary: ()=>Binary=packagedBinary(),private readonly now:()=>number=()=>performance.now()) {}
   /** @param runtime - newly mounted service. @returns Disposal joined before the provider is released. */
   attach(runtime: SubprocessPort): ()=>Promise<void> {this.runtime=runtime;return async()=>{if(this.runtime===runtime)this.runtime=undefined;await this.disposeWorkers()}}
   private async stopAll(): Promise<void> {

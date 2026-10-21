@@ -93,6 +93,17 @@ it('detaches business listeners on failed exit observation, retains capacity and
   await workers.project(input(),8000,()=>true);assert.equal(runtime.handles.length,2)
  }finally{await workers.close()}
 })
+it('can retry retirement after the provider throws synchronously while terminating',async()=>{
+ const runtime=graphRuntime(),workers=new GraphWorkers(resolveConfig({}),graphBinary);workers.attach(runtime)
+ await workers.project(input(),6000,()=>true)
+ const handle=runtime.handles[0],terminate=handle.terminate
+ try{
+  handle.terminate=()=>{throw new Error('termination observation failed')}
+  await assert.rejects(workers.retire(scope.taskId),/cleanup_failed/)
+  handle.terminate=terminate;await workers.retire(scope.taskId)
+  assert.equal(workers.cleanup(scope.taskId),undefined)
+ }finally{handle.terminate=terminate;handle.terminate();await handle.done;await workers.close()}
+})
 it('expires a held RPC using a controlled timer without sleeping or replaying',async t=>{
  t.mock.timers.enable({apis:['setTimeout']})
  let entered!:()=>void;const barrier=new Promise<void>(resolve=>{entered=resolve});let sent=0

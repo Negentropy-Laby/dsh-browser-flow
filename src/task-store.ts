@@ -382,7 +382,7 @@ tail: Promise<void>;
     const data=this.openTask(access)
     data.liveDocumentToken=this.controlDocument?.(access)
     const input=graphInput(data,this.graphConfig),hash=graphHash(JSON.stringify(input))
-    let derived,reason='subprocess_unavailable'
+    let derived,reason=data.readOnly?'task_read_only':data.unhealthy?'task_unhealthy':'subprocess_unavailable'
     const current=()=>{try{const now=this.openTask(access);now.liveDocumentToken=this.controlDocument?.(access);return graphHash(JSON.stringify(graphInput(now,this.graphConfig)))===hash}catch{return false}}
     try{if(this.graph&&!data.readOnly&&!data.unhealthy){derived=await this.graph.project(input,budget,current,signal);reason='ready'}}catch(error){reason=error instanceof GraphError?error.code:'graph_failed'}
     this.openTask(access);data.liveDocumentToken=this.controlDocument?.(access)
@@ -474,6 +474,8 @@ tail: Promise<void>;
     else if(data.snapshot?.definition.resources.includes(id))value={name:id,text:data.snapshot.files[id],source:'definition_snapshot',digest:data.manifest.definitionDigest}
     else {
       if(id!=='graph'&&!id.startsWith('digest-')&&!taskReferences(data).has(id))throw new TaskError('task_not_bound','task reference is inaccessible')
+      if(data.readOnly)throw new TaskError('task_read_only','derived details are unavailable for read-only history; original details remain readable')
+      if(data.unhealthy)throw new TaskError('task_unavailable','derived details require healthy task history; original details remain readable')
       if(!this.graph)throw new TaskError('task_unavailable','graph component is unavailable')
       data.liveDocumentToken=this.controlDocument?.(access)
       const input=graphInput(data,this.graphConfig),hash=graphHash(JSON.stringify(input));currentProjection=hash
