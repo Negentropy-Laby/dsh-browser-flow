@@ -5,6 +5,8 @@ import { mkdtemp,writeFile,readFile,rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { BrowserFlowService } from '../src/index.js'
+import { GraphWorkers } from '../src/graph/worker.ts'
+import { graphRuntime,graphBinary } from './helpers/graph-process.js'
 import { resolveConfig } from '../src/config.js'
 import { people,scope,workbook,facts } from './import-fixture.js'
 
@@ -12,7 +14,9 @@ const json=body=>new Request('http://localhost/api/browser-flow/authorize',{meth
 async function setup(t){
   const root=await mkdtemp(join(tmpdir(),'bf-service-'));const path=join(root,'private-input.xlsx');await writeFile(path,workbook())
   const agent={id:'session-1'};const agents=new Map([[agent.id,agent]])
-  const service=new BrowserFlowService({agents:{get:id=>agents.get(id)},tools:{register:()=>()=>{}}},resolveConfig({importEvidenceDir:join(root,'private')}))
+  const config=resolveConfig({importEvidenceDir:join(root,'private')})
+  const graph=new GraphWorkers(config,graphBinary);graph.attach(graphRuntime())
+  const service=new BrowserFlowService({agents:{get:id=>agents.get(id)},tools:{register:()=>()=>{}}},config,graph)
   service.start();t.after(async()=>{await service.close();await rm(root,{recursive:true,force:true})})
   const page={lease:'guest',partition:'part',documentToken:'doc',url:'https://fuwu.rsj.beijing.gov.cn/zhrs/yltc/company/information-third-new/imp'}
   service.state.registerConnection({connectionGeneration:1,sessionId:agent.id,panel:{instanceId:'panel',pages:[page]}})

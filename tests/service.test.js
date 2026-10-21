@@ -140,8 +140,8 @@ describe('plugin identity', () => {
     service.start()
     assert.equal(fake.tools.size, 6)
     assert.equal(fake.routes.size, 0)
-    assert.equal(fake.ctx.pendingInjections.length, 1)
-    assert.deepEqual(fake.ctx.pendingInjections[0].deps, ['connection'])
+    assert.equal(fake.ctx.pendingInjections.length, 2)
+    assert.deepEqual(fake.ctx.pendingInjections.map(row=>row.deps), [['connection'],['subprocess']])
   })
 })
 

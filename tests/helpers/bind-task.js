@@ -9,7 +9,9 @@ import { syntheticDefinition } from './task-definition.js'
 export async function bindTestTask(service,sessionId='session-1',origins=['https://example.test'],adapter='generic') {
   if(!service.tasks.profileId){
     const root=await mkdtemp(join(tmpdir(),'bf-test-binding-'))
-    service.tasks=new TaskStore(root,{name:'test',home:join(root,'home')},1000)
+    const controlDocument=service.tasks.controlDocument
+    service.tasks=new TaskStore(root,{name:'test',home:join(root,'home')},1000,service.graph,service.config)
+    service.tasks.controlDocument=controlDocument
     after(async()=>{await service.close();await rm(root,{recursive:true,force:true})})
   }
   const existing=service.tasks.current(sessionId)

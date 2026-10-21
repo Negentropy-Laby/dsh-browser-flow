@@ -42,3 +42,24 @@ and raw receipts in the private task store or ignored evidence directories.
 Synthetic tests and code validators can be public; local run artifacts cannot.
 Before publishing, inspect staged files, the actual package archive and reachable
 Git history. A clean working tree or an ignore rule alone does not establish this.
+
+## Go graph qualification
+
+`npm run verify` builds the production Windows helper and an owned host-platform
+helper used only by synthetic source tests. It runs the Go tests, both compiler
+faces and plugin regressions. The source tests use explicit per-test process
+providers; the production adapter always consumes the mounted Host subprocess
+service. No test helper is a runtime fallback.
+
+On Windows x64, run the target-artifact fixture with explicit inputs:
+
+```text
+node tests/target-graph-host.mjs <target-checkout> <private-receipt> [git-executable]
+```
+
+It requires the fixed target revision and a clean tracked source tree. It checks
+actual managed Go processes, two isolated synthetic tasks, waits, release,
+crash-without-replay, reconstruction and quiescent disposal. Its synthetic page
+inventory is a fixture; it does not prove manual authorization or website
+acceptance. Normal Agent runs and actual Desktop identities must be recorded
+separately in private evidence. Preserve failed receipts alongside later runs.
