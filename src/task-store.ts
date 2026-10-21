@@ -58,7 +58,8 @@ import { validUserWait } from './task-wait.ts'
 import { trustedCriterion, validArtifact } from './task-criteria.ts'
 import { TASK_FORMAT_VERSION, validTaskManifest, validTaskEvent } from './task-journal.ts'
 import { createHash, randomUUID } from 'node:crypto'
-import { open, readFile, mkdir, readdir, lstat } from 'node:fs/promises'
+import { open, readFile, mkdir, readdir, lstat, rm } from 'node:fs/promises'
+import type { Stats } from 'node:fs'
 import { hostname } from 'node:os'
 import { join, dirname, resolve, relative, isAbsolute } from 'node:path'
 import { validTaskScope, validRunScope, sameTaskScope, sameRunScope } from './task-scope.ts'
@@ -93,6 +94,7 @@ runtime: string | undefined;
 waitMs: number;
 tasks: Map<string, TaskData>;
 bindings: Map<string, string>;
+private creationFailures = new Map<string, TaskError>();
 handles: WeakMap<TaskAccess, TaskData>;
 ready: Promise<void> | undefined;
 writer: Promise<unknown> | undefined;
@@ -179,6 +181,23 @@ tail: Promise<void>;
     const handle=await open(path,'wx',0o600)
     try { await handle.writeFile(JSON.stringify(value)+'\n'); await handle.sync() } finally { await handle.close() }
   }
+  /** @param path - exact Session registry path. @returns Absence only when the private path can be inspected conclusively. */
+  async registrationState(path: string): Promise<'absent'|'present'|'unknown'> {
+    try {
+      if(!this.root)return 'unknown'
+      noLinks(this.root,dirname(path))
+      await lstat(path)
+      return 'present'
+    }catch(error){return record(error)&&error.code==='ENOENT'?'absent':'unknown'}
+  }
+  /** @param dir - this creation's exclusively allocated leaf. @param identity - identity captured after allocation. @returns Removal only if the original directory is still present without links. */
+  async removeNewDirectory(dir: string,identity: Stats): Promise<void> {
+    if(!this.root)throw new Error('task-root-unavailable')
+    noLinks(this.root,dir)
+    const current=await lstat(dir)
+    if(!current.isDirectory()||current.isSymbolicLink()||current.dev!==identity.dev||current.ino!==identity.ino||current.birthtimeMs!==identity.birthtimeMs)throw new Error('task-directory-replaced')
+    await rm(dir,{recursive:true})
+  }
   /** @template T @param {() => Promise<T>} operation - serialized mutation. @returns {Promise<T>} operation result. */
   serial<T>(operation: () => Promise<T>) : Promise<T> {
     const result=this.tail.then(operation)
@@ -190,6 +209,8 @@ tail: Promise<void>;
     await this.initialize()
     return this.serial(async()=>{
       if (this.closed || !this.writable || !this.root || !this.runtime || !this.profileId) throw new TaskError('task_unavailable','task storage is closed')
+      const creationFailure=this.creationFailures.get(sessionId)
+      if(creationFailure)throw creationFailure
       if (this.bindings.has(sessionId)) throw new TaskError('task_bound','this Session already owns a task; use a new Session for another batch')
       if (!record(raw) || Object.keys(raw).some(key=>!['definitionId','workflowRef','goal','constraints','criteria','origins'].includes(key)) || !text(raw.goal,2000)
         || !conditions(raw.constraints ?? []) || !conditions(raw.criteria ?? [])) throw new TaskError('invalid_request','supply a bounded goal, constraints and criteria')
@@ -207,8 +228,14 @@ tail: Promise<void>;
        const manifest: Manifest={schemaVersion:TASK_FORMAT_VERSION,scope,runId:('run-'+randomUUID() as import('./task-scope.ts').RunId),workflowRef:workflow?.id ?? 'generic',goal:raw.goal,constraints:((raw.constraints ?? []) as string[]),criteria:((raw.criteria ?? []) as string[]),origins:[...origins],adapter:snapshot?.definition.adapter ?? 'generic',adapterVersion:1,
         ...(snapshot?{definitionId:snapshot.definition.id,definitionDigest:snapshot.digest,definitionVersion:snapshot.definition.version}:{})}
       const dir=join(this.runtime,'tasks',taskId)
-      await this.directory(dir)
+      const registry=join(this.runtime,'registry',hash(sessionId)+'.json')
+      let owned=false,identity:Stats|undefined
        const data: TaskData={manifest,snapshot,dir,events:[],blocked:false,unhealthy:false,state:'active'}
+      try {
+      await this.directory(dirname(dir))
+      await mkdir(dir,{mode:0o700})
+      owned=true;identity=await lstat(dir)
+      await this.directory(dir)
       if(snapshot)for(const [name,body] of Object.entries(snapshot.files)){
         const file=join(dir,'definition-snapshot',name)
         await mkdir(dirname(file),{recursive:true,mode:0o700})
@@ -217,9 +244,26 @@ tail: Promise<void>;
       }
       await this.writeNew(join(dir,'manifest.json'),manifest)
       await this.appendOwned(data,'created',{manifest})
-      await this.writeNew(join(this.runtime,'registry',hash(sessionId)+'.json'),{schemaVersion:TASK_FORMAT_VERSION,sessionId,taskId,profileId:this.profileId})
+      await this.writeNew(registry,{schemaVersion:TASK_FORMAT_VERSION,sessionId,taskId,profileId:this.profileId})
       this.tasks.set(taskId,data);this.bindings.set(sessionId,taskId)
       return this.access(data)
+      }catch(error){
+        const registration=await this.registrationState(registry)
+        if(registration!=='absent'){
+          const failure=new TaskError('task_storage_failed',registration==='present'?'task creation failed after a Session registration became visible; preserve history and reopen this Session after correcting storage':'task creation registration could not be confirmed; preserve history and correct storage before reopening this Session')
+          this.creationFailures.set(sessionId,failure)
+          throw failure
+        }
+        if(owned){
+          try{if(!identity)throw new Error('task-directory-identity-unavailable');await this.removeNewDirectory(dir,identity)}
+          catch(cleanupError){
+            const failure=new TaskError('task_storage_failed','unregistered task creation could not be cleaned safely; preserve its directory and correct storage before reopening this Session')
+            this.creationFailures.set(sessionId,failure)
+            throw failure
+          }
+        }
+        throw new TaskError('task_storage_failed','task creation was not registered; its new directory was removed if allocated, correct storage before retrying')
+      }
     })
   }
   /** @param {TaskData} data - owned data. @returns {TaskAccess} unforgeable in-process capability. */
@@ -232,6 +276,8 @@ tail: Promise<void>;
   /** @param {string} sessionId - actual caller. @param {unknown} [requested] - optional scope to compare, never an authority source. @returns {Promise<TaskAccess>} verified current ownership. */
   async forSession(sessionId: string,requested?: unknown) : Promise<TaskAccess> {
     await this.initialize()
+    const creationFailure=this.creationFailures.get(sessionId)
+    if(creationFailure)throw creationFailure
     const taskId=this.bindings.get(sessionId)
     const data=taskId ? this.tasks.get(taskId) : undefined
     if(!data && taskId)throw new TaskError('task_unavailable','this Session retains its original task ownership, but the history cannot be decoded; revoke and hand off')

@@ -49,6 +49,7 @@ export type TaskAccess = {
 };
 /** Profile-owned task store. Durable ownership never grants page control or replays commands. */
 import { taskView } from './task-projections.ts';
+import type { Stats } from 'node:fs';
 /** Expected task failures are sanitized at the tool/HTTP boundary. */
 export declare class TaskError extends Error {
     code: string;
@@ -66,6 +67,7 @@ export declare class TaskStore {
     waitMs: number;
     tasks: Map<string, TaskData>;
     bindings: Map<string, string>;
+    private creationFailures;
     handles: WeakMap<TaskAccess, TaskData>;
     ready: Promise<void> | undefined;
     writer: Promise<unknown> | undefined;
@@ -84,6 +86,10 @@ export declare class TaskStore {
     initializeOwned(): Promise<void>;
     /** @param {string} path - owned new file. @param {unknown} value - complete JSON. @returns {Promise<void>} synced new content. */
     writeNew(path: string, value: unknown): Promise<void>;
+    /** @param path - exact Session registry path. @returns Absence only when the private path can be inspected conclusively. */
+    registrationState(path: string): Promise<'absent' | 'present' | 'unknown'>;
+    /** @param dir - this creation's exclusively allocated leaf. @param identity - identity captured after allocation. @returns Removal only if the original directory is still present without links. */
+    removeNewDirectory(dir: string, identity: Stats): Promise<void>;
     /** @template T @param {() => Promise<T>} operation - serialized mutation. @returns {Promise<T>} operation result. */
     serial<T>(operation: () => Promise<T>): Promise<T>;
     /** @param {string} sessionId - caller's verified Session. @param {unknown} raw - user task declaration. @returns {Promise<TaskAccess>} newly created task, permanently owned by this Session. */

@@ -22,6 +22,8 @@ Recovery preserves valid history and damaged original bytes; it never truncates 
 
 Only a synchronized, valid unknown receipt sets the durable unknown-write block. Invalid or duplicate receipts leave the task state unchanged. A journal write or synchronization failure independently blocks writes until safe handoff; it cannot be treated as an unexecuted action.
 
+Creation exclusively allocates a new task directory. On failure it removes only that directory after confirming that no Session registration exists. Visible or uncertain registration, changed directory identity, or failed cleanup preserves the files and prevents another creation for that Session in the current Host. Correct storage before reopening it; recovery reads registrations and never adopts an unregistered directory. Existing tasks and other Sessions retain their own state.
+
 ## Five task modules
 
 - `basic_law_index` owns the append-only event history. Summary entries name sequence and hash; failures never rewrite old entries.
