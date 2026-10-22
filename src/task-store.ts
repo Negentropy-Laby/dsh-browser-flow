@@ -51,7 +51,7 @@ export type TaskAccess = {
 /** Profile-owned task store. Durable ownership never grants page control or replays commands. */
 import { graphInput, taskView } from './task-projections.ts'
 import { taskFacts, taskReferences, taskCoverage, currentRunReferences } from './task-facts.ts'
-import { pageIdentity, resourceDescriptor } from './task-resources.ts'
+import { pageIdentity, resourceDescriptor, eventResourceDescriptor } from './task-resources.ts'
 import { GraphError } from './graph/protocol.ts'
 import { graphHash, graphProjectionId } from './graph/worker.ts'
 import { resolveConfig } from './config.ts'
@@ -66,7 +66,7 @@ import { join, dirname, resolve, relative, isAbsolute } from 'node:path'
 import { validTaskScope, validRunScope, sameTaskScope, sameRunScope } from './task-scope.ts'
 import { withFileLock } from '@deepseek-ai/dsh-atomic-write'
 import { privateDirectory } from './import-files.ts'
-import { loadDefinition, noLinks, validOrigins } from './task-definitions.ts'
+import { definitionResource, loadDefinition, noLinks, validOrigins } from './task-definitions.ts'
 
 /** Expected task failures are sanitized at the tool/HTTP boundary. */
 export class TaskError extends Error {
@@ -560,7 +560,7 @@ tail: Promise<void>;
   async pageContext(access:TaskAccess,guest:Parameters<typeof pageIdentity>[1]):Promise<string> {
     const identity=pageIdentity(access.run,guest,'context'),task=this.openTask(access)
     const resource=resourceDescriptor(access.run,'page','context',{resourceIdentity:identity}).id
-    const prior=task.events.findLast(e=>e.type==='asset'&&e.data.kind==='page'&&validRunScope(e.data.run)&&sameRunScope(e.data.run,access.run)&&record(e.data.data)&&e.data.data.documentToken===guest.documentToken&&resourceDescriptor(access.run,'page',String(e.data.id),e.data.data).id===resource)
+    const prior=task.events.findLast(e=>e.type==='asset'&&e.data.kind==='page'&&validRunScope(e.data.run)&&sameRunScope(e.data.run,access.run)&&record(e.data.data)&&e.data.data.documentToken===guest.documentToken&&eventResourceDescriptor(e,access.run).id===resource)
     if(prior)return String(prior.data.id)
     return this.asset(access,'page',{documentToken:guest.documentToken,resourceIdentity:identity,contextOnly:true})
   }
@@ -571,11 +571,12 @@ tail: Promise<void>;
     if(!Number.isSafeInteger(offset)||offset<0)throw new TaskError('invalid_request','detail offset must be a nonnegative safe integer')
     if(offset>this.graphConfig.graphMaxDetailBytes)throw new TaskError('invalid_request','detail offset exceeds the configured task detail capacity')
     const position={run:access.run,version:data.events.length,tail:data.events.at(-1)?.hash}
+    const definitionName=definitionResource(data.snapshot,id)
     const row=data.events.findLast(event=>event.type==='asset'&&event.data.id===id)
     const asset=row?{id,taskId:data.manifest.scope.taskId,kind:row.data.kind,source:row.data.source,sourceSeq:row.seq,data:(row.data.data as Record<string, unknown>)}:undefined
     let criterion=taskFacts(data).criteria.find(item=>item.id===id)
     let value,currentProjection:string|undefined,serialized:string|undefined
-    if(asset||id==='waiting'||criterion||id==='criteria'||id==='coverage'||id==='goal'||data.snapshot?.definition.resources.includes(id)){
+    if(asset||id==='waiting'||criterion||id==='criteria'||id==='coverage'||id==='goal'||definitionName!==undefined){
       await this.refreshEvidence(access);this.openTask(access)
       if(data.events.length!==position.version||data.events.at(-1)?.hash!==position.tail)throw new TaskError('task_busy','task history changed during detail verification; read the current task again')
       criterion=taskFacts(data).criteria.find(item=>item.id===id)
@@ -590,9 +591,9 @@ tail: Promise<void>;
       if((offset>0&&!projectionId)||(projectionId!==undefined&&projectionId!==currentProjection))throw new TaskError('task_not_bound','coverage changed or identity is missing; restart detail at offset zero')
     }
     else if(id==='goal')value={goal:data.manifest.goal,constraints:data.manifest.constraints,criteria:data.manifest.criteria,source:'user_declared'}
-    else if(data.snapshot?.definition.resources.includes(id))value={name:id,text:data.snapshot.files[id],source:'definition_snapshot',digest:data.manifest.definitionDigest}
+    else if(definitionName!==undefined)value={name:definitionName,text:data.snapshot!.files[definitionName],source:'definition_snapshot',digest:data.manifest.definitionDigest}
     else {
-      const resource=data.events.some(e=>e.type==='asset'&&validRunScope(e.data.run)&&resourceDescriptor(e.data.run,String(e.data.kind),String(e.data.id),e.data.data).id===id)
+      const resource=id.startsWith('resource-')&&data.events.some(e=>e.type==='asset'&&validRunScope(e.data.run)&&eventResourceDescriptor(e,e.data.run).id===id)
       if(!['graph','graph:assets','graph:exploration'].includes(id)&&!resource&&!id.startsWith('digest-')&&!taskReferences(data).has(id))throw new TaskError('task_not_bound','task reference is inaccessible')
       if(data.readOnly)throw new TaskError('task_read_only','derived details are unavailable for read-only history; original details remain readable')
       if(data.unhealthy)throw new TaskError('task_unavailable','derived details require healthy task history; original details remain readable')

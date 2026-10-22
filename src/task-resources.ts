@@ -1,7 +1,10 @@
 /** Host-issued identities describe resources; they confer no control or proof. */
 import { createHash } from 'node:crypto'
 import { record } from './graph/protocol.ts'
+import { orderedRunScope, runIdentity, sameRunScope } from './task-scope.ts'
 import type { RunScope } from './task-scope.ts'
+import type { TaskEvent } from './task-store.ts'
+export { runIdentity } from './task-scope.ts'
 
 export interface ResourceIdentity {
   version: 1
@@ -14,10 +17,6 @@ export interface ResourceDescriptor {
   basis: 'document_instance' | 'source_path' | 'independent' | 'unavailable'
   snapshotKind: 'observation' | 'context' | 'file' | 'record' | 'unknown'
   groupingReason: string
-}
-/** Stable field order is part of the identity contract, independent of object order. */
-export function runIdentity(run: RunScope): (string | number)[] {
-  return [run.profileId,run.taskId,run.ownerSessionId,run.scopeRevision,run.runId,run.workflowRef]
 }
 function digest(value: unknown): string { return createHash('sha256').update(JSON.stringify(value)).digest('hex') }
 /** Called only after Host guest/lease validation, never with model-supplied identity. */
@@ -42,4 +41,20 @@ export function resourceDescriptor(run:RunScope,kind:string,id:string,data:unkno
     snapshotKind:known?identity.snapshotKind as ResourceDescriptor['snapshotKind']:['page','file'].includes(kind)?'unknown':'record',
     groupingReason:known?'host_identity':['page','file'].includes(kind)?'reliable_identity_unavailable':'independent_record',
   }
+}
+
+const descriptors=new WeakMap<TaskEvent,{run:RunScope;value:ResourceDescriptor}>()
+/** Immutable journal rows share one descriptor across safe input and lookup paths. */
+export function eventResourceDescriptor(event:TaskEvent,run:RunScope):ResourceDescriptor {
+  const cached=descriptors.get(event)
+  if(cached&&sameRunScope(cached.run,run))return cached.value
+  const value=Object.freeze(resourceDescriptor(run,String(event.data.kind),String(event.data.id),event.data.data))
+  descriptors.set(event,{run:orderedRunScope(run),value})
+  return value
+}
+
+/** Matches Go json.Marshal, separate from the existing Host tuple encoding. */
+export function kernelFallbackDescriptor(run:RunScope,kind:string,id:string):ResourceDescriptor {
+  const encoded=JSON.stringify([orderedRunScope(run),kind,id]).replace(/[<>&\u2028\u2029]/g,c=>'\\u'+c.charCodeAt(0).toString(16).padStart(4,'0'))
+  return {id:'resource-'+createHash('sha256').update(encoded).digest('hex'),basis:'unavailable',snapshotKind:'unknown',groupingReason:'reliable_identity_unavailable'}
 }

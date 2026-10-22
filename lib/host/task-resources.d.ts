@@ -1,4 +1,6 @@
 import type { RunScope } from './task-scope.ts';
+import type { TaskEvent } from './task-store.ts';
+export { runIdentity } from './task-scope.ts';
 export interface ResourceIdentity {
     version: 1;
     key: string;
@@ -11,8 +13,6 @@ export interface ResourceDescriptor {
     snapshotKind: 'observation' | 'context' | 'file' | 'record' | 'unknown';
     groupingReason: string;
 }
-/** Stable field order is part of the identity contract, independent of object order. */
-export declare function runIdentity(run: RunScope): (string | number)[];
 /** Called only after Host guest/lease validation, never with model-supplied identity. */
 export declare function pageIdentity(run: RunScope, guest: {
     connectionInstanceId: string;
@@ -25,3 +25,7 @@ export declare function pageIdentity(run: RunScope, guest: {
 export declare function fileIdentity(run: RunScope, canonicalSource: string): ResourceIdentity;
 /** Allowlisted projection metadata. Unknown/old metadata never invents grouping. */
 export declare function resourceDescriptor(run: RunScope, kind: string, id: string, data: unknown): ResourceDescriptor;
+/** Immutable journal rows share one descriptor across safe input and lookup paths. */
+export declare function eventResourceDescriptor(event: TaskEvent, run: RunScope): ResourceDescriptor;
+/** Matches Go json.Marshal, separate from the existing Host tuple encoding. */
+export declare function kernelFallbackDescriptor(run: RunScope, kind: string, id: string): ResourceDescriptor;

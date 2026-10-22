@@ -10,6 +10,6 @@
     "-buildvcs=false",
     "-ldflags=-s -w -buildid="
   ],
-  "sourceSha256": "648728ed81fb0bd5996aa60909877fb99412c5bf9047308bc1c35a37c7caa30d",
-  "sha256": "82735bc200263c55c00356f79a5e567740629fd6cb91e265a76c88812e65acf5"
+  "sourceSha256": "c810d4770517aa61b522f02f05a94c8ff8062264c435386a84fa2756675a78c2",
+  "sha256": "a8c2edae748314ded4b37abe7fc53fa08084fdd68425f3fc1e6e56ff5d4ddc3b"
 }

@@ -1,6 +1,6 @@
 /** Host safety facts plus optional Go projections. This module contains no graph algorithm. */
 import { taskFacts, taskCoverage } from './task-facts.ts'
-import { resourceDescriptor } from './task-resources.ts'
+import { eventResourceDescriptor } from './task-resources.ts'
 import {record} from './graph/protocol.ts'
 import { validRunScope } from './task-scope.ts'
 
@@ -12,7 +12,7 @@ export function graphInput(task: import('./task-store.ts').TaskData,config: impo
     const scope=declared?{...declared.scope,runId:declared.runId,workflowRef:declared.workflowRef}:validRunScope(row.run)?row.run:run
      const safe: import('./graph/protocol.ts').GraphEvent={seq:event.seq,hash:event.hash,type:event.type,run:scope}
     if(declared)safe.goal=declared.goal.slice(0,4000)
-    if(event.type==='asset'){safe.id=String(row.id);safe.kind=String(row.kind);safe.source=String(row.source);safe.resource=resourceDescriptor(scope,safe.kind,safe.id,row.data);if(row.kind==='page'&&row.data&&typeof row.data==='object'&&'documentToken' in row.data&&typeof row.data.documentToken==='string')safe.documentToken=row.data.documentToken.slice(0,200)}
+    if(event.type==='asset'){safe.id=String(row.id);safe.kind=String(row.kind);safe.source=String(row.source);safe.resource=eventResourceDescriptor(event,scope);if(row.kind==='page'&&row.data&&typeof row.data==='object'&&'documentToken' in row.data&&typeof row.data.documentToken==='string')safe.documentToken=row.data.documentToken.slice(0,200)}
     if(event.type==='attempt'){safe.id=String(row.attemptId);safe.action=String(row.action)}
     if(event.type==='receipt'){safe.id=String(row.attemptId);safe.outcome=String(row.outcome)}
     if(event.type==='edge'){safe.id=String(row.id);safe.from=String(row.from);safe.to=String(row.to);safe.relation=String(row.relation)}

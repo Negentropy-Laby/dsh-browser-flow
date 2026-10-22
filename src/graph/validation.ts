@@ -1,8 +1,9 @@
 /** Cross-process output validation against the exact sanitized replay input. */
 import { GraphError, record } from './protocol.ts'
 import type { GraphInput, JsonRecord } from './protocol.ts'
-import { createHash } from 'node:crypto'
-interface Expected {kind:string;source:string;sourceSeq:number;data:JsonRecord;run:string}
+import { sameRunScope } from '../task-scope.ts'
+import { kernelFallbackDescriptor } from '../task-resources.ts'
+interface Expected {kind:string;source:string;sourceSeq:number;data:JsonRecord;run:GraphInput['scope']}
 function bad():never {throw new GraphError('invalid_projection')}
 function object(value:unknown):JsonRecord {return record(value)?value:bad()}
 function list(value:unknown):unknown[]{return Array.isArray(value)?value:bad()}
@@ -18,14 +19,14 @@ function expected(input:GraphInput):{refs:Map<string,Expected>;edges:Map<string,
   if(edges.has(id))bad()
   edges.set(id,{id,taskId:input.scope.taskId,from,to,relation,sourceSeq})
  }
- for(const e of input.events){const run=JSON.stringify([e.run.profileId,e.run.taskId,e.run.ownerSessionId,e.run.scopeRevision,e.run.runId,e.run.workflowRef])
+ for(const e of input.events){const run=e.run
   if(e.type==='created'||e.type==='revise')add(goal(e.run),{kind:'goal',source:'user_declared',sourceSeq:e.seq,data:{goal:e.goal},run})
   if(e.type==='asset'&&e.id)add(e.id,{kind:e.kind??'',source:e.source??'',sourceSeq:e.seq,data:{...(e.kind==='page'?{documentToken:e.documentToken??''}:{}),...(e.resource?{resourceRef:e.resource.id,snapshotKind:e.resource.snapshotKind}:{})},run})
   if(e.type==='attempt'&&e.id){add(e.id,{kind:'intent',source:'model_intent',sourceSeq:e.seq,data:{action:e.action,status:'pending',businessSuccess:false},run});link(`intent-edge-${e.seq}`,e.id,goal(e.run),'attempts',e.seq)}
   if(e.type==='receipt'&&e.id){const a=result.get(e.id);if(a)a.data.status=e.outcome;const id=`receipt-${input.scope.taskId}-${e.seq}`;add(id,{kind:'receipt',source:'host',sourceSeq:e.seq,data:{outcome:e.outcome},run});link(`receipt-edge-${e.seq}`,id,e.id,'records',e.seq)}
   if(e.type==='edge')link(e.id??'',e.from??'',e.to??'',e.relation??'',e.seq)
  }
- const run=JSON.stringify([input.scope.profileId,input.scope.taskId,input.scope.ownerSessionId,input.scope.scopeRevision,input.scope.runId,input.scope.workflowRef])
+ const run=input.scope
  add(goal(input.scope),{kind:'goal',source:'user_declared',sourceSeq:1,data:{goal:input.goal},run})
  for(const c of input.criteria){
   add(c.id,{kind:'criterion',source:c.source,sourceSeq:1,data:{label:c.label,status:c.status,validatorId:c.validatorId??'',validatorVersion:c.version??0},run})
@@ -43,8 +44,8 @@ function digests(value:unknown,refs:Map<string,Expected>,input:GraphInput,hash:s
  for(const valueRow of list(value)){
   const row=object(valueRow);keys(row,['id','members','anchors','outcomes','sourceSeqs','signature'])
   if(typeof row.signature!=='string'||!/^[a-f0-9]{64}$/.test(row.signature)||row.id!==`digest-${hash}-${row.signature}`)bad()
-  const members=list(row.members),memberSet=new Set(members),anchors=list(row.anchors);if(members.length<input.minGroup)bad();let run:string|undefined;const outcomes:Record<string,number>={},seqs:number[]=[]
-  for(const id of members){if(typeof id!=='string'||covered.has(id)||protectedRefs.has(id))bad();const node=refs.get(id);if(!node||!['intent','receipt'].includes(node.kind)||['pending','unknown_outcome'].includes(String(node.data.status??node.data.outcome)))bad();if(run&&run!==node.run)bad();run=node.run;covered.add(id);seqs.push(node.sourceSeq);if(node.kind==='receipt'){const outcome=String(node.data.outcome);outcomes[outcome]=(outcomes[outcome]??0)+1}}
+  const members=list(row.members),memberSet=new Set(members),anchors=list(row.anchors);if(members.length<input.minGroup)bad();let run:GraphInput['scope']|undefined;const outcomes:Record<string,number>={},seqs:number[]=[]
+  for(const id of members){if(typeof id!=='string'||covered.has(id)||protectedRefs.has(id))bad();const node=refs.get(id);if(!node||!['intent','receipt'].includes(node.kind)||['pending','unknown_outcome'].includes(String(node.data.status??node.data.outcome)))bad();if(run&&!sameRunScope(run,node.run))bad();run=node.run;covered.add(id);seqs.push(node.sourceSeq);if(node.kind==='receipt'){const outcome=String(node.data.outcome);outcomes[outcome]=(outcomes[outcome]??0)+1}}
   for(const id of anchors)if(typeof id!=='string'||!refs.has(id)||memberSet.has(id))bad()
   if(!equal(outcomes,row.outcomes)||!equal(seqs.sort((a,b)=>a-b),row.sourceSeqs))bad();if(all.has(String(row.id)))bad();all.set(String(row.id),{row,members:memberSet})
  }
@@ -61,23 +62,17 @@ function attempt(value:unknown,refs:Map<string,Expected>,frontier:boolean):void 
  if(frontier&&!['pending','unknown_outcome'].includes(String(row.status)))bad()
 }
 function isAsset(kind:string):boolean{return ['page','file','unit_check','import_result','evidence'].includes(kind)}
-function scopeFromKey(key:string):GraphInput['scope'] {
- const [profileId,taskId,ownerSessionId,scopeRevision,runId,workflowRef]=JSON.parse(key)
- return {profileId,taskId,ownerSessionId,scopeRevision,runId,workflowRef}
-}
 interface ExpectedResource {id:string;kind:string;run:GraphInput['scope'];basis:string;groupingReason:string;snapshots:string[]}
 function dualExpected(input:GraphInput,refs:Map<string,Expected>,edges:Map<string,ExpectedEdge>) {
  const resources=new Map<string,ExpectedResource>()
  for(const e of input.events)if(e.type==='asset'&&e.id){
   // Matches the kernel fallback for direct IPC fixtures; normal Host input always supplies a descriptor.
-  const s=e.run,ordered={profileId:s.profileId,taskId:s.taskId,ownerSessionId:s.ownerSessionId,scopeRevision:s.scopeRevision,runId:s.runId,workflowRef:s.workflowRef}
-  const encoded=JSON.stringify([ordered,e.kind,e.id]).replace(/[<>&\u2028\u2029]/g,c=>'\\u'+c.charCodeAt(0).toString(16).padStart(4,'0'))
-  const d=e.resource??{id:'resource-'+createHash('sha256').update(encoded).digest('hex'),basis:'unavailable',groupingReason:'reliable_identity_unavailable'}
+  const d=e.resource??kernelFallbackDescriptor(e.run,e.kind??'',e.id)
   const r=resources.get(d.id)
   if(r){if(!equal(r.run,e.run)||r.kind!==e.kind||r.basis!==d.basis||r.groupingReason!==d.groupingReason||['independent','unavailable'].includes(r.basis))bad();r.snapshots.push(e.id)}
   else resources.set(d.id,{id:d.id,kind:e.kind??'',run:e.run,basis:d.basis,groupingReason:d.groupingReason,snapshots:[e.id]})
  }
- const anchors=[...edges.values()].filter(e=>isAsset(refs.get(e.from)!.kind)!==isAsset(refs.get(e.to)!.kind)).map(e=>({...e,run:input.events[e.sourceSeq-1]?.run??input.scope,fromRun:scopeFromKey(refs.get(e.from)!.run),toRun:scopeFromKey(refs.get(e.to)!.run)}))
+ const anchors=[...edges.values()].filter(e=>isAsset(refs.get(e.from)!.kind)!==isAsset(refs.get(e.to)!.kind)).map(e=>({...e,run:input.events[e.sourceSeq-1]?.run??input.scope,fromRun:refs.get(e.from)!.run,toRun:refs.get(e.to)!.run}))
  return {resources,anchors}
 }
 function exactRows(value:unknown,expectedRows:unknown[]):void {if(!equal(value,expectedRows))bad()}

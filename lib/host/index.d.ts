@@ -239,6 +239,7 @@ export declare class BrowserFlowService {
             text: string;
             complete: boolean;
             name: string;
+            ref: string;
         }[];
         resources: string[];
     } | {
@@ -334,6 +335,7 @@ export declare class BrowserFlowService {
             text: string;
             complete: boolean;
             name: string;
+            ref: string;
         }[];
         resources: string[];
     }>;

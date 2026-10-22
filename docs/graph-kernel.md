@@ -196,6 +196,11 @@ Use the existing `browser_observe` with `view:"task"`:
   exploration references and evidence references. A criterion detail supplies
   its currently validated `proofRefs` and the exploration view entrypoint.
 - `ref:"coverage"` returns Host-verified coverage and reasons per condition.
+- `ref:"definition:<path>"` reads an exact whitelisted definition snapshot file,
+  including files named `coverage` or `graph`. Summaries advertise this reference
+  in instruction `ref` fields and the `resources` array. Nonconflicting old bare
+  paths remain aliases; system names and generated-reference prefixes retain
+  their system meaning. No snapshot or journal migration is required.
 
 Summaries provide counts and detail references. All derived continuations
 require the returned `projectionId` at nonzero offset; changed input/kernel
@@ -214,6 +219,11 @@ and `ratio` never change the business verdict or lifecycle. Empty total returns
 `ratio:null`; two free-text conditions plus one verified condition yield 1/3.
 Task tool reads recheck originals. Panel polling only displays the last Host
 facts and does not start a worker or scan originals.
+
+Resource descriptors are cached by immutable journal event and complete run;
+this does not cache evidence judgments or projection freshness. Host identity
+bytes remain stable. Metadata-free direct IPC uses its separate Go JSON fallback
+encoding, including short `\b` and `\f` escapes.
 
 Upgrade the Host, generated runtime and native helper as one paired package:
 kernel version 4 is required by the manifest, handshake and validation. Browser

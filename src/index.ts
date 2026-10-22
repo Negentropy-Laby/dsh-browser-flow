@@ -85,7 +85,7 @@ import { type Result, type PageOperation, type FindQuery, type ActionInput, type
 import { GraphWorkers } from './graph/worker.ts'
 import { taskFacts } from './task-facts.ts'
 import { taskView } from './task-projections.ts'
-import { tasksRoot, listDefinitions, definitionSkills } from './task-definitions.ts'
+import { tasksRoot, listDefinitions, definitionSkills, definitionRef } from './task-definitions.ts'
 
 export { Config }
 export const name = 'browser-flow'
@@ -232,8 +232,8 @@ closing: Promise<void> | undefined;
     const budget=Math.max(1800,Math.floor(this.config.observeMaxChars*3/4))
     const view=withGraph?await this.tasks.view(access,budget,signal):taskView(data,budget,undefined,'not_requested',this.tasks.writable,undefined,this.graph.cleanup(access.scope.taskId))
     const workflow=data.snapshot?.definition.workflows.find(row=>row.id===data.manifest.workflowRef)
-    const resources=workflow ? [...workflow.instructions,...workflow.resources] : []
-    const instructions=(workflow?.instructions ?? []).map(name=>({name,text:data.snapshot?.files[name] ?? ''}))
+    const resources=workflow ? [...workflow.instructions,...workflow.resources].map(definitionRef) : []
+    const instructions=(workflow?.instructions ?? []).map(name=>({name,ref:definitionRef(name),text:data.snapshot?.files[name] ?? ''}))
     const instructionBudget=Math.floor(this.config.observeMaxChars/2/Math.max(1,instructions.length))
     return {task:access.run,state:data.readOnly?'read_only':data.blocked?'write_blocked':data.waiting&&data.state==='active'?'awaiting_user':data.state,contextVersion:data.events.length,goal:data.manifest.goal,origins:data.manifest.origins,adapter:data.manifest.adapter,
       definition:data.manifest.definitionId ? {id:data.manifest.definitionId,version:data.manifest.definitionVersion,digest:data.manifest.definitionDigest} : null,

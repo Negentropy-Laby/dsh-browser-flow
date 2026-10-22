@@ -7,6 +7,7 @@ import type { GraphInput } from '../src/graph/protocol.ts'
 import { graphRuntime, graphBinary } from './helpers/graph-process.ts'
 import { TASK } from './helpers/task-scope.ts'
 import { expectRecord, expectList } from './helpers/assertions.ts'
+import { kernelFallbackDescriptor } from '../src/task-resources.ts'
 
 function input():GraphInput{return {scope:TASK,version:2,tailHash:'h2',events:[{seq:1,hash:'h1',type:'created',run:TASK,goal:'Synthetic'},{seq:2,hash:'h2',type:'asset',run:TASK,id:'evidence-1',kind:'evidence',source:'host'}],goal:'Synthetic',constraints:[],criteria:[],protected:[],proofRef:'evidence-1',proofSeq:2,coldRounds:6,minGroup:2,liveDocumentToken:''}}
 it('assigns a distinct proof edge to each synthetic passed criterion and validates full details',async t=>{
@@ -36,4 +37,15 @@ it('matches replay-position edges while skipping forward and permanently danglin
  const changed=structuredClone(graph)
  expectList(changed.edges).push({...edges[0],id:'forward',sourceSeq:2,relation:'yields'})
  assert.throws(()=>validateDetail(changed,'graph',value,graphHash(JSON.stringify(value))),/invalid_projection/)
+})
+
+for(const [label,chars] of [['backspace','\b'],['formfeed','\f'],['all-ascii-controls',String.fromCharCode(...Array.from({length:32},(_,i)=>i))],['html-and-line-separators','<>&\u2028\u2029'],['unicode','中文😀']] as const)it(`matches direct Go fallback resources for ${label} without Host metadata`,async t=>{
+ const workers=new GraphWorkers(resolveConfig({}),graphBinary);workers.attach(graphRuntime());t.after(()=>workers.close())
+ const value=input(),run={...TASK,ownerSessionId:'synthetic-'+chars,workflowRef:'workflow-'+chars}
+ value.scope=run;value.proofRef='';value.proofSeq=0
+ value.events=value.events.map(e=>({...e,run,...(e.type==='asset'?{id:'asset-'+chars}:{})}))
+ await workers.project(value,50000,()=>true)
+ const assets=expectRecord(await workers.detail(value,'graph:assets',()=>true)),resource=expectRecord(expectList(assets.resources)[0])
+ assert.equal(resource.id,kernelFallbackDescriptor(run,'evidence','asset-'+chars).id)
+ assert.deepEqual(resource.run,run)
 })

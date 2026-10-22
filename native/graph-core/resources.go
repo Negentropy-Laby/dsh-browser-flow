@@ -45,7 +45,6 @@ func assetKind(kind string) bool {
 func (p *Projection) buildResources() error {
 	p.Resources = []Resource{}
 	p.Anchors = []Anchor{}
-	p.snapshotResource = map[string]string{}
 	byID := map[string]int{}
 	for _, e := range p.Input.Events {
 		if e.Type != "asset" {
@@ -77,7 +76,6 @@ func (p *Projection) buildResources() error {
 			byID[d.ID] = len(p.Resources)
 			p.Resources = append(p.Resources, Resource{d.ID, e.Kind, e.Run, d.Basis, d.GroupingReason, []string{e.ID}})
 		}
-		p.snapshotResource[e.ID] = d.ID
 	}
 	for _, edge := range p.Edges {
 		from, to := p.index[edge.From], p.index[edge.To]

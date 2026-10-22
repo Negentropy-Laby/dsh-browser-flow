@@ -111,19 +111,18 @@ type Digest struct {
 
 // Projection is disposable and reconstructable from Input; it owns no task facts.
 type Projection struct {
-	Input            Input
-	ID               string
-	Nodes            []*Node
-	Edges            []Edge
-	Attempts         []*Attempt
-	Digests          []Digest
-	replayVisits     int
-	Round            int64
-	index            map[string]*Node
-	covered          map[string]bool
-	Resources        []Resource
-	Anchors          []Anchor
-	snapshotResource map[string]string
+	Input        Input
+	ID           string
+	Nodes        []*Node
+	Edges        []Edge
+	Attempts     []*Attempt
+	Digests      []Digest
+	replayVisits int
+	Round        int64
+	index        map[string]*Node
+	covered      map[string]bool
+	Resources    []Resource
+	Anchors      []Anchor
 }
 
 func pageWrite(action string) bool {

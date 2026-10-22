@@ -36,6 +36,12 @@ Free-text criteria remain in the coverage denominator with `no_validator`.
 Coverage is informational and does not complete a task or establish business
 success. Old records without reliable identity stay independently queryable.
 
+Definition snapshot reads now advertise `definition:<path>` references, including
+instruction `ref` fields and the summary's `resources` array. Use the explicit
+reference for a file whose name overlaps a system detail, such as
+`definition:coverage`. Ordinary old bare paths remain aliases. Existing snapshots
+and filenames are preserved, including when a task is recovered.
+
 ## Agent-declared waits
 
 `browser_act` now has a Host-only `await_user` branch requiring only `action` and the bounded `wait` declaration. Page actions still require documentToken and elementRef. The six tools and seven routes are unchanged; the existing task route additionally accepts the user's resume operation. Update tool consumers and reload both Host and Client. The model cannot resume, authorize a page, confirm a file or write a verified result through this branch. Unknown-outcome write blocking includes await_user.
