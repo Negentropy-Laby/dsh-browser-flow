@@ -171,20 +171,16 @@ entry. A missing compiler fails the check. Host tests also
 report skips when their optional artifacts are unavailable. Automated checks
 and synthetic fixtures do not establish logged-in website or business acceptance.
 
-The [bounded evidence qualification](https://github.com/Negentropy-Laby/dsh-browser-flow/blob/b55dd017c2ef7217606688d2c15078e17eb29ecc/docs/qualification/bounded-evidence.md)
-records the current repair candidate, allocation limits, detail snapshots and
-target checks. The [scoped graph read qualification](https://github.com/Negentropy-Laby/dsh-browser-flow/blob/b55dd017c2ef7217606688d2c15078e17eb29ecc/docs/qualification/graph-read-repair.md)
-retains its earlier candidate and failed runs.
-The [control panel UI qualification](https://github.com/Negentropy-Laby/dsh-browser-flow/blob/b55dd017c2ef7217606688d2c15078e17eb29ecc/docs/qualification/panel-ui.md) retains its
-own UI candidate and target Desktop checks. The preceding
-[task graph repair qualification](https://github.com/Negentropy-Laby/dsh-browser-flow/blob/b55dd017c2ef7217606688d2c15078e17eb29ecc/docs/qualification/task-graph-repair.md) retains
-its own candidate and results. Website acceptance remains separate.
+See the repository's [qualification records](https://github.com/Negentropy-Laby/dsh-browser-flow/tree/master/docs/qualification)
+for candidate-bound results. The [bounded evidence qualification](https://github.com/Negentropy-Laby/dsh-browser-flow/blob/b55dd017c2ef7217606688d2c15078e17eb29ecc/docs/qualification/bounded-evidence.md)
+retains the preceding repair results. Website and business acceptance remain
+separate.
 
 See [testing](https://github.com/Negentropy-Laby/dsh-browser-flow/blob/master/docs/testing.md) for explicit Host artifact inputs and local-only
 receipts. The package whitelist distributes compiled code, required declarations, user
 documentation, the profile patch and pinned runtime dependencies. Source code,
-development instructions and [qualification records](https://github.com/Negentropy-Laby/dsh-browser-flow/tree/master/docs/qualification)
-remain in the repository; local tasks and recorded runs remain private. See the
+development instructions and qualification records remain in the repository;
+local tasks and recorded runs remain private. See the
 [distribution guide](docs/upgrade-guide/v0.1.0/simplification/guide.md).
 
 ## Known limitations

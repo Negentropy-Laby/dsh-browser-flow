@@ -44,7 +44,8 @@ describe('local declarative task definitions',()=>{
   })
   it('uses a package whitelist without local task resources',()=>{
     const manifest=JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8'))
-    assert.ok(manifest.files.includes('src'))
+    assert.ok(manifest.files.includes('lib'))
+    assert.ok(!manifest.files.includes('src'))
     assert.ok(!manifest.files.includes('tasks'))
     assert.ok(!manifest.files.includes('sites'))
     assert.ok(!readFileSync(new URL('../lib/client.js',import.meta.url),'utf8').includes('SYNTHETIC_LOCAL_MARKER'))
