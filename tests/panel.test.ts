@@ -1,3 +1,4 @@
+import {fixturePanelUi} from './helpers/panel-ui.ts'
 import {expectRecord,present,expectString,expectList,expectSized} from './helpers/assertions.ts'
 import { TASK, TASK_VIEW } from './helpers/task-scope.ts'
 /**
@@ -113,7 +114,7 @@ describe('panel rendering', () => {
     const browser = fakeBrowser({ desktop: undefined })
     try {
       const harness = createReactHarness()
-      const Panel = createPanel({ React: harness.React, t })
+      const Panel = createPanel({ React: harness.React, t, ui:fixturePanelUi(harness.React) })
       const tree = harness.render(Panel, { sessionId: 'session-1' })
       assert.notEqual(present(find(tree, (node:TreeNode) => node.type === 'section')), undefined)
       assert.notEqual(present(find(tree, (node:TreeNode) => node.children?.includes('unsupportedHost'))), undefined)
@@ -129,7 +130,7 @@ describe('panel rendering', () => {
     const browser = fakeBrowser({ desktop: { protocolVersion: 1 } })
     try {
       const harness = createReactHarness()
-      const Panel = createPanel({ React: harness.React, t })
+      const Panel = createPanel({ React: harness.React, t, ui:fixturePanelUi(harness.React) })
       // Seed the page list by rendering once, running the poll effect, then re-rendering.
       harness.render(Panel, { sessionId: 'session-1' })
       assert.notEqual(present(find(harness.render(Panel, { sessionId: 'session-1' }), (node:TreeNode) => node.type === 'section')), undefined)
@@ -165,7 +166,7 @@ describe('panel command loop', () => {
     })
     try {
       const harness = createReactHarness()
-      const Panel = createPanel({ React: harness.React, t })
+      const Panel = createPanel({ React: harness.React, t, ui:fixturePanelUi(harness.React) })
       harness.render(Panel, { sessionId: 'session-1' })
       const cleanups = harness.runEffects()
       // The poll effect starts a tick immediately; wait for it to settle.
@@ -198,7 +199,7 @@ describe('panel command loop', () => {
     })
     try {
       const harness = createReactHarness()
-      const Panel = createPanel({ React: harness.React, t })
+      const Panel = createPanel({ React: harness.React, t, ui:fixturePanelUi(harness.React) })
       harness.render(Panel, { sessionId: 'session-1' })
       harness.runEffects()
       await new Promise(resolve => setTimeout(resolve, 50))
@@ -220,7 +221,7 @@ describe('panel command loop', () => {
     })
     try {
       const harness = createReactHarness()
-      const Panel = createPanel({ React: harness.React, t })
+      const Panel = createPanel({ React: harness.React, t, ui:fixturePanelUi(harness.React) })
       harness.render(Panel, { sessionId: 'session-1' })
       harness.runEffects()
       await new Promise(resolve => setTimeout(resolve, 50))

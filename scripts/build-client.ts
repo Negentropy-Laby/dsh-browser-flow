@@ -138,10 +138,12 @@ export function composeBundle() {
     var exports = module.exports
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
     const react = require('react')
+    const primitives = require('@deepseek-ai/dsh-client-ui-primitives')
+    const panelCss = ${JSON.stringify(readFileSync(join(root,'src','panel.css'),'utf8'))}
 ${bodies}
     Object.assign(exports, {
       inject: ['slots', 'locale', 'sidebarRightTabs'],
-      apply: function (ctx) { ${ENTRY_EXPORT}(ctx, react) },
+      apply: function (ctx) { ${ENTRY_EXPORT}(ctx, react, primitives, panelCss) },
     })
     return module.exports
   },

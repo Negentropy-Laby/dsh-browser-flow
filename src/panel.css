@@ -1,0 +1,48 @@
+[data-browser-flow-panel] {
+  box-sizing: border-box;
+  min-width: 0;
+  height: 100%;
+  padding: 16px;
+  overflow: auto;
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--dsw-font-family);
+  font-size: 13px;
+  line-height: 20px;
+  container-type: inline-size;
+}
+[data-browser-flow-panel] * { box-sizing: border-box; min-width: 0; }
+[data-browser-flow-panel] :is(h3, h4, p, ul) { margin: 0; }
+[data-browser-flow-panel] :is(h3, h4) { font-size: 14px; line-height: 22px; font-weight: 500; }
+[data-browser-flow-panel] section { margin-bottom: 16px; }
+[data-browser-flow-panel] label { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
+[data-browser-flow-panel] :is(input, select, textarea) { width: 100%; font: inherit; color: inherit; }
+[data-browser-flow-panel] :is(select, textarea) {
+  padding: 8px 10px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-1);
+}
+[data-browser-flow-panel] textarea { min-height: 80px; resize: vertical; }
+[data-browser-flow-panel] [data-browser-flow-ui='button'] { max-width: 100%; margin: 4px 6px 4px 0; }
+[data-browser-flow-panel] .bf-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 16px; }
+[data-browser-flow-panel] .bf-status { display: inline-flex; align-items: center; gap: 6px; }
+[data-browser-flow-panel] .bf-pages { list-style: none; padding: 0; display: grid; gap: 12px; }
+[data-browser-flow-panel] [data-browser-flow-page] {
+  padding: 12px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-1);
+  display: grid;
+  gap: 6px;
+}
+[data-browser-flow-panel] .bf-page-title { font-weight: 500; overflow-wrap: anywhere; }
+[data-browser-flow-panel] :is(.bf-page-url, .bf-page-alias, .bf-target, .bf-note) { color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; }
+[data-browser-flow-panel] .bf-note { margin-top: 10px; }
+[data-browser-flow-panel] [role='alert'] {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-2);
+  overflow-wrap: anywhere;
+}
+[data-browser-flow-panel] [data-browser-flow-file-preview] { display: grid; gap: 8px; padding: 12px; background: var(--dsw-alias-bg-layer-2); border-radius: var(--dsw-radius-sm); overflow-wrap: anywhere; }

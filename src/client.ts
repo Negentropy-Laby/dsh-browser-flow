@@ -29,6 +29,7 @@ export type ClientContext = {
  */
 
 import { COPY, NS, createPanel } from './panel.ts'
+import {createPanelUi,installPanelStyles} from './panel-ui.ts'
 
 /** Package name: also the loader row id and the tab type id. */
 export const PLUGIN_ID = '@negentropy/dsh-browser-flow'
@@ -50,10 +51,13 @@ export const TAB_KIND = 'browser-flow'
  * it; nothing is registered at module scope.
  * @param {ClientContext} ctx - client root context.
  * @param {import('./panel.ts').ReactLike} React - platform React instance.
+ * @param primitives - matching Host controls from the frozen platform module.
+ * @param css - bundled, panel-scoped stylesheet owned by this plugin instance.
  * @returns {void}
  */
-export function registerPanel(ctx: ClientContext, React: import('./panel.ts').ReactLike) : void {
-  const t = ctx.locale.bind(NS)
+export function registerPanel(ctx: ClientContext, React: import('./panel.ts').ReactLike, primitives:unknown, css:string) : void {
+  const t = ctx.locale.bind(NS),ui=createPanelUi(React,primitives)
+  installPanelStyles(ctx.effect.bind(ctx),css)
   ctx.effect(() => ctx.locale.register(NS, COPY), 'browser-flow: copy')
   ctx.effect(() => ctx.sidebarRightTabs.register({
     id: PLUGIN_ID,
@@ -68,7 +72,7 @@ export function registerPanel(ctx: ClientContext, React: import('./panel.ts').Re
       description: () => t('guideDescription'),
     }],
   }), 'browser-flow: tab type')
-  const Panel = createPanel({ React, t })
+  const Panel = createPanel({ React, t, ui })
   ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
     name: 'sidebar.right.pane.tab',
     key: PLUGIN_ID,

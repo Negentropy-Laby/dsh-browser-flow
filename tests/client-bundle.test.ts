@@ -1,3 +1,4 @@
+import {fixturePrimitives,styleDocument} from './helpers/panel-ui.ts'
 import {present} from './helpers/assertions.ts'
 import type {BundleRegistration} from './helpers/client-ports.ts'
 /**
@@ -42,6 +43,11 @@ function loadBundle() {
 }
 
 describe('client bundle registration', () => {
+  it('loads host controls and ships owned panel styles in the same bundle',()=>{
+    assert.ok(bundle.includes("require('@deepseek-ai/dsh-client-ui-primitives')"))
+    assert.ok(bundle.includes('[data-browser-flow-panel]'))
+    assert.ok(bundle.includes('browser-flow: panel styles'))
+  })
   it('registers exactly once, under the package name', () => {
     const handoffs = loadBundle()
     assert.deepEqual([...handoffs.keys()], [manifest.name])
@@ -51,6 +57,7 @@ describe('client bundle registration', () => {
     const handoffs = loadBundle()
     const plugin = present(handoffs.get(manifest.name)).factory((specifier:string) => {
       if (specifier === 'react') return { createElement: () => ({}) }
+      if (specifier === '@deepseek-ai/dsh-client-ui-primitives') return fixturePrimitives({createElement:()=>({})})
       throw new Error(`unexpected require ${specifier}`)
     })
     assert.equal(typeof plugin.apply, 'function')
@@ -113,8 +120,9 @@ describe('client bundle registration', () => {
       'the panel must not create a webview element')
     assert.equal(bundle.includes('browser.acquire'), false,
       'the panel must not reserve a guest of its own')
-    assert.equal(bundle.includes('appendChild'), false,
-      'the panel must not attach a guest to the document')
+    assert.equal((bundle.match(/\.appendChild\(/g)??[]).length,1)
+    assert.ok(bundle.includes('document.head.appendChild(tag)'),
+      'the only appended node must be the owned stylesheet in the document head')
     // It finds the existing one through the shipped marker.
     assert.ok(bundle.includes('querySelectorAll'))
     assert.ok(bundle.includes('webview[data-sidebar-browser-frame="webview"]'))
@@ -130,7 +138,8 @@ describe('client bundle registration', () => {
     assert.equal(/^import\s|^export\s/m.test(bundle), false, 'no module syntax may survive')
   })
 
-  it('applies against a realistic client context and registers its four contributions', () => {
+  it('applies against a realistic client context and registers its controls and owned styles', t => {
+    const styles=styleDocument(t)
     // This is the only path that executes `src/client.ts`: the bundle's own
     // `apply`. It asserts the exact registrations the Harness slot system
     // requires, using a fake context with the same shape the shipped client
@@ -139,6 +148,7 @@ describe('client bundle registration', () => {
     const React = { createElement: () => ({}) }
     const plugin = present(handoffs.get(manifest.name)).factory((specifier:string) => {
       if (specifier === 'react') return React
+      if (specifier === '@deepseek-ai/dsh-client-ui-primitives') return fixturePrimitives(React)
       throw new Error(`unexpected require ${specifier}`)
     })
     const effects:(void|(()=>void|Promise<void>))[] = []
@@ -187,7 +197,10 @@ describe('client bundle registration', () => {
     }
 
     // Everything is an effect, so unloading removes the UI.
-    assert.equal(effects.length, 2)
+    assert.equal(effects.length, 3)
+    assert.equal(styles.length,1)
+    for(const dispose of effects)if(dispose)dispose()
+    assert.equal(styles.length,0)
     for (const disposer of effects) assert.equal(typeof disposer, 'function')
   })
 })

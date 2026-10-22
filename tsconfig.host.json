@@ -22,6 +22,7 @@
     "src/client.ts",
     "src/clientcore.ts",
     "src/panel.ts",
+    "src/panel-ui.ts",
     "src/page/runtime.ts",
     "src/page/operations.ts",
     "src/page/policy.ts",

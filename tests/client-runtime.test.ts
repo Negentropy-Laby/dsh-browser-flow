@@ -1,3 +1,4 @@
+import {fixturePrimitives} from './helpers/panel-ui.ts'
 import {present,expectRecord} from './helpers/assertions.ts'
 import type {BundleRegistration} from './helpers/client-ports.ts'
 /**
@@ -115,6 +116,7 @@ describe('client bundle in a real DOM', { skip: ready ? false : `missing built c
       const React = react.default ?? react
       const platform:Record<string,unknown> = {
         react: React,
+        '@deepseek-ai/dsh-client-ui-primitives':fixturePrimitives(React),
         'react-dom': reactDomMain.default ?? reactDomMain,
         'react-dom/client': reactDomClient,
       }
@@ -225,7 +227,7 @@ describe('client bundle in a real DOM', { skip: ready ? false : `missing built c
       for (const specifier of requested) {
         assert.ok(Object.hasOwn(platform, specifier), `unexpected require: ${specifier}`)
       }
-      assert.equal(effects.length, 2)
+      assert.equal(effects.length, 3)
       for (const disposer of effects) assert.equal(typeof disposer, 'function')
     } finally {
       globalThis.window = saved.window

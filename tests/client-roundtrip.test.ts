@@ -1,3 +1,4 @@
+import {fixturePrimitives} from './helpers/panel-ui.ts'
 import {present,expectString,expectSized,expectRecord} from './helpers/assertions.ts'
 import type {BundleRegistration} from './helpers/client-ports.ts'
 import { TASK, TASK_VIEW } from './helpers/task-scope.ts'
@@ -167,6 +168,7 @@ describe('panel round trip in a real DOM', { skip: ready ? false : `missing DOM 
       window.__ModuleLoader__ = { load(registration:BundleRegistration) { factories.set(registration.id, registration.factory) } }
       const platform:Record<string,unknown> = {
         react: React,
+        '@deepseek-ai/dsh-client-ui-primitives':fixturePrimitives(React),
         'react-dom': reactDomMain.default ?? reactDomMain,
         'react-dom/client': reactDomClient,
       }

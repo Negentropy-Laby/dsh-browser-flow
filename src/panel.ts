@@ -1,10 +1,11 @@
+import type {PanelUi,PanelElementType} from './panel-ui.ts'
 import type {RunScope} from './task-scope.ts'
 import type {PagePolicy} from './page/input.ts'
 interface GuestElement extends HTMLElement {executeJavaScript(source:string,userGesture?:boolean):Promise<unknown>}
 interface PanelBinding {task:RunScope;lease:string;partition:string;tabId:string;controlLeaseId:string;epoch:number;documentToken:string;url?:string;expectedSequence:number;element?:GuestElement;pagePolicy?:PagePolicy;origins?:string[];importOwner?:string}
 import {decodePanelReply,isTaskSummary,isFilePreview,type TaskSummary,type AgentSummary,type DefinitionOption,type FilePreview,type PanelError,type PanelReply,type PanelCommand} from './client-wire.ts'
 export interface ReactLike {
- createElement(type:string|((...args:never[])=>unknown),props:object|null,...children:unknown[]):unknown
+ createElement(type:PanelElementType,props:object|null,...children:unknown[]):unknown
  useState<T>(initial:T|(()=>T)):[T,(next:T|((previous:T)=>T))=>void]
  useRef<T>(initial:T):{current:T}
  useMemo<T>(factory:()=>T,deps?:readonly unknown[]):T
@@ -113,7 +114,7 @@ export const COPY: {
     resumeTask:'核对新输入并继续', userInput:'新提供的人工输入', waitingUser:'等待用户', taskReadOnly:'旧任务记录只读；请使用新会话开始新任务。',
     taskTitle:'当前任务', taskGoal:'目标', taskOrigins:'允许的源站（以逗号分隔）', taskDefinition:'本地任务定义', taskGeneric:'通用任务', taskWorkflow:'操作说明', createTask:'创建并绑定任务', openTask:'打开本会话任务', reviseTask:'修订目标与范围', cancelTask:'取消任务并撤销', finishTask:'结束并人工交接', invalidReply: 'Host 响应无效，请配套重载 Host 和 Client',
     taskMissing:'先创建或打开当前会话的任务，再授权页面。', taskBlocked:'此任务的写结果未知或日志不可用：仅允许读取、撤销及人工交接。',
-    title: '浏览器控制',
+    title: '浏览器控制', connected:'已连接',
     empty: '没有可授权的 Browser 页面。先在右侧打开一个网页。',
     authorize: '授权控制',
     revoke: '撤销控制',
@@ -140,7 +141,7 @@ export const COPY: {
   en: {
     resumeTask:'Check new input and resume', userInput:'New user input', waitingUser:'Awaiting user', taskReadOnly:'Legacy history is read-only; start new work in a new Session.',
     taskTitle:'Current task', taskGoal:'Goal', taskOrigins:'Allowed origins (comma separated)', taskDefinition:'Local definition', taskGeneric:'Generic task', taskWorkflow:'Instructions', createTask:'Create and bind task', openTask:'Open this session’s task', reviseTask:'Revise goal and scope', cancelTask:'Cancel task and revoke', finishTask:'End and hand off', invalidReply:'Host response is invalid; reload the paired Host and Client', taskMissing:'Create or open this session’s task before authorizing a page.', taskBlocked:'Unknown write or unavailable log: only read, revoke and hand off.',
-    title: 'Browser Flow',
+    title: 'Browser Flow', connected:'Connected',
     empty: 'No Browser page to authorize. Open a page in the right sidebar first.',
     authorize: 'Authorize control',
     revoke: 'Revoke control',
@@ -171,12 +172,13 @@ export const COPY: {
  * @param {object} input - component inputs.
  * @param {ReactLike} input.React - platform React.
  * @param {(key: string) => string} input.t - locale lookup.
+ * @param {PanelUi} input.ui - typed Host controls; owns presentation only.
  * @param {ClientHelpers} [input.core] - client helpers; defaults to {@link CORE}.
  * @param {PagePrograms} [input.pageCode] - page programs; defaults to {@link PAGE_CODE}.
  * @returns {Function} React component.
  */
-export function createPanel({ React, t, core = CORE, pageCode = PAGE_CODE }: {React:ReactLike;t:(key:string)=>string;core?:ClientHelpers;pageCode?:PagePrograms}) {
-  const h = React.createElement
+export function createPanel({ React, t, ui, core = CORE, pageCode = PAGE_CODE }: {React:ReactLike;t:(key:string)=>string;ui:PanelUi;core?:ClientHelpers;pageCode?:PagePrograms}) {
+  const h = React.createElement,button=ui.button,input=ui.input
 
   /**
    * One panel instance: page discovery, authorization and the command loop.
@@ -685,38 +687,39 @@ export function createPanel({ React, t, core = CORE, pageCode = PAGE_CODE }: {Re
     const taskPanel=h('section',{'data-browser-flow-task':''},h('h4',null,t('taskTitle')),
       taskSummary ? h('p',{'data-browser-flow-task-identity':''},`${taskSummary.task.taskId} · ${taskSummary.state} · ${taskSummary.goal}`) : h('p',null,t('taskMissing')),
       taskSummary?.writeBlocked ? h('p',{role:'alert'},taskSummary?.state==='read_only'?t('taskReadOnly'):t('taskBlocked')) : null,
-      taskSummary?.active_context?.waiting ? h('section',{'data-browser-flow-user-wait':''},h('p',null,t('waitingUser')+': '+taskSummary.active_context.waiting.reason),h('p',null,taskSummary.active_context.waiting.resumeCondition),h('label',null,t('userInput'),h('input',{'data-browser-flow-input':'user-input',value:userInput,onChange:(event: {target:HTMLInputElement|HTMLSelectElement})=>setUserInput(event.target.value)})),h('button',{type:'button','data-browser-flow-action':'task-resume',disabled:busy||taskSummary.writeBlocked,onClick:()=>{void taskOperation('resume')}},t('resumeTask'))) : null,
-      h('label',null,t('taskGoal'),h('input',{'data-browser-flow-input':'task-goal',value:taskForm.goal,onChange:(event: {target:HTMLInputElement|HTMLSelectElement})=>setTaskForm({...taskForm,goal:event.target.value})})),
-      h('label',null,t('taskOrigins'),h('input',{'data-browser-flow-input':'task-origins',value:taskForm.origins,onChange:(event: {target:HTMLInputElement|HTMLSelectElement})=>setTaskForm({...taskForm,origins:event.target.value})})),
+      taskSummary?.active_context?.waiting ? h('section',{'data-browser-flow-user-wait':''},h('p',null,t('waitingUser')+': '+taskSummary.active_context.waiting.reason),h('p',null,taskSummary.active_context.waiting.resumeCondition),h('label',null,t('userInput'),input({'data-browser-flow-input':'user-input',value:userInput,onChange:(event: {target:HTMLInputElement|HTMLSelectElement})=>setUserInput(event.target.value)})),button({type:'button','data-browser-flow-action':'task-resume',disabled:busy||taskSummary.writeBlocked,onClick:()=>{void taskOperation('resume')}},t('resumeTask'))) : null,
+      h('label',null,t('taskGoal'),input({'data-browser-flow-input':'task-goal',value:taskForm.goal,onChange:(event: {target:HTMLInputElement|HTMLSelectElement})=>setTaskForm({...taskForm,goal:event.target.value})})),
+      h('label',null,t('taskOrigins'),input({'data-browser-flow-input':'task-origins',value:taskForm.origins,onChange:(event: {target:HTMLInputElement|HTMLSelectElement})=>setTaskForm({...taskForm,origins:event.target.value})})),
       h('label',null,t('taskDefinition'),h('select',{'data-browser-flow-input':'task-definition',value:taskForm.definitionId,disabled:!!taskSummary,onChange:(event: {target:HTMLInputElement|HTMLSelectElement})=>{const selected=definitions.find((item: DefinitionOption)=>item.id===event.target.value);setTaskForm({...taskForm,definitionId:event.target.value,workflowRef:selected?.workflows[0]?.id ?? ''})}},h('option',{value:''},t('taskGeneric')),...definitions.map((item: DefinitionOption)=>h('option',{key:item.id,value:item.id},item.id)))),
       selectedDefinition ? h('label',null,t('taskWorkflow'),h('select',{'data-browser-flow-input':'task-workflow',value:taskForm.workflowRef,disabled:!!taskSummary,onChange:(event: {target:HTMLInputElement|HTMLSelectElement})=>setTaskForm({...taskForm,workflowRef:event.target.value})},...selectedDefinition.workflows.map((row: {id:string;description:string})=>h('option',{key:row.id,value:row.id},row.description)))) : null,
-      ...(['create','open','revise','cancel','finish']).map(operation=>h('button',{type:'button','data-browser-flow-action':'task-'+operation,disabled:(['cancel','finish'].includes(operation)?false:busy)||(['revise','cancel','finish'].includes(operation)&&!taskSummary)||(operation==='create'&&!!taskSummary),onClick:()=>{void taskOperation(((operation) as 'create' | 'open' | 'revise' | 'cancel' | 'finish' | 'resume'))}},t(operation+'Task'))))
+      ...(['create','open','revise','cancel','finish']).map(operation=>button({type:'button','data-browser-flow-action':'task-'+operation,disabled:(['cancel','finish'].includes(operation)?false:busy)||(['revise','cancel','finish'].includes(operation)&&!taskSummary)||(operation==='create'&&!!taskSummary),onClick:()=>{void taskOperation(((operation) as 'create' | 'open' | 'revise' | 'cancel' | 'finish' | 'resume'))}},t(operation+'Task'))))
 
     const rows = pages.map((page: DiscoveredPage) => h('li', { key: page.lease, 'data-browser-flow-page': page.lease },
       h('div', { className: 'bf-page-title' }, page.title || page.url),
       h('div', { className: 'bf-page-url' }, page.url),
       // The alias is what makes two pages on the same address distinguishable.
       h('div', { className: 'bf-page-alias' }, `${t('pageAlias')}: ${page.tabId}`),
-      h('div', { className: 'bf-page-state' }, authorized === page.lease ? t('authorized') : ''),
-      h('button', {
+      h('div', { className: 'bf-page-state' }, authorized === page.lease ? ui.tag('success',t('authorized')) : null),
+      button( {
         type: 'button',
         disabled: busy || !supported || !taskSummary,
         'data-browser-flow-action': 'authorize',
         onClick: () => { void authorize(page) },
       }, t('authorize'))))
 
-    const fileFields=(['path','unitId','legalIdentity','firstRow','lastRow'] as const).map(key=>h('label',{key},t('file_'+key),h('input',{type:'text','data-browser-flow-input':key,value:fileForm[key],disabled:busy,onChange:(event: {target:HTMLInputElement|HTMLSelectElement})=>setFileForm({...fileForm,[key]:event.target.value})})))
+    const fileFields=(['path','unitId','legalIdentity','firstRow','lastRow'] as const).map(key=>h('label',{key},t('file_'+key),input({type:'text','data-browser-flow-input':key,value:fileForm[key],disabled:busy,onChange:(event: {target:HTMLInputElement|HTMLSelectElement})=>setFileForm({...fileForm,[key]:event.target.value})})))
     const filePanel=authorized&&taskSummary?.adapter==='bjrsj'&&!taskSummary?.writeBlocked?h('section',{'data-browser-flow-import':''},h('h4',null,t('importTitle')),h('p',null,t('importHint')),...fileFields,
       h('label',null,t('file_kind'),h('select',{'data-browser-flow-input':'kind',value:fileForm.kind,disabled:busy,onChange:(event: {target:HTMLInputElement|HTMLSelectElement})=>setFileForm({...fileForm,kind:event.target.value})},...['add','modify','reduce'].map(kind=>h('option',{key:kind,value:kind},t('file_'+kind))))),
-      h('button',{type:'button','data-browser-flow-action':'prepare-file',disabled:busy,onClick:()=>{void fileOperation('prepare')}},t('prepareFile')),
+      button({type:'button','data-browser-flow-action':'prepare-file',disabled:busy,onClick:()=>{void fileOperation('prepare')}},t('prepareFile')),
       filePreview?h('div',{'data-browser-flow-file-preview':''},h('p',null,filePreview.path),h('p',null,`${t('file_kind')}: ${t('file_'+filePreview.kind)}; ${filePreview.bytes} ${t('bytes')}; ${filePreview.rows} ${t('rows')}`),h('p',null,'SHA-256: '+filePreview.sha256),h('p',null,t('stopBoundary')),
-        h('button',{type:'button','data-browser-flow-action':'confirm-file',disabled:busy||filePreview.confirmed,onClick:()=>{void fileOperation('confirm')}},t(filePreview.confirmed?'fileConfirmed':'confirmFile'))):null):null
+        button({type:'button','data-browser-flow-action':'confirm-file',disabled:busy||filePreview.confirmed,onClick:()=>{void fileOperation('confirm')}},t(filePreview.confirmed?'fileConfirmed':'confirmFile'))):null):null
     return h('section', { 'data-browser-flow-panel': '', 'aria-label': t('title') },
       taskPanel,
       filePanel,
       h('header', { className: 'bf-header' },
         h('h3', null, t('title')),
-        h('button', {
+        h('span',{className:'bf-status',role:'status'},ui.dot(connected?'done':'idle'),t(connected?'connected':'disconnected')),
+        button( {
           type: 'button',
           'data-browser-flow-action': 'revoke',
           disabled: !supported,

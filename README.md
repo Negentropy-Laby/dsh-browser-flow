@@ -46,6 +46,11 @@ A linked installation uses the checkout; rebuild after changes and reload both
 Host and Client together. Browser Flow uses protocol v3; mismatched peers are
 rejected. See the [upgrade guide](docs/upgrade-v3.md).
 
+The panel uses the Host's shared UI primitives and theme. Its scoped stylesheet
+is embedded in the Client bundle and removed with the plugin. Reload the matching
+Client after a rebuild; missing Host controls fail visibly rather than falling
+back to an unstyled form.
+
 ## Use a task
 
 1. Open the intended page in Sidebar Browser and log in yourself.
