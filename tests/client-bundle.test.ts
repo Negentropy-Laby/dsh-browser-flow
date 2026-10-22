@@ -225,7 +225,7 @@ describe('package manifest and profile patch', () => {
   })
 
   it('ships every file the Host and Client entry points need', () => {
-    for (const file of ['lib/client.js', 'src/index.ts', 'cordis.patch.yml'] as const) {
+    for (const file of ['lib/client.js', 'lib/host/index.js', 'lib/host/index.d.ts', 'lib/page-programs.d.ts', 'cordis.patch.yml'] as const) {
       assert.ok(manifest.files.some((entry:string) => file.startsWith(entry)), `${file} must be published`)
     }
   })

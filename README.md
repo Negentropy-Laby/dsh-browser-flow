@@ -46,20 +46,11 @@ A linked installation uses the checkout; rebuild after changes and reload both
 Host and Client together. Browser Flow uses protocol v3; mismatched peers are
 rejected. See the [upgrade guide](docs/upgrade-v3.md).
 
-The panel uses the Host's shared UI primitives and theme. Its scoped stylesheet
-is embedded in the Client bundle and removed with the plugin. Reload the matching
-Client after a rebuild; missing Host controls fail visibly rather than falling
-back to an unstyled form.
-
-The compact panel keeps connection status and **Revoke control** above its
-scrollable content. A bound task shows its goal and lifecycle; expand editing
-only when revising it. Polling preserves drafts. If the scope changes, reload
-that task before submitting the revision; **Cancel editing** sends no request.
-Wait reasons and unknown-write restrictions remain visible. Page cards expose
-their full authorization target on demand. File review appears only for an
-authorized, supported import workflow, with the complete confirmation summary.
-Waiting for input keeps explicit page authorization and file preparation available.
-Task lifecycle and graph availability do not imply business acceptance.
+The panel uses the Host's shared controls and theme, with revocation above the
+scrollable content. See the [panel guide](docs/upgrade-guide/v0.1.0/panel-ui/guide.md)
+for editing, waits and complete file review. Reload matching Host and Client
+after rebuilding. Waiting retains explicit authorization and file preparation;
+task lifecycle and graph availability do not establish business acceptance.
 
 ## Use a task
 
@@ -180,19 +171,21 @@ entry. A missing compiler fails the check. Host tests also
 report skips when their optional artifacts are unavailable. Automated checks
 and synthetic fixtures do not establish logged-in website or business acceptance.
 
-The [bounded evidence qualification](docs/qualification/bounded-evidence.md)
+The [bounded evidence qualification](https://github.com/Negentropy-Laby/dsh-browser-flow/blob/b55dd017c2ef7217606688d2c15078e17eb29ecc/docs/qualification/bounded-evidence.md)
 records the current repair candidate, allocation limits, detail snapshots and
-target checks. The [scoped graph read qualification](docs/qualification/graph-read-repair.md)
+target checks. The [scoped graph read qualification](https://github.com/Negentropy-Laby/dsh-browser-flow/blob/b55dd017c2ef7217606688d2c15078e17eb29ecc/docs/qualification/graph-read-repair.md)
 retains its earlier candidate and failed runs.
-The [control panel UI qualification](docs/qualification/panel-ui.md) retains its
+The [control panel UI qualification](https://github.com/Negentropy-Laby/dsh-browser-flow/blob/b55dd017c2ef7217606688d2c15078e17eb29ecc/docs/qualification/panel-ui.md) retains its
 own UI candidate and target Desktop checks. The preceding
-[task graph repair qualification](docs/qualification/task-graph-repair.md) retains
+[task graph repair qualification](https://github.com/Negentropy-Laby/dsh-browser-flow/blob/b55dd017c2ef7217606688d2c15078e17eb29ecc/docs/qualification/task-graph-repair.md) retains
 its own candidate and results. Website acceptance remains separate.
 
-See [testing](docs/testing.md) for explicit Host artifact inputs and local-only
-receipts. The package whitelist distributes `src`, `lib`, generic documentation,
-the profile patch and the pinned runtime dependency; it excludes local tasks and
-recorded runs.
+See [testing](https://github.com/Negentropy-Laby/dsh-browser-flow/blob/master/docs/testing.md) for explicit Host artifact inputs and local-only
+receipts. The package whitelist distributes compiled code, required declarations, user
+documentation, the profile patch and pinned runtime dependencies. Source code,
+development instructions and [qualification records](https://github.com/Negentropy-Laby/dsh-browser-flow/tree/master/docs/qualification)
+remain in the repository; local tasks and recorded runs remain private. See the
+[distribution guide](docs/upgrade-guide/v0.1.0/simplification/guide.md).
 
 ## Known limitations
 
