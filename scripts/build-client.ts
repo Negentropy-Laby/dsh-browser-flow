@@ -18,7 +18,7 @@
 import { Script } from 'node:vm'
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join, posix, relative } from 'node:path'
+import { dirname, join, posix } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
 
@@ -43,8 +43,6 @@ const PLATFORM_MODULES = new Set([
 
 /** A local import: `import { a, b } from './x.ts'` or `import './x.js'`. */
 const LOCAL_IMPORT = /^import\s+(?:\{([^}]*)\}\s+from\s+)?(['"])(\.[^'"]+|#browser-flow\/page-programs)\2\s*;?\s*$/gm
-/** Literal packaged JSON is embedded, never fetched by the Client. */
-const LOCAL_JSON_IMPORT = /^import\s+(\w+)\s+from\s+'(\.[^']+\.json)'\s+with\s*\{\s*type:\s*'json'\s*\}\s*;?\s*$/gm
 
 /**
  * Strip block and line comments from one module body.
@@ -105,10 +103,6 @@ export function stripModuleSyntax({ file, source }: ModuleSource) {
   }
   visit(parsed)
   let body = source.replace(/[\t ]+$/gm, (spaces: string, offset: number) => literals.some(range => offset >= range.start && offset < range.end) ? spaces : '')
-  body = body.replace(LOCAL_JSON_IMPORT, (_match, name, specifier) => {
-    const path=join(sourceRoot,posix.dirname(file),specifier)
-    return `const ${name} = ${JSON.stringify(JSON.parse(readFileSync(path,'utf8')))}\n`
-  })
   body = body.replace(LOCAL_IMPORT, '')
   body = body.replace(/^export\s+default\s+[^;\n]+;?$/gm, '')
   body = body.replace(/^export\s+\{[^}]*\}\s*(?:from\s+'[^']+')?\s*;?$/gm, '')
@@ -219,5 +213,4 @@ export function build() {
 if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1]) {
   const { checks } = build()
   process.stdout.write(`browser-flow: lib/client.js written; ${String(checks.length)} contract checks passed\n`)
-  void relative
 }

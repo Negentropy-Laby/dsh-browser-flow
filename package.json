@@ -65,7 +65,7 @@
   "types": "./lib/host/index.d.ts",
   "imports": {
     "#browser-flow/page-programs": {
-      "types": "./src/page/program-sources.d.ts",
+      "types": "./lib/page-programs.d.ts",
       "default": "./lib/page-programs.js"
     }
   }

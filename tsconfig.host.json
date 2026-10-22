@@ -21,6 +21,7 @@
   "exclude": [
     "src/client.ts",
     "src/clientcore.ts",
+    "src/import-page.ts",
     "src/panel.ts",
     "src/panel-ui.ts",
     "src/panel-view.ts",

@@ -51,6 +51,12 @@ under `.cache/fixtures/`. The native import fixture reads that generated page.
 Tracked HTML contains no inline executable script. Fixture generation is for
 synthetic checks and does not establish real website acceptance.
 
+Page-program verification metadata is generated under `.cache/page-programs.json`.
+The installed package reads the generated JavaScript and carries its paired
+declarations; verification metadata is not a runtime dependency. Client-only
+import-program builders are bundled into the Client rather than emitted as
+unused Host modules.
+
 ## Go graph qualification
 
 `npm run verify` builds the production Windows helper and an owned host-platform
