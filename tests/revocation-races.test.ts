@@ -1,7 +1,9 @@
 import {present,expectRecord} from './helpers/assertions.ts'
 import {deferred} from './helpers/deferred.ts'
 import type {BundleRegistration} from './helpers/client-ports.ts'
-import { TASK, TASK_VIEW } from './helpers/task-scope.ts'
+import { TASK as BASE_TASK, TASK_VIEW as BASE_VIEW,runScope } from './helpers/task-scope.ts'
+import {fixturePrimitives} from './helpers/panel-ui.ts'
+const TASK=runScope({...BASE_TASK,workflowRef:'import'}),TASK_VIEW={...BASE_VIEW,task:TASK}
 /** Revocation barriers exercised against the shipped bundle and real React/DOM. */
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
@@ -117,7 +119,7 @@ async function withPanel(run:(panel:PanelFixture)=>Promise<void>, fileRace = fal
   try {
     let factory:BundleRegistration['factory']|undefined
     window.__ModuleLoader__ = { load(registration:BundleRegistration) { factory = registration.factory } }
-    const platform:Record<string,unknown> = { react: React, 'react-dom': main.default ?? main, 'react-dom/client': client }
+    const platform:Record<string,unknown> = { react: React, '@deepseek-ai/dsh-client-ui-primitives':fixturePrimitives(React), 'react-dom': main.default ?? main, 'react-dom/client': client }
     const requirePlatform = (name:string) => {
       assert.ok(Object.hasOwn(platform, name), `non-platform dependency: ${name}`)
       return platform[name]
