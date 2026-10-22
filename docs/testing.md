@@ -44,6 +44,10 @@ Synthetic tests and code validators can be public; local run artifacts cannot.
 Before publishing, inspect staged files, the actual package archive and reachable
 Git history. A clean working tree or an ignore rule alone does not establish this.
 
+The [simplification review revision](qualification/simplification-r2.md) separates
+the current test checks from retained runtime evidence and records the subsequent
+PR #2 publication of the original local commits.
+
 Fixed page programs are compiled with a DOM-only TypeScript program before they
 are serialized into the Host/Client data module. Run `npm run build:fixtures` to
 assemble the three static HTML fixtures with their compiled TypeScript behavior
