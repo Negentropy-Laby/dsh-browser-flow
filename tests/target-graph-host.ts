@@ -2,7 +2,9 @@ import {expectOk,expectString,present,expectRecord,expectList,expectFailure} fro
 import type {HostRuntime} from './helpers/host-runtime.ts'
 /** Explicit Windows target-artifact fixture. It does not establish real website acceptance. */
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, readFile, writeFile, open, type FileHandle } from 'node:fs/promises'
+import type {StatOptions} from 'node:fs'
+import {mock} from 'node:test'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -14,8 +16,62 @@ import {resolveConfig} from '../src/config.ts'
 import type {GraphInput} from '../src/graph/protocol.ts'
 import {TASK} from './helpers/task-scope.ts'
 import {syntheticDefinition} from './helpers/task-definition.ts'
+import type {TaskStore,TaskAccess} from '../lib/host/task-store.js'
 
 function barrier(){let release=()=>{},entered=()=>{};const gate=new Promise<void>(r=>{release=r}),ready=new Promise<void>(r=>{entered=r});return {release,entered,gate,ready}}
+async function boundedArtifacts(store:TaskStore,access:TaskAccess,checks:string[]){
+ const data=store.openTask(access),path=join(data.dir,'evidence',access.run.runId,'bounded-synthetic.bin'),original=Buffer.alloc(4096,1)
+ await writeFile(path,original)
+ const ref=await store.artifact(access,path,'snapshot'),writer=await open(path,'r+'),prototype=Object.getPrototypeOf(writer) as FileHandle
+ const identity=await writer.stat({bigint:true}),stat=prototype.stat,read=prototype.read
+ try{
+  for(const mode of ['grow32','grow128','ongoing','short'] as const){
+   await writer.truncate(0);await writer.write(original,0,original.length,0)
+   const seen=new Set<FileHandle>(),buffers=new Set<Buffer>();let total=0,closed=0,size=original.length
+   try{
+    mock.method(prototype,'stat',async function(this:FileHandle,options?:StatOptions){
+     const value=await stat.call(this,options)
+     if(this!==writer&&value.dev===identity.dev&&value.ino===identity.ino&&!seen.has(this)){
+      seen.add(this);const close=this.close.bind(this)
+      mock.method(this,'close',async()=>{try{await close()}finally{closed++}})
+      if(mode==='grow32'||mode==='grow128')await writer.truncate((mode==='grow32'?32:128)*1024*1024)
+     }
+     return value
+    })
+    mock.method(prototype,'read',async function(this:FileHandle,buffer:Buffer,offset:number,length:number,position:number){
+     if(!seen.has(this))return Reflect.apply(read,this,[buffer,offset,length,position])
+     buffers.add(buffer)
+     if(mode==='ongoing'){size+=1024*1024;await writer.truncate(size)}
+     const result=expectRecord(await Reflect.apply(read,this,[buffer,offset,Math.min(length,mode==='short'||mode==='ongoing'?256:length),position]))
+     assert.equal(result.buffer,buffer);total+=Number(result.bytesRead);return result
+    })
+    if(mode==='short')assert.deepEqual(await store.readArtifact(data,ref),original)
+    else await assert.rejects(mode==='grow128'?store.artifact(access,path,'snapshot'):store.readArtifact(data,ref),/task-evidence-mismatch/)
+    assert.equal(total,original.length+(mode==='short'?0:1));assert.equal(buffers.size,1)
+    assert.ok([...buffers].every(buffer=>buffer.length===original.length+1));assert.equal(closed,1)
+    assert.ok([...seen].every(handle=>handle.fd===-1))
+   }finally{mock.restoreAll()}
+  }
+ }finally{await writer.close();await rm(path)}
+ checks.push('Windows stat-after-growth reads and allocations bounded at initial size plus one','Windows ongoing growth, short reads, verify=false and handle closure')
+}
+async function snapshotRace(store:TaskStore,access:TaskAccess,id:string,checks:string[]){
+ const data=store.openTask(access),version=data.events.length,hold=barrier(),sample=await open(join(data.dir,'manifest.json'),'r'),prototype=Object.getPrototypeOf(sample) as FileHandle
+ await sample.close()
+ const write=prototype.writeFile,sync=prototype.sync,read=store.readArtifact.bind(store),opened=store.openTask.bind(store);let fd=-2,reads=0;const versions:number[]=[]
+ mock.method(prototype,'writeFile',function(this:FileHandle,...args:Parameters<FileHandle['writeFile']>){if(Buffer.isBuffer(args[0])&&args[0].includes(Buffer.from('late-windows-snapshot')))fd=this.fd;return Reflect.apply(write,this,args)})
+ mock.method(prototype,'sync',async function(this:FileHandle){await sync.call(this);if(this.fd===fd){fd=-2;const close=this.close.bind(this);mock.method(this,'close',async()=>{await close();hold.entered();await hold.gate})}})
+ const writing=store.asset(access,'page',{marker:'late-windows-snapshot'});void writing.catch(()=>{})
+ try{
+  await hold.ready
+  store.openTask=(...args)=>{const value=opened(...args);if(reads===2)versions.push(value.events.length);return value}
+  store.readArtifact=async(...args)=>{const bytes=await read(...args);if(++reads===2)hold.release();return bytes}
+  await assert.rejects(store.detail(access,id,0,100),{code:'task_busy'});await writing
+  assert.equal(versions[0],version);assert.equal(versions.at(-1),version+1)
+ }finally{hold.release();await writing;store.openTask=opened;store.readArtifact=read;mock.restoreAll()}
+ const stable=expectRecord(await store.detail(access,id,0,100));assert.equal(stable.contextVersion,version+1)
+ checks.push('Windows synchronized append after inner evidence guard rejects mismatched original detail','Windows stable original detail reports its captured journal version')
+}
 async function main(){
  if(process.platform!=='win32'||process.arch!=='x64')throw new Error('NOT_RUN: this fixture requires Windows x64')
  const checkout=process.env.DSH_CHECKOUT??process.argv[2],receipt=process.env.DSH_BF_GRAPH_RECEIPT??process.argv[3]
@@ -129,11 +185,24 @@ async function main(){
    evidenceGraph.detail=async(...args)=>{graphs++;return detail(...args)}
    store.refreshEvidence=async(...args)=>{evidence++;return refresh(...args)}
    store.readArtifact=async(...args)=>{reads++;return read(...args)}
-   await assert.rejects(store.detail(access,'graph',Number.MAX_SAFE_INTEGER,100,projectionId),{code:'invalid_request'})
+   for(const ref of [pageRef,proofRef,'criteria','goal','waiting','instructions/steps.md','graph','digest-synthetic']){
+    await assert.rejects(store.detail(access,ref,Number.MAX_SAFE_INTEGER,100,projectionId),{code:'invalid_request'})
+    assert.equal(expectFailure(await present(context.tools.get('browser_observe')).execute({view:'task',ref,offset:Number.MAX_SAFE_INTEGER},{agent:agents.get('graph-a'),signal:new AbortController().signal})).code,'invalid_request')
+   }
    await assert.rejects(store.detail(access,'graph',totalChars+1,100,projectionId),{code:'invalid_request'})
    assert.equal(graphs,0);assert.equal(evidence,0);assert.equal(reads,0)
    const end=expectRecord(await store.detail(access,'graph',totalChars,100,projectionId));assert.equal(end.text,'');assert.equal(end.complete,true)
    assert.equal(reads,2);checks.push('scoped offset preflight skips Windows graph and evidence reads','two-phase unique original verification and exact-end continuation')
+   checks.push('all original and derived offsets reject before evidence I/O; normal Host tool boundary rejects extreme offsets')
+   store.readArtifact=read;store.refreshEvidence=refresh
+   await boundedArtifacts(store,access,checks)
+   await snapshotRace(store,access,pageRef,checks)
+   const large=await store.asset(access,'file',{text:'中😀'.repeat(10000)}),config=store.graphConfig
+   store.graphConfig={...config,graphMaxFrameBytes:65536,graphMaxDetailBytes:65536}
+   await assert.rejects(store.detail(access,large,0,100),/detail_capacity/)
+   store.graphConfig=config
+   checks.push('Windows original detail enforces UTF-8 byte capacity')
+   await store.detail(access,'graph',0,100)
    const ref={role:'proof',path:expectString(artifact.artifact),sha256:expectString(artifact.sha256),bytes:Number(artifact.bytes)},state=store.artifactState.bind(store),data=store.openTask(access),fixed=await state(data,ref)
    reads=0
    store.artifactState=async(owner,item)=>item.path===ref.path?fixed:state(owner,item)

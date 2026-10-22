@@ -82,6 +82,14 @@ metadata provider isolates changed-content rejection; it does not demonstrate a
 metadata-preserving attack on a real volume. Run it after building the candidate;
 do not mix source and built class identities.
 
+The fixture also grows real Windows files after stat and between short reads,
+measuring buffer capacity and cumulative reads against the original size plus one.
+It checks original detail capacity and offset rejection before evidence I/O. A
+barrier on a real synchronized append exercises the gap between the evidence
+guard and the outer detail continuation; inconsistent journal versions must be
+rejected. These checks do not use an RSS timing assertion or prove a bound on
+total Host memory. Evidence-original reads retain their 16,000,000-byte limit.
+
 Compiler checks include the test fixtures. Synthetic JSON assertions narrow dynamic
 page and IPC results; intentional static counterexamples use local, documented
 `@ts-expect-error` lines. No compiler face disables strict checking for fixtures.

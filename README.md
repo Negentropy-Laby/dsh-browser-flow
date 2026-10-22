@@ -180,8 +180,10 @@ entry. A missing compiler fails the check. Host tests also
 report skips when their optional artifacts are unavailable. Automated checks
 and synthetic fixtures do not establish logged-in website or business acceptance.
 
-The [scoped graph read qualification](docs/qualification/graph-read-repair.md)
-records the current repair candidate, retained failed runs and target checks.
+The [bounded evidence qualification](docs/qualification/bounded-evidence.md)
+records the current repair candidate, allocation limits, detail snapshots and
+target checks. The [scoped graph read qualification](docs/qualification/graph-read-repair.md)
+retains its earlier candidate and failed runs.
 The [control panel UI qualification](docs/qualification/panel-ui.md) retains its
 own UI candidate and target Desktop checks. The preceding
 [task graph repair qualification](docs/qualification/task-graph-repair.md) retains
