@@ -139,7 +139,7 @@ export declare class TaskStore {
     artifactState(data: TaskData, ref: import('./task-criteria.ts').Artifact): Promise<BigIntStats>;
     /** @param {TaskData} data - owner. @param {import('./task-criteria.ts').Artifact} ref - relative reference. @param {boolean} [verify] - enforce recorded digest. @returns {Promise<Buffer>} complete bounded bytes from an unchanged regular file. */
     readArtifact(data: TaskData, ref: import('./task-criteria.ts').Artifact, verify?: boolean): Promise<Buffer>;
-    /** @param {TaskAccess} access - owner. @returns {Promise<void>} one request-local verification of originals, fenced to the exact run and journal position. */
+    /** @param {TaskAccess} access - owner. @returns {Promise<void>} request-local verification and final content recheck of each unique original, fenced to the exact run and journal position. */
     refreshEvidence(access: TaskAccess): Promise<void>;
     /** @param {TaskAccess} access - owner. @param {Record<string,unknown>} result - trusted validator result. @param {string} proofRef - private original reference. @returns {Promise<string>} independently checked current verdict. */
     verdict(access: TaskAccess, result: Record<string, unknown>, proofRef: string): Promise<string>;

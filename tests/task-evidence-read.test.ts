@@ -12,12 +12,12 @@ async function fixture(t:import('node:test').TestContext){
  const proof=present(data.events.find(e=>e.type==='asset'&&e.data.kind==='evidence')),proofRef=String(proof.data.id),path=join(data.dir,expectString(expectRecord(proof.data.data).artifact))
  return {...env,store,access,data,proofRef,path}
 }
-it('verifies each unchanged original once in a normal tool task observation and again in each new request',async t=>{
+it('verifies each unchanged original twice per tool task observation without caching across requests',async t=>{
  const {store,tool}=await fixture(t);let reads=0;const read=store.readArtifact.bind(store)
  store.readArtifact=async(...args)=>{reads++;return read(...args)}
  for(let request=1;request<=2;request++){
   const view=expectRecord(expectOk(await tool('a','browser_observe',{view:'task'})))
-  assert.equal(view.businessVerdict,'entry_reached');assert.equal(reads,request)
+  assert.equal(view.businessVerdict,'entry_reached');assert.equal(reads,request*2)
  }
 })
 it('reuses shared attachment bytes within one fact read only',async t=>{
@@ -26,8 +26,41 @@ it('reuses shared attachment bytes within one fact read only',async t=>{
  const ref=await store.artifact(access,attachment,'snapshot')
  await store.proof(access,{...value,files:[ref]});await store.proof(access,{...value,files:[ref]})
  let reads=0;const read=store.readArtifact.bind(store);store.readArtifact=async(...args)=>{reads++;return read(...args)}
- await store.view(access,8000);assert.equal(reads,4)
  await store.view(access,8000);assert.equal(reads,8)
+ await store.view(access,8000);assert.equal(reads,16)
+})
+it('rejects changed proof bytes even when the metadata provider retains the original identity',async t=>{
+ const {store,access,data,path,proofRef}=await fixture(t),state=store.artifactState.bind(store),read=store.readArtifact.bind(store)
+ const proof=present(data.events.find(e=>e.data.id===proofRef)),ref={role:'proof',path:expectString(expectRecord(proof.data.data).artifact),sha256:expectString(expectRecord(proof.data.data).sha256),bytes:Number(expectRecord(proof.data.data).bytes)}
+ const originalState=await state(data,ref);let reads=0
+ // Fixed metadata isolates content verification; it does not claim a real-volume timestamp attack.
+ store.artifactState=async(owner,item)=>item.path===ref.path?originalState:state(owner,item)
+ store.readArtifact=async(...args)=>{reads++;const bytes=await read(...args);if(reads===1)await writeFile(path,Buffer.alloc(bytes.length,32));return bytes}
+ await store.refreshEvidence(access)
+ assert.equal(reads,2);assert.equal(data.checkedProofs?.has(proofRef),false)
+ assert.ok(data.evidenceIssues?.includes(proofRef));assert.equal(taskFacts(data).verdict,'unverified')
+})
+it('invalidates every proof depending on changed shared bytes with fixed reported metadata',async t=>{
+ const {store,access,data,path}=await fixture(t),value=expectRecord(JSON.parse(await readFile(path,'utf8')))
+ const attachment=join(data.dir,'evidence',access.run.runId,'shared.bin');await writeFile(attachment,'original-private-content')
+ const ref=await store.artifact(access,attachment,'snapshot'),left=await store.proof(access,{...value,files:[ref]}),right=await store.proof(access,{...value,files:[ref]})
+ const state=store.artifactState.bind(store),read=store.readArtifact.bind(store),originalState=await state(data,ref);let sharedReads=0
+ store.artifactState=async(owner,item)=>item.path===ref.path?originalState:state(owner,item)
+ store.readArtifact=async(...args)=>{const shared=args[1].path===ref.path;if(shared)sharedReads++;const bytes=await read(...args);if(shared&&sharedReads===1)await writeFile(attachment,Buffer.alloc(bytes.length,32));return bytes}
+ await store.refreshEvidence(access)
+ assert.equal(sharedReads,2)
+ for(const id of [left,right]){assert.equal(data.checkedProofs?.has(id),false);assert.ok(data.evidenceIssues?.includes(id))}
+})
+it('never publishes a superseded evidence check over the newer request result',async t=>{
+ const {store,access,data,path}=await fixture(t),hold=barrier(),read=store.readArtifact.bind(store);let first=true
+ store.readArtifact=async(...args)=>{const bytes=await read(...args);if(first){first=false;hold.entered();await hold.gate}return bytes}
+ const earlier=store.refreshEvidence(access),refused=assert.rejects(earlier,{code:'task_busy'})
+ try{
+  await hold.ready;await writeFile(path,'{}\n');await store.refreshEvidence(access)
+  assert.equal(taskFacts(data).verdict,'unverified')
+  hold.release();await refused
+  assert.equal(data.checkedProofs?.size,0);assert.equal(taskFacts(data).verdict,'unverified')
+ }finally{hold.release()}
 })
 it('discards a derived graph when evidence changes during Go work and returns freshly checked Host facts',async t=>{
  const {service,store,access,path}=await fixture(t),hold=barrier(),project=service.graph.project.bind(service.graph)

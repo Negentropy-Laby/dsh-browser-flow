@@ -38,4 +38,15 @@ browser writes are not automatically replayed.
 
 Kernel v3 uses criterion-specific proof edge IDs and validates recorded edges in replay order. Outer graph continuation IDs include the kernel version; restart at offset zero after upgrading. The raw safe input digest remains the internal RPC binding. No task journal or Browser Flow protocol migration is needed.
 
-Task fact reads now verify evidence once after graph work, with request-local byte reuse and file-state checks. Invalid duplicate receipts no longer change the unknown-write block. Failed task creation cleans only an exclusively allocated, confirmed-unregistered directory; uncertain registration or cleanup preserves history and refuses repeated creation for that Session until storage is corrected and the Session reopened.
+Task fact reads verify originals after graph work. Within each request, shared
+references reuse initially verified bytes; immediately before publishing facts,
+every unique original is read and hashed again even when its metadata is unchanged.
+An unchanged original requires at most two complete reads per request. Changed or
+unreadable originals invalidate every dependent proof. This verifies content at
+the final read, without promising an atomic filesystem transaction or caching
+proof validity across requests.
+
+Invalid duplicate receipts do not change the unknown-write block. Failed task
+creation cleans only an exclusively allocated, confirmed-unregistered directory;
+uncertain registration or cleanup preserves history and refuses repeated creation
+for that Session until storage is corrected and the Session reopened.

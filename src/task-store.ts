@@ -473,7 +473,7 @@ tail: Promise<void>;
       return bytes
     }finally{await handle.close()}
   }
-  /** @param {TaskAccess} access - owner. @returns {Promise<void>} one request-local verification of originals, fenced to the exact run and journal position. */
+  /** @param {TaskAccess} access - owner. @returns {Promise<void>} request-local verification and final content recheck of each unique original, fenced to the exact run and journal position. */
   async refreshEvidence(access: TaskAccess) : Promise<void> {
     const data=this.openTask(access),events=data.events.slice(),version=events.length,tail=events.at(-1)?.hash,token=Symbol()
     this.evidenceReads.set(data,token)
@@ -505,7 +505,12 @@ tail: Promise<void>;
       }catch(error){void error;issues.add(row.id)}
     }
     const changed=new Set<string>()
-    for(const [key,item]of reads){try{if(!sameArtifactState(item.state,await this.artifactState(data,item.ref)))changed.add(key)}catch(error){void error;changed.add(key)}}
+    for(const [key,item]of reads){
+      try{
+        if(!sameArtifactState(item.state,await this.artifactState(data,item.ref))){changed.add(key);continue}
+        await this.readArtifact(data,item.ref)
+      }catch(error){void error;changed.add(key)}
+    }
     for(const [id,used]of dependencies)if([...used].some(key=>changed.has(key))){checked.delete(id);issues.add(id)}
     this.openTask(access)
     if(this.evidenceReads.get(data)!==token)throw new TaskError('task_busy','a newer evidence read superseded this result; read the current task again')
