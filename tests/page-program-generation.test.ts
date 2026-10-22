@@ -3,7 +3,13 @@ import {it} from 'node:test'
 import {readFileSync,existsSync} from 'node:fs'
 import {createHash} from 'node:crypto'
 import ts from 'typescript'
-import {identityProgram,observeProgram,findProgram,actProgram,waitProgram} from '../src/pagecode.ts'
+import {prelude,identityProgram,observeProgram,findProgram,actProgram,waitProgram} from '../src/pagecode.ts'
+
+it('preserves the public prelude helper bindings',()=>{
+  const file=ts.createSourceFile('prelude.js',prelude(),ts.ScriptTarget.ES2022,true,ts.ScriptKind.JS)
+  const bindings=file.statements.filter(ts.isVariableStatement).flatMap(row=>row.declarationList.declarations).flatMap(row=>ts.isObjectBindingPattern(row.name)?row.name.elements.map(element=>element.name.getText(file)):[])
+  for(const name of ['REGISTRY','SENSITIVE_QUERY','registry','mintRef','elementOf','visible','safeUrl','documentToken'])assert.ok(bindings.includes(name),name)
+})
 
 it('builds all fixed operations from compiled TypeScript with no module dependencies',()=>{
   const file=new URL('../lib/page-programs.js',import.meta.url)

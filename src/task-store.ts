@@ -65,7 +65,7 @@ import { join, dirname, resolve, relative, isAbsolute } from 'node:path'
 import { validTaskScope, validRunScope, sameTaskScope, sameRunScope } from './task-scope.ts'
 import { withFileLock } from '@deepseek-ai/dsh-atomic-write'
 import { privateDirectory } from './import-files.ts'
-import { loadDefinition, noLinks, validOrigins, validateDefinition } from './task-definitions.ts'
+import { loadDefinition, noLinks, validOrigins } from './task-definitions.ts'
 
 /** Expected task failures are sanitized at the tool/HTTP boundary. */
 export class TaskError extends Error {

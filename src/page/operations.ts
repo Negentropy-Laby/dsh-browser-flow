@@ -2,7 +2,7 @@ import type {PageRuntime} from './runtime.ts'
 import type {PageActionInput,PageWaitInput,PagePolicy,PageResult} from './types.ts'
 /** Fixed page operation; parameters are serialized as JSON by the Host/Client builder. */
 export function identity(runtime: PageRuntime) {
-const {REGISTRY,SENSITIVE_QUERY,registry,mintToken,mintRef,elementOf,visible,operable,isPasswordField,isHiddenField,tagOf,roleOf,labelOf,textOf,valueOf,stateOf,describe,safeUrl,documentToken}=runtime;
+const {safeUrl,documentToken}=runtime;
 
     return {
       ok: true,
@@ -17,7 +17,7 @@ const {REGISTRY,SENSITIVE_QUERY,registry,mintToken,mintRef,elementOf,visible,ope
 }
 /** Fixed page operation; parameters are serialized as JSON by the Host/Client builder. */
 export function observe(runtime: PageRuntime, MAX_CHARS: number, MAX_NODES: number) {
-const {REGISTRY,SENSITIVE_QUERY,registry,mintToken,mintRef,elementOf,visible,operable,isPasswordField,isHiddenField,tagOf,roleOf,labelOf,textOf,valueOf,stateOf,describe,safeUrl,documentToken}=runtime;
+const {registry,mintRef,visible,textOf,describe,safeUrl,documentToken}=runtime;
 
 
 
@@ -75,11 +75,10 @@ const {REGISTRY,SENSITIVE_QUERY,registry,mintToken,mintRef,elementOf,visible,ope
 }
 /** Fixed page operation; parameters are serialized as JSON by the Host/Client builder. */
 export function find(runtime: PageRuntime, QUERY: {by:'text'|'role';value:string;name?:string}|{by:'attr';value:string;name:string}, LIMIT: number) {
-const {REGISTRY,SENSITIVE_QUERY,registry,mintToken,mintRef,elementOf,visible,operable,isPasswordField,isHiddenField,tagOf,roleOf,labelOf,textOf,valueOf,stateOf,describe,safeUrl,documentToken}=runtime;
+const {mintRef,visible,tagOf,roleOf,textOf,describe,documentToken}=runtime;
 
 
 
-    const state = registry();
     const candidates = new Set<Element>();
     const matchingAncestors = new Set<Element>();
     const matches = [];
@@ -108,7 +107,6 @@ const {REGISTRY,SENSITIVE_QUERY,registry,mintToken,mintRef,elementOf,visible,ope
     for (const element of distinct) {
       if (matches.length >= LIMIT) break;
       const ref = mintRef(element);
-      state.refs.set(ref, element);
       matches.push(describe(element, ref));
     }
     return {
@@ -124,7 +122,7 @@ const {REGISTRY,SENSITIVE_QUERY,registry,mintToken,mintRef,elementOf,visible,ope
 }
 /** Fixed page operation; parameters are serialized as JSON by the Host/Client builder. */
 export function action(runtime: PageRuntime, input: PageActionInput, policy: (runtime:PageRuntime,scope:PagePolicy|undefined,element:Element,action:string)=>PageResult|undefined) {
-const {REGISTRY,SENSITIVE_QUERY,registry,mintToken,mintRef,elementOf,visible,operable,isPasswordField,isHiddenField,tagOf,roleOf,labelOf,textOf,valueOf,stateOf,describe,safeUrl,documentToken}=runtime;
+const {elementOf,visible,operable,isPasswordField,documentToken}=runtime;
 
     if (documentToken() !== input.documentToken) {
       return { ok: false, error: { code: 'stale_observation', message: 'the document changed since the observation; observe again' } };
@@ -231,7 +229,7 @@ const {REGISTRY,SENSITIVE_QUERY,registry,mintToken,mintRef,elementOf,visible,ope
 }
 /** Fixed page operation; parameters are serialized as JSON by the Host/Client builder. */
 export function wait(runtime: PageRuntime, input: PageWaitInput) {
-const {REGISTRY,SENSITIVE_QUERY,registry,mintToken,mintRef,elementOf,visible,operable,isPasswordField,isHiddenField,tagOf,roleOf,labelOf,textOf,valueOf,stateOf,describe,safeUrl,documentToken}=runtime;
+const {elementOf,visible,textOf,documentToken}=runtime;
 
     if (documentToken() !== input.target.documentToken) {
       return { ok: false, error: { code: 'stale_observation', message: 'the document changed since the observation; observe again' } };

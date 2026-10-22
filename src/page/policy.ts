@@ -2,7 +2,7 @@ import type {PageRuntime} from './runtime.ts'
 import type {PagePolicy} from './types.ts'
 /** Fixed page operation; parameters are serialized as JSON by the Host/Client builder. */
 export function policy(runtime:PageRuntime, scope:PagePolicy|undefined,element:Element,ACTION:string) {
-const {REGISTRY,SENSITIVE_QUERY,registry,mintToken,mintRef,elementOf,visible,operable,isPasswordField,isHiddenField,tagOf,roleOf,labelOf,textOf,valueOf,stateOf,describe,safeUrl,documentToken}=runtime;
+const {registry,visible,textOf}=runtime;
 
     const importRestriction = scope || registry().importState?.scope;
     if (importRestriction) {
