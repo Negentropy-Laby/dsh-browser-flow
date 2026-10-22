@@ -130,11 +130,14 @@ describe('browser_observe output', () => {
     assert.equal(present(observe).parameters.additionalProperties, false)
   })
 
-  it('rejects graph offsets beyond the configured detail capacity before resolving or dispatching',async()=>{
+  it('declares and enforces all detail offsets against the configured capacity before resolving or dispatching',async()=>{
     const {tools,calls,service}=toolsWith({observe:success({})}),config=resolveConfig({graphMaxFrameBytes:65536,graphMaxDetailBytes:65536})
     const observe=present(createTools(service,config).find(tool=>tool.name==='browser_observe'))
-    const outcome=await observe.execute({view:'task',ref:'graph',projectionId:'a'.repeat(64),offset:65537},caller)
-    assert.equal(outcome.ok,false);assert.equal(outcome.error?.code,'invalid_request');assert.equal(calls.length,0)
+    assert.equal(expectRecord(expectRecord(observe.parameters.properties).offset).maximum,65536)
+    for(const ref of ['graph','digest-synthetic','goal','criteria','criterion-synthetic','waiting','asset-synthetic','instructions/steps.md']){
+      const outcome=await observe.execute({view:'task',ref,offset:65537},caller)
+      assert.equal(outcome.ok,false);assert.equal(outcome.error?.code,'invalid_request');assert.equal(calls.length,0)
+    }
     assert.equal((await present(tools.get('browser_observe')).execute({view:'task',ref:'graph',offset:2_000_001,projectionId:'a'.repeat(64)},caller)).ok,true)
   })
 })

@@ -12,6 +12,7 @@ export type BrowserFlowConfig = {
     graphIdleMs: number;
     graphRequestTimeoutMs: number;
     graphMaxFrameBytes: number;
+    /** Maximum canonical UTF-8 bytes and offset ceiling for every task detail, including Go graph transfer. */
     graphMaxDetailBytes: number;
     graphStderrBytes: number;
     graphTerminateGraceMs: number;

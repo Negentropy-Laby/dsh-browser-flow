@@ -7,15 +7,21 @@ v3, Desktop bridge v1 and journal v1 stay compatible.
 Graph and digest detail continuations must send the `projectionId` returned by
 the first read when `offset` is nonzero. Restart from zero after a projection
 change. `graphMaxDetailBytes` defaults to 32 MiB and must be at least the frame
-limit; detail capacity errors require reducing task size or increasing this
-explicit setting. A missing graph never changes permissions or business facts.
+limit. The existing setting now caps every canonical task detail, including raw
+assets, goals, criteria, waits and instruction snapshots. This adds a capacity
+limit to raw details; reduce their size or increase the explicit setting when
+`detail_capacity` is reported. The configuration name and accepted range stay
+compatible. A missing graph never changes permissions or business facts.
 
-Continuation offsets still count JavaScript characters. Graph and digest offsets
-above `graphMaxDetailBytes`, or above the known length of the same projection and
-reference, are rejected before graph work or evidence reads. Unknown lengths are
-checked after detail validation and before evidence verification. Canonical Host
-detail JSON also obeys the UTF-8 capacity. `offset === totalChars` returns an empty
-completed piece; valid continuations above two million characters remain supported.
+Continuation offsets still count JavaScript characters. All offsets above
+`graphMaxDetailBytes` are rejected before graph work or evidence reads, at both
+tool and Store entrypoints. Graph and digest offsets above the known length of the
+same projection and reference also fail early. Unknown graph lengths are checked
+after detail validation and before evidence verification. Within-capacity raw
+offsets still require proof verification and an actual length check. Every
+canonical Host detail JSON obeys the UTF-8 capacity. `offset === totalChars`
+returns an empty completed piece; valid continuations above two million characters
+remain supported within the configured capacity.
 
 Cancellation and revision report their committed journal result immediately.
 Pending or failed worker retirement appears separately at

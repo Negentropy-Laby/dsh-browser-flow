@@ -553,16 +553,16 @@ tail: Promise<void>;
     await this.append(access,'edge',{id,from,to,relation,run:access.run})
     return id
   }
-  /** @param {TaskAccess} access - capability. @param {string} id - task-local detail. @param {number} offset - safe character continuation, bounded by configured bytes and any known current derived length. @param {number} budget - character budget. @param projectionId - identity required for graph/digest continuation after offset zero. @returns {Promise<object>} validated detail exposed in bounded text pieces; derived JSON also obeys the UTF-8 detail capacity. */
+  /** @param {TaskAccess} access - capability. @param {string} id - task-local detail. @param {number} offset - safe character continuation, bounded by configured bytes and any known current derived length. @param {number} budget - character budget. @param projectionId - identity required for graph/digest continuation after offset zero. @returns {Promise<object>} validated detail exposed in bounded text pieces; all canonical detail JSON obeys the configured UTF-8 capacity. */
   async detail(access: TaskAccess,id: string,offset: number,budget: number,projectionId?:string) : Promise<object> {
     if(!Number.isSafeInteger(budget)||budget<=0)throw new TaskError('invalid_request','task detail budget must be a positive safe integer')
     const data=this.openTask(access)
+    if(!Number.isSafeInteger(offset)||offset<0)throw new TaskError('invalid_request','detail offset must be a nonnegative safe integer')
+    if(offset>this.graphConfig.graphMaxDetailBytes)throw new TaskError('invalid_request','detail offset exceeds the configured task detail capacity')
     const row=data.events.findLast(event=>event.type==='asset'&&event.data.id===id)
     const asset=row?{id,taskId:data.manifest.scope.taskId,kind:row.data.kind,source:row.data.source,sourceSeq:row.seq,data:(row.data.data as Record<string, unknown>)}:undefined
     let criterion=taskFacts(data).criteria.find(item=>item.id===id)
     let value,currentProjection:string|undefined,serialized:string|undefined
-    if(!Number.isSafeInteger(offset)||offset<0)throw new TaskError('invalid_request','detail offset must be a nonnegative safe integer')
-    if((id==='graph'||id.startsWith('digest-'))&&offset>this.graphConfig.graphMaxDetailBytes)throw new TaskError('invalid_request','detail offset exceeds the configured graph capacity')
     if(asset||id==='waiting'||criterion||id==='criteria'||id==='goal'||data.snapshot?.definition.resources.includes(id)){
       await this.refreshEvidence(access);this.openTask(access);criterion=taskFacts(data).criteria.find(item=>item.id===id)
     }
@@ -596,7 +596,10 @@ tail: Promise<void>;
       this.openTask(access);data.liveDocumentToken=this.controlDocument?.(access)
       if(graphHash(JSON.stringify(graphInput(data,this.graphConfig)))!==hash)throw new TaskError('task_not_bound','projection changed during evidence verification; restart detail at offset zero')
     }
-    serialized??=JSON.stringify(value)
+    if(serialized===undefined){
+      serialized=JSON.stringify(value)
+      if(Buffer.byteLength(serialized,'utf8')>this.graphConfig.graphMaxDetailBytes)throw new TaskError('task_unavailable','task detail unavailable: detail_capacity')
+    }
     if(offset>serialized.length)throw new TaskError('invalid_request','detail offset exceeds its total characters')
     return {task:access.run,contextVersion:data.events.length,ref:id,...(currentProjection?{projectionId:currentProjection}:{}),offset,totalChars:serialized.length,text:serialized.slice(offset,offset+budget),complete:offset+budget>=serialized.length}
   }
