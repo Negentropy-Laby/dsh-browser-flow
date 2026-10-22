@@ -20,6 +20,10 @@ Every async resumption rechecks the exact Agent, task/run, lease, document, epoc
 
 Recovery preserves valid history and damaged original bytes; it never truncates evidence or sends a command. Incomplete attempts and damaged tails block writes. Unknown results remain blocked through new runs, revisions, handoff and restart. Ending a task records user lifecycle and does not assert that its business criteria passed.
 
+Only a synchronized, valid unknown receipt sets the durable unknown-write block. Invalid or duplicate receipts leave the task state unchanged. A journal write or synchronization failure independently blocks writes until safe handoff; it cannot be treated as an unexecuted action.
+
+Creation exclusively allocates a new task directory. On failure it removes only that directory after confirming that no Session registration exists. Visible or uncertain registration, changed directory identity, or failed cleanup preserves the files and prevents another creation for that Session in the current Host. Correct storage before reopening it; recovery reads registrations and never adopts an unregistered directory. Existing tasks and other Sessions retain their own state.
+
 ## Five task modules
 
 - `basic_law_index` owns the append-only event history. Summary entries name sequence and hash; failures never rewrite old entries.
@@ -41,6 +45,8 @@ The Host queue also refuses direct `act` entry without the task's current durabl
 New storage uses format v1 for manifests, ownership and every journal record. Append and recovery share the closed event parser. Unversioned predecessors remain byte-preserved, read-only history; unknown or invalid records expose a storage issue and cannot enable writes. A new Session is required for new work.
 
 Trusted adapters add stable, task-scoped criteria. User text remains unverified unless a supported code predicate applies. A business label is not a proof: navigation rechecks its owned page observation; import rechecks the input snapshot, once-only acknowledged dispatch, identity, complete response and fresh table through the existing strict validators. Originals and their digests stay private. Missing, changed, foreign or previous-run evidence cannot certify a current criterion, including after recovery.
+
+Task views and fact details verify originals once after any graph work and before exposing facts. Identical referenced files share bytes only within that read, with file identity and timestamp checks before, after and at publication. Every new fact read and verdict checks the originals again. A changed run or journal rejects the old check; changed evidence discards the derived graph and leaves current Host facts unverified. Polling does not establish a new proof.
 
 The graph links attempts, receipts, results, originals and criteria. Read `ref:"criteria"` or `ref:"graph"` through the normal task view when the summary is truncated. IDs in the summary, graph and details are identical. Evidence details disclose availability and digests rather than private artifact paths or bytes.
 

@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "tsBuildInfoFile": ".cache/scripts.tsbuildinfo"
+  },
+  "include": [
+    "scripts/*.ts",
+    "src/node-ambient.d.ts"
+  ]
+}

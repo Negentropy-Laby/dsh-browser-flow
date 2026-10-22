@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "checkJs": false,
+    "noEmit": false,
+    "rewriteRelativeImportExtensions": true,
+    "lib": [
+      "es2023",
+      "dom",
+      "dom.iterable"
+    ],
+    "types": [],
+    "rootDir": "src/page",
+    "outDir": ".cache/page-js",
+    "composite": true,
+    "tsBuildInfoFile": ".cache/page.tsbuildinfo",
+    "removeComments": true
+  },
+  "include": [
+    "src/page/**/*.ts"
+  ]
+}

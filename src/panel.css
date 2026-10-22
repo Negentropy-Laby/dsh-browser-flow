@@ -1,0 +1,53 @@
+[data-browser-flow-panel] {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--dsw-font-family);
+  font-size: 13px;
+  line-height: 20px;
+  container-type: inline-size;
+}
+[data-browser-flow-panel] * { box-sizing: border-box; min-width: 0; }
+[data-browser-flow-panel] :is(h3, h4, p, ul, dl, dd) { margin: 0; }
+[data-browser-flow-panel] :is(h3, h4) { font-size: 14px; line-height: 22px; font-weight: 500; }
+[data-browser-flow-panel] .bf-header { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 0.5px solid var(--dsw-alias-border-l4); background: var(--dsw-alias-bg-layer-1); }
+[data-browser-flow-panel] .bf-header-status { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+[data-browser-flow-panel] .bf-status { display: inline-flex; align-items: center; gap: 6px; }
+[data-browser-flow-panel] .bf-content { flex: 1; min-height: 0; overflow: auto; padding: 16px; }
+[data-browser-flow-panel] .bf-section { display: grid; gap: 12px; margin-bottom: 20px; }
+[data-browser-flow-panel] .bf-section:last-child { margin-bottom: 0; }
+[data-browser-flow-panel] .bf-section-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 10px; }
+[data-browser-flow-panel] .bf-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+[data-browser-flow-panel] label { display: flex; flex-direction: column; gap: 6px; margin: 0; }
+[data-browser-flow-panel] .bf-form { display: grid; gap: 12px; }
+[data-browser-flow-panel] :is(input, select, textarea) { width: 100%; font: inherit; color: inherit; }
+[data-browser-flow-panel] :is(select, textarea) { padding: 8px 10px; border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--dsw-radius-sm); background: var(--dsw-alias-bg-layer-1); }
+[data-browser-flow-panel] textarea { min-height: 88px; resize: vertical; }
+[data-browser-flow-panel] :is(select, textarea):focus-visible { outline: 2px solid var(--dsw-alias-label-primary); outline-offset: 2px; }
+[data-browser-flow-panel] :is(select, textarea):disabled { opacity: 0.5; }
+[data-browser-flow-panel] [data-browser-flow-ui='button'] { max-width: 100%; height: auto; min-height: 28px; white-space: normal; text-align: start; }
+[data-browser-flow-panel] .bf-row { display: grid; gap: 12px; }
+[data-browser-flow-panel] .bf-pages { list-style: none; padding: 0; display: grid; gap: 12px; }
+[data-browser-flow-panel] .bf-page { padding: 12px; border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--dsw-radius-md); background: var(--dsw-alias-bg-layer-1); display: grid; gap: 8px; }
+[data-browser-flow-panel] .bf-page-title { font-weight: 500; overflow-wrap: anywhere; }
+[data-browser-flow-panel] :is(.bf-secondary, .bf-page-url, .bf-page-alias, .bf-note, dt) { color: var(--dsw-alias-label-secondary); }
+[data-browser-flow-panel] :is(.bf-secondary, .bf-page-url, .bf-page-alias, .bf-note, .bf-task-goal, .bf-selectable, dd) { overflow-wrap: anywhere; }
+[data-browser-flow-panel] .bf-identities { display: grid; gap: 4px; }
+[data-browser-flow-panel] .bf-identities dd { margin-bottom: 8px; user-select: text; }
+[data-browser-flow-panel] .bf-notices { display: grid; gap: 10px; }
+[data-browser-flow-panel] .bf-notices:not(:empty) { margin-bottom: 20px; }
+[data-browser-flow-panel] .bf-notice { display: grid; gap: 10px; padding: 12px; border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--dsw-radius-sm); background: var(--dsw-alias-bg-layer-2); overflow-wrap: anywhere; }
+[data-browser-flow-panel] .bf-critical { border-color: var(--dsw-alias-state-error-primary); }
+[data-browser-flow-panel] .bf-field-error { color: var(--dsw-alias-state-error-primary); overflow-wrap: anywhere; }
+[data-browser-flow-panel] .bf-empty { color: var(--dsw-alias-label-secondary); padding: 12px; border: 0.5px dashed var(--dsw-alias-border-l4); border-radius: var(--dsw-radius-sm); }
+[data-browser-flow-panel] .bf-details { border-top: 0.5px solid var(--dsw-alias-border-l4); padding-top: 12px; }
+[data-browser-flow-panel] [data-browser-flow-disclosure] { max-width: 100%; }
+[data-browser-flow-panel] [data-browser-flow-file-preview] { display: grid; gap: 12px; padding: 12px; background: var(--dsw-alias-bg-layer-2); border-radius: var(--dsw-radius-sm); overflow-wrap: anywhere; }
+@container (min-width: 360px) {
+  [data-browser-flow-panel] .bf-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

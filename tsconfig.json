@@ -1,0 +1,26 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./tsconfig.host.json"
+    },
+    {
+      "path": "./tsconfig.client.json"
+    },
+    {
+      "path": "./tsconfig.scripts.json"
+    },
+    {
+      "path": "./tsconfig.tests.json"
+    },
+    {
+      "path": "./tsconfig.page.json"
+    },
+    {
+      "path": "./tsconfig.fixtures.json"
+    },
+    {
+      "path": "./tsconfig.desktop-programs.json"
+    }
+  ]
+}

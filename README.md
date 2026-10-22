@@ -46,6 +46,21 @@ A linked installation uses the checkout; rebuild after changes and reload both
 Host and Client together. Browser Flow uses protocol v3; mismatched peers are
 rejected. See the [upgrade guide](docs/upgrade-v3.md).
 
+The panel uses the Host's shared UI primitives and theme. Its scoped stylesheet
+is embedded in the Client bundle and removed with the plugin. Reload the matching
+Client after a rebuild; missing Host controls fail visibly rather than falling
+back to an unstyled form.
+
+The compact panel keeps connection status and **Revoke control** above its
+scrollable content. A bound task shows its goal and lifecycle; expand editing
+only when revising it. Polling preserves drafts. If the scope changes, reload
+that task before submitting the revision; **Cancel editing** sends no request.
+Wait reasons and unknown-write restrictions remain visible. Page cards expose
+their full authorization target on demand. File review appears only for an
+authorized, supported import workflow, with the complete confirmation summary.
+Waiting for input keeps explicit page authorization and file preparation available.
+Task lifecycle and graph availability do not imply business acceptance.
+
 ## Use a task
 
 1. Open the intended page in Sidebar Browser and log in yourself.
@@ -160,10 +175,19 @@ npm run typecheck
 npm run verify
 ```
 
-Typechecking uses `DSH_TSC` or a compiler in a local/sibling Harness checkout.
-Inspect the output: absence of a compiler is reported as a skip. Host tests also
+Typechecking uses the declared local TypeScript compiler, or an explicit `DSH_TSC`
+entry. A missing compiler fails the check. Host tests also
 report skips when their optional artifacts are unavailable. Automated checks
 and synthetic fixtures do not establish logged-in website or business acceptance.
+
+The [bounded evidence qualification](docs/qualification/bounded-evidence.md)
+records the current repair candidate, allocation limits, detail snapshots and
+target checks. The [scoped graph read qualification](docs/qualification/graph-read-repair.md)
+retains its earlier candidate and failed runs.
+The [control panel UI qualification](docs/qualification/panel-ui.md) retains its
+own UI candidate and target Desktop checks. The preceding
+[task graph repair qualification](docs/qualification/task-graph-repair.md) retains
+its own candidate and results. Website acceptance remains separate.
 
 See [testing](docs/testing.md) for explicit Host artifact inputs and local-only
 receipts. The package whitelist distributes `src`, `lib`, generic documentation,
@@ -180,3 +204,12 @@ recorded runs.
 - No arbitrary script execution, automatic business submission or write replay.
 - Task completion and a user ending a task are separate facts. Unsupported or
   missing business evidence remains unverified.
+
+Task fact authority and graph extraction are described in [Graph kernel](docs/graph-kernel.md).
+
+The task graph uses an owned Go worker on Windows x64. The package contains the
+helper; installed profiles need no Go toolchain. Graph details support complete,
+projection-bound continuation; see [graph limits and failure handling](docs/graph-kernel.md).
+Source builds use Go 1.26.5 and
+`npm run build`, which emits the Host, Client and native artifacts. See the
+[upgrade guide](docs/upgrade-guide/v0.1.0/go-graph/guide.md) before reloading.

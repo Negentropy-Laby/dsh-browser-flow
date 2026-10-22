@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.base.json",
+  "include": [
+    "src/client.ts",
+    "src/clientcore.ts",
+    "src/panel.ts",
+    "src/panel-ui.ts",
+    "src/panel-view.ts",
+    "src/pagecode.ts",
+    "src/import-page.ts",
+    "src/task-scope.ts",
+    "src/protocol.ts",
+    "src/node-ambient.d.ts",
+    "src/import-rules.ts",
+    "src/page/input.ts",
+    "src/page/program-sources.d.ts",
+    "src/client-wire.ts"
+  ],
+  "compilerOptions": {
+    "composite": true,
+    "tsBuildInfoFile": ".cache/client.tsbuildinfo"
+  }
+}

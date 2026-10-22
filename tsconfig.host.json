@@ -1,0 +1,34 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rewriteRelativeImportExtensions": true,
+    "rootDir": "src",
+    "outDir": "lib/host",
+    "declaration": true,
+    "composite": true,
+    "tsBuildInfoFile": ".cache/host.tsbuildinfo",
+    "lib": [
+      "es2023"
+    ],
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "src/client.ts",
+    "src/clientcore.ts",
+    "src/panel.ts",
+    "src/panel-ui.ts",
+    "src/panel-view.ts",
+    "src/page/runtime.ts",
+    "src/page/operations.ts",
+    "src/page/policy.ts",
+    "src/page/import.ts",
+    "src/client-wire.ts",
+    "src/page/types.ts"
+  ]
+}

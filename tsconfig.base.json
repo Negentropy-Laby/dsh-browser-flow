@@ -1,0 +1,28 @@
+{
+  "//": "Shared strict source configuration; Host and Client have explicit compiler faces.",
+  "compilerOptions": {
+    "target": "es2022",
+    "lib": [
+      "es2023",
+      "dom",
+      "dom.iterable"
+    ],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "resolveJsonModule": true,
+    "allowJs": false,
+    "checkJs": false,
+    "noEmit": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "noUncheckedIndexedAccess": false,
+    "exactOptionalPropertyTypes": false,
+    "useUnknownInCatchVariables": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": [],
+    "allowImportingTsExtensions": true
+  },
+  "include": [],
+  "files": []
+}

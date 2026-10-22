@@ -1,0 +1,14 @@
+Browser Flow
+Copyright 2026 Negentropy-Laby contributors
+
+This distribution includes graph algorithms adapted from ARTEX:
+https://github.com/Autumn-27/artex
+Source revision: 5c0dbd4bec940f3c0faf20705a56d879b57d3dfe
+ARTEX original authors retain their applicable copyrights.
+The extracted portions are distributed under Apache-2.0 pursuant to separately
+confirmed reuse authorization. No authorization documents or local task data
+are included in this distribution.
+
+The graph worker includes the Go runtime and standard library. Their license
+is reproduced in native/graph-core/GO-LICENSE. Existing vendored dependencies
+retain their own license notices.

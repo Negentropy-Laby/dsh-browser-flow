@@ -1,0 +1,80 @@
+import {expectFailure,present,expectRecord,expectString,expectList} from './helpers/assertions.ts'
+import assert from 'node:assert/strict'
+import { it } from 'node:test'
+import { taskHost } from './helpers/task-host.ts'
+
+it('rebuilds all five modules, relates intents and receipts, and separates user criteria from verified facts',async t=>{
+  const env=await taskHost(t)
+  await env.task('a',{goal:'Goal A',origins:['https://a.example'],criteria:['Read a known document']})
+  const store=env.service.tasks,a=store.current('session-a')
+  const page=await store.asset(present(a),'page',{marker:'PRIVATE_A',documentToken:'doc-a'})
+  const evidence=await store.asset(present(a),'evidence',{ref:'opaque-evidence'},'code_verified')
+  await store.relate(present(a),evidence,page,'observed_on')
+  const attempt=await store.beginAttempt(present(a),'click');await store.receipt(present(a),attempt,'executed')
+  await store.append(present(a),'waiting',{for:'explicit-user-confirmation',source:'host',run:present(a).run})
+  const value=(await store.view(present(a),50_000))
+  assert.deepEqual(Object.keys(value).sort(),['basic_law_index','procedural_law_index','technical_law_index','knowledge_graph','active_context'].sort())
+  assert.equal(expectRecord(expectList(expectRecord(value.procedural_law_index).criteria)[0]).status,'unverified')
+  assert.equal(expectRecord(expectList(expectRecord(value.procedural_law_index).intents)[0]).businessSuccess,false)
+  assert.equal(value.active_context.businessVerdict,'unverified')
+  assert.ok(expectList(expectRecord(value.knowledge_graph).edges).some((edge)=>expectRecord(edge).relation==='attempts'))
+  assert.ok(expectList(expectRecord(value.knowledge_graph).edges).some((edge)=>expectRecord(edge).relation==='records'))
+  assert.ok(!JSON.stringify(value).includes('PRIVATE_A'),'summaries carry scoped references, not raw private asset data')
+  const detail=(await store.detail(present(a),page,0,10000))
+  assert.ok(expectString(expectRecord(detail).text).includes('PRIVATE_A'))
+  assert.equal(expectRecord(detail).complete,true)
+  const bounded=(await store.view(present(a),1800))
+  assert.ok(JSON.stringify(bounded).length<3000)
+  const resumed=(await store.detail(present(a),page,10,20))
+  assert.equal(expectRecord(resumed).text,expectString(expectRecord(detail).text).slice(10,30))
+})
+it('does not combine same-name/same-digest assets across tasks and refuses both foreign graph endpoints',async t=>{
+  const env=await taskHost(t)
+  await env.task('a');await env.task('b')
+  const store=env.service.tasks,a=store.current('session-a'),b=store.current('session-b')
+  const one=await store.asset(present(a),'file',{name:'same.xlsx',sha256:'a'.repeat(64),marker:'SECRET_A'})
+  const two=await store.asset(present(b),'file',{name:'same.xlsx',sha256:'a'.repeat(64),marker:'SECRET_B'})
+  assert.notEqual(one,two)
+  await assert.rejects(store.relate(present(a),one,two,'derived_from'),{code:'task_not_bound'})
+  await assert.rejects(store.relate(present(a),two,one,'derived_from'),{code:'task_not_bound'})
+  await assert.rejects(store.detail(present(a),two,0,8000),{code:'task_not_bound'})
+  for(const [session,foreign,secret] of [['a',two,'SECRET_B'],['b',one,'SECRET_A']] as const){
+    const view=await env.tool(session,'browser_observe',{view:'task'})
+    assert.equal(view.ok,true)
+    assert.ok(!JSON.stringify(view).includes(foreign))
+    assert.ok(!JSON.stringify(view).includes(secret))
+  }
+})
+it('returns only local immutable instruction continuations through normal task tool results',async t=>{
+  const env=await taskHost(t)
+  await env.task('a')
+  const view=await env.tool('a','browser_observe',{view:'task',ref:'goal',offset:0})
+  assert.equal(view.ok,true)
+  assert.ok(expectString(expectRecord(view.value).text).includes('Private task a'))
+  assert.equal(expectFailure((await env.tool('a','browser_observe',{view:'page',ref:'goal'}))).code,'invalid_request')
+  assert.equal(expectFailure((await env.tool('a','browser_observe',{view:'task',ref:'../other'}))).code,'task_not_bound')
+})
+
+it('does not promote model assertions, incomplete judgments or a prior run into current business success',async t=>{
+  const env=await taskHost(t);await env.task('a')
+  const store=env.service.tasks,a=store.current('session-a')
+  for(const row of [{source:'model_intent',qualified:true},{source:'code_verified',qualified:false}] as const){
+    await store.append(present(a),'business_verdict',{verdict:'import_confirmed',run:present(a).run,...row})
+    assert.equal((await store.view(present(a),8000)).active_context.businessVerdict,'unverified')
+  }
+  await store.append(present(a),'business_verdict',{source:'code_verified',qualified:true,verdict:'import_confirmed',run:present(a).run})
+  assert.equal((await store.view(present(a),8000)).active_context.businessVerdict,'unverified')
+  const next=await store.revise(present(a),{newRun:true})
+  assert.equal((await store.view(next,8000)).active_context.businessVerdict,'unverified')
+})
+it('retains the original goal revision for an earlier action when the user revises the goal',async t=>{
+  const env=await taskHost(t);await env.task('a',{goal:'Original goal',origins:['https://a.example']})
+  const store=env.service.tasks,a=store.current('session-a')
+  const attempt=await store.beginAttempt(present(a),'click');await store.receipt(present(a),attempt,'executed')
+  const next=await store.revise(present(a),{goal:'Revised goal'})
+  const view=(await store.view(next,50000)),edge=expectList(expectRecord(view.knowledge_graph).edges).find((row)=>expectRecord(row).from===attempt&&expectRecord(row).relation==='attempts')
+  assert.ok(expectString(expectRecord(edge).to).endsWith('-r1'))
+  const oldGoal=JSON.parse(expectString(expectRecord((await store.detail(next,expectString(expectRecord(edge).to),0,10000))).text))
+  assert.equal(oldGoal.data.goal,'Original goal')
+  assert.equal(expectRecord(expectRecord(view.procedural_law_index).goal).text,'Revised goal')
+})

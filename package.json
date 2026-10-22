@@ -4,13 +4,13 @@
   "private": true,
   "type": "module",
   "description": "Observe and operate the user's already-open, already-authenticated DeepSeek Harness Desktop Sidebar Browser page",
-  "main": "./src/index.js",
+  "main": "./lib/host/index.js",
   "exports": {
-    ".": "./src/index.js",
-    "./protocol": "./src/protocol.js",
-    "./state": "./src/state.js",
-    "./pagecode": "./src/pagecode.js",
-    "./config": "./src/config.js",
+    ".": "./lib/host/index.js",
+    "./protocol": "./lib/host/protocol.js",
+    "./state": "./lib/host/state.js",
+    "./pagecode": "./lib/host/pagecode.js",
+    "./config": "./lib/host/config.js",
     "./client": "./lib/client.js",
     "./package.json": "./package.json"
   },
@@ -20,7 +20,11 @@
     "cordis.patch.yml",
     "docs",
     "README.md",
-    "vendor"
+    "vendor",
+    "native/graph-core/GO-LICENSE",
+    "native/graph-core/extraction.json",
+    "LICENSE",
+    "NOTICE"
   ],
   "dsh": {
     "bundle": {
@@ -34,24 +38,35 @@
     "node": "^22.19 || >=24"
   },
   "scripts": {
-    "build": "node scripts/build-client.mjs",
-    "typecheck": "node scripts/typecheck.mjs",
-    "test": "node scripts/build-client.mjs && node --test \"tests/*.test.js\"",
-    "test:coverage": "node scripts/build-client.mjs && node --test --experimental-test-coverage \"tests/*.test.js\"",
-    "smoke:live": "node scripts/live-host-smoke.mjs",
-    "evidence:host": "node scripts/extract-installed-host.mjs",
-    "verify": "node scripts/build-client.mjs && node scripts/typecheck.mjs && node --test \"tests/*.test.js\""
+    "build": "node --import tsx/esm scripts/build-page.ts && node --import tsx/esm scripts/build-host.ts && node --import tsx/esm scripts/build-client.ts && node --import tsx/esm scripts/build-graph.ts",
+    "typecheck": "node --import tsx/esm scripts/typecheck.ts",
+    "test": "npm run build:fixtures && node --import tsx/esm scripts/build-page.ts && node --import tsx/esm scripts/build-client.ts && node --import tsx/esm scripts/build-graph.ts --test-helper && node --import tsx/esm --test \"tests/*.test.ts\"",
+    "test:coverage": "npm run build:fixtures && node --import tsx/esm scripts/build-page.ts && node --import tsx/esm scripts/build-client.ts && node --import tsx/esm scripts/build-graph.ts --test-helper && node --import tsx/esm --test --experimental-test-coverage \"tests/*.test.ts\"",
+    "smoke:live": "node --import tsx/esm scripts/live-host-smoke.ts",
+    "evidence:host": "node --import tsx/esm scripts/extract-installed-host.ts",
+    "verify": "npm run build && node --import tsx/esm scripts/build-graph.ts --test-helper && go -C native/graph-core test ./... && npm run build:fixtures && npm run typecheck && node --import tsx/esm --test \"tests/*.test.ts\"",
+    "build:fixtures": "node --import tsx/esm scripts/build-fixtures.ts"
   },
   "dependencies": {
+    "@deepseek-ai/dsh-atomic-write": "file:vendor/deepseek-ai-dsh-atomic-write-0.2.1-rc.2.tgz",
     "adm-zip": "0.6.1",
-    "saxes": "6.0.0",
-    "@deepseek-ai/dsh-atomic-write": "file:vendor/deepseek-ai-dsh-atomic-write-0.2.1-rc.2.tgz"
+    "saxes": "6.0.0"
   },
   "devDependencies": {
     "@types/adm-zip": "0.5.8",
-    "@types/node": "22.20.5"
+    "@types/node": "22.20.5",
+    "tsx": "4.23.13",
+    "typescript": "6.0.3"
   },
   "bundleDependencies": [
     "@deepseek-ai/dsh-atomic-write"
-  ]
+  ],
+  "license": "Apache-2.0",
+  "types": "./lib/host/index.d.ts",
+  "imports": {
+    "#browser-flow/page-programs": {
+      "types": "./src/page/program-sources.d.ts",
+      "default": "./lib/page-programs.js"
+    }
+  }
 }

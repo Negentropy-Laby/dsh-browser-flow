@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "tsBuildInfoFile": ".cache/tests.tsbuildinfo"
+  },
+  "include": [
+    "tests/**/*.ts",
+    "src/**/*.ts",
+    "scripts/build-client.ts",
+    "scripts/build-page.ts"
+  ],
+  "exclude": [
+    "src/page/runtime.ts",
+    "src/page/operations.ts",
+    "src/page/policy.ts",
+    "src/page/import.ts"
+  ]
+}
