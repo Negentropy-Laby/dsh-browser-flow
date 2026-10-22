@@ -1,3 +1,4 @@
+import { resolveDependency, entryOf } from './helpers/dom-host.ts'
 import {fixturePrimitives} from './helpers/panel-ui.ts'
 import {present,expectRecord} from './helpers/assertions.ts'
 import type {BundleRegistration} from './helpers/client-ports.ts'
@@ -16,7 +17,7 @@ import type {BundleRegistration} from './helpers/client-ports.ts'
  */
 
 import assert from 'node:assert/strict'
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { describe, it } from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -24,42 +25,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const checkout = process.env.DSH_CHECKOUT ?? join(root, '..', 'deepseek-harness')
 
-/**
- * Resolve one dependency the way pnpm lays it out: a hoisted `node_modules`
- * entry when present, otherwise the first matching store directory.
- * @param {string} name - package name.
- * @returns {string | undefined} absolute package directory.
- */
-function resolveDependency(name: string) : string | undefined {
-  const direct = join(checkout, 'node_modules', name)
-  if (existsSync(direct)) return direct
-  const store = join(checkout, 'node_modules', '.pnpm')
-  if (!existsSync(store)) return undefined
-  const prefix = `${name.replace('/', '+')}@`
-  for (const entry of readdirSync(store)) {
-    if (!entry.startsWith(prefix)) continue
-    const candidate = join(store, entry, 'node_modules', name)
-    if (existsSync(candidate)) return candidate
-  }
-  return undefined
-}
-
-/**
- * Read a package's declared entry point from its manifest.
- * @param {string} packageDir - package directory.
- * @returns {string} absolute entry file.
- */
-function entryOf(packageDir: string) : string {
-  const manifest = JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf8'))
-  const main = typeof manifest.main === 'string' ? manifest.main : 'index.js'
-  return join(packageDir, main)
-}
-
 const modulesClient = join(checkout, 'packages', 'client', 'modules', 'lib', 'client.js')
 const slotsLib = join(checkout, 'packages', 'client', 'ui-slots', 'lib', 'index.js')
-const reactEntry = resolveDependency('react')
-const reactDomEntry = resolveDependency('react-dom')
-const jsdomEntry = resolveDependency('jsdom')
+const reactEntry = resolveDependency(checkout, 'react')
+const reactDomEntry = resolveDependency(checkout, 'react-dom')
+const jsdomEntry = resolveDependency(checkout, 'jsdom')
 
 const missing = []
 if (!existsSync(modulesClient)) missing.push('packages/client/modules/lib/client.js')

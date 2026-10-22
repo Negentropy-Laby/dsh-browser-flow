@@ -1,9 +1,8 @@
+import { resolveDependency, entryOf, host, call, pump } from './helpers/dom-host.ts'
 import {deferred} from './helpers/deferred.ts'
 import {fixtureProgram} from './helpers/fixture-program.ts'
 import {expectRecord,present,expectString,expectSized,expectList} from './helpers/assertions.ts'
 import {hostPort} from './helpers/ports.ts'
-import {programFor,classifyResult} from '../src/clientcore.ts'
-import {PAGE_CODE} from '../src/panel.ts'
 import { throughPage } from './helpers/through-page.ts'
 import { bindTestTask } from './helpers/bind-task.ts'
 /**
@@ -21,124 +20,17 @@ import { bindTestTask } from './helpers/bind-task.ts'
  */
 
 import assert from 'node:assert/strict'
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { describe, it } from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { BrowserFlowService } from '../src/index.ts'
 import { resolveConfig } from '../src/config.ts'
-import { actProgram, findProgram, identityProgram, observeProgram, waitProgram } from '../src/pagecode.ts'
+import { findProgram, identityProgram } from '../src/pagecode.ts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const checkout = process.env.DSH_CHECKOUT ?? join(root, '..', 'deepseek-harness')
 
-/**
- * Resolve one dependency the way pnpm lays it out.
- * @param {string} name - package name.
- * @returns {string | undefined} absolute package directory.
- */
-function resolveDependency(name: string) : string | undefined {
-  const direct = join(checkout, 'node_modules', name)
-  if (existsSync(direct)) return direct
-  const store = join(checkout, 'node_modules', '.pnpm')
-  if (!existsSync(store)) return undefined
-  const prefix = `${name.replace('/', '+')}@`
-  for (const entry of readdirSync(store)) {
-    if (!entry.startsWith(prefix)) continue
-    const candidate = join(store, entry, 'node_modules', name)
-    if (existsSync(candidate)) return candidate
-  }
-  return undefined
-}
-
-const jsdomEntry = resolveDependency('jsdom')
-
-/**
- * Read a package's declared entry point.
- * @param {string} packageDir - package directory.
- * @returns {string} absolute entry file.
- */
-function entryOf(packageDir: string) : string {
-  const manifest = JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf8'))
-  return join(packageDir, typeof manifest.main === 'string' ? manifest.main : 'index.js')
-}
-
-/**
- * Build a fake Host context with one live Agent.
- * @param {object} agent - the live Agent object.
- * @returns {object} fake context and captures.
- */
-function host(agent: import('../src/index.ts').LiveAgent) {
-  const routes = new Map<string,import('../src/index.ts').FetchRoute>()
-  const tools = new Map<string,import('../src/tools.ts').ToolDefinition>()
-  const connection = {
-    fetch: {
-      register(route:import('../src/index.ts').FetchRoute) {
-        routes.set(`${route.methods.join(',')} ${route.path}`, route)
-        return () => routes.delete(`${route.methods.join(',')} ${route.path}`)
-      },
-    },
-  }
-  const ctx = {
-    agents: { get: (id:string) => (id === agent.id ? agent : undefined) },
-    tools: {
-      register(definition:import('../src/tools.ts').ToolDefinition) {
-        tools.set(definition.name, definition)
-        return () => tools.delete(definition.name)
-      },
-    },
-    inject(deps:string[], callback:(scope:import('../src/index.ts').HostContext)=>void) {
-      const scope = Object.create(ctx)
-      for (const dependency of deps) scope[dependency] = ctx.get(dependency)
-      return callback(scope)
-    },
-    get: (key:string) => (key === 'connection' ? connection : undefined),
-    effect(callback:()=>void|(()=>void|Promise<void>)) {
-      const disposer = callback()
-      ctx.effects.push(disposer)
-      return disposer
-    },
-    logger: { info() {}, warn() {}, error() {} },
-    effects: [] as (void|(()=>void|Promise<void>))[],
-  }
-  return { ctx, routes, tools }
-}
-
-/** POST one JSON body to a captured route. */
-async function call(route:import('../src/index.ts').FetchRoute, body:unknown) {
-  const response = await route.fetch(new Request(`http://127.0.0.1:62231${route.path}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body && typeof body === 'object' && !Array.isArray(body) ? { protocolVersion: 3, ...body } : body),
-  }))
-  return { status: response.status, body: await response.json() }
-}
-
-/**
- * Run one operation's fixed program in the page realm.
- * @param {object} input - wiring.
- * @returns {Promise<object>} classified outcome.
- */
-async function executeInPage({window,op}:{window:{Function:FunctionConstructor};op:import('../src/clientcore.ts').PageOperation}) {
-  const source=programFor(PAGE_CODE,op)
-  return classifyResult(await new window.Function(`return (${source})`)())
-}
-
-/** Answer every command the panel would poll for. */
-async function pump({routes,window,pages,sessionId}:{routes:Map<string,import('../src/index.ts').FetchRoute>;window:{Function:FunctionConstructor};pages:import('../src/state.ts').PanelPage[];sessionId:string}) {
-  const poll = await call(present(routes.get('POST /api/browser-flow/poll')), {
-    instanceId: 'panel-1', connectionGeneration: 1, sessionId, pages,
-  })
-  assert.equal(poll.status, 200, `poll failed: ${JSON.stringify(poll.body)}`)
-  for (const command of poll.body.value.commands) {
-    const result = await executeInPage({ window, op: command.op })
-    await call(present(routes.get('POST /api/browser-flow/result')), {
-      kind: 'result',task:command.task, instanceId: 'panel-1', id: command.id, leaseId: command.leaseId,
-      connectionGeneration: command.connectionGeneration,
-      epoch: command.epoch, sequence: command.sequence, ...result,
-    })
-  }
-}
+const jsdomEntry = resolveDependency(checkout, 'jsdom')
 
 const formHtml = `<!doctype html><html><body>
 <h1>Settings</h1>
