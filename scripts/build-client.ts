@@ -17,7 +17,7 @@
 
 import { Script } from 'node:vm'
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, posix } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
@@ -196,7 +196,9 @@ export function checkBundle(bundle: string) {
  * @returns {{ bundle: string, checks: object[] }} built text and check results.
  */
 export function build() {
-  const compiled = spawnSync(process.execPath, [join(root, 'node_modules', 'typescript', 'bin', 'tsc'), '-p', join(root, 'tsconfig.client.emit.json')], { cwd: root, stdio: 'inherit' })
+  rmSync(sourceRoot, { recursive: true, force: true })
+  rmSync(join(root, '.cache', 'client-emit.tsbuildinfo'), { force: true })
+  const compiled = spawnSync(process.execPath, [join(root, 'node_modules', 'typescript', 'bin', 'tsc'), '-p', join(root, 'tsconfig.client.json')], { cwd: root, stdio: 'inherit' })
   if (compiled.status !== 0) throw new Error('Client compilation failed')
   const bundle = composeBundle()
   const checks = checkBundle(bundle)

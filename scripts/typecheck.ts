@@ -7,7 +7,9 @@ const root=join(dirname(fileURLToPath(import.meta.url)),'..')
 const compiler=process.env.DSH_TSC??join(root,'node_modules','typescript','bin','tsc')
 if(!existsSync(compiler))throw new Error('Install the declared TypeScript development dependency before typecheck')
 for(const config of ['tsconfig.host.json','tsconfig.client.json','tsconfig.scripts.json','tsconfig.tests.json','tsconfig.page.json','tsconfig.fixtures.json','tsconfig.desktop-programs.json']){
-  const result=spawnSync(process.execPath,[compiler,'-p',join(root,config),'--noEmit'],{cwd:root,stdio:'inherit'})
+  const args=[compiler,'-p',join(root,config),'--noEmit']
+  if(config==='tsconfig.client.json')args.push('--tsBuildInfoFile',join(root,'.cache','client.tsbuildinfo'))
+  const result=spawnSync(process.execPath,args,{cwd:root,stdio:'inherit'})
   if(result.status!==0)process.exit(result.status??1)
 }
 process.stdout.write('browser-flow: all TypeScript compiler faces clean\n')
