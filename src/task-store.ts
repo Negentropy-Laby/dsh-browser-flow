@@ -100,6 +100,7 @@ tasks: Map<string, TaskData>;
 bindings: Map<string, string>;
 private creationFailures = new Map<string, TaskError>();
 private evidenceReads = new WeakMap<TaskData, symbol>();
+private detailLengths = new WeakMap<TaskData,{projectionId:string;ref:string;totalChars:number}>();
 handles: WeakMap<TaskAccess, TaskData>;
 ready: Promise<void> | undefined;
 writer: Promise<unknown> | undefined;
@@ -544,15 +545,16 @@ tail: Promise<void>;
     await this.append(access,'edge',{id,from,to,relation,run:access.run})
     return id
   }
-  /** @param {TaskAccess} access - capability. @param {string} id - task-local detail. @param {number} offset - safe character continuation. @param {number} budget - character budget. @param projectionId - identity required for graph/digest continuation after offset zero. @returns {Promise<object>} complete validated detail exposed in bounded text pieces. */
+  /** @param {TaskAccess} access - capability. @param {string} id - task-local detail. @param {number} offset - safe character continuation, bounded by configured bytes and any known current derived length. @param {number} budget - character budget. @param projectionId - identity required for graph/digest continuation after offset zero. @returns {Promise<object>} validated detail exposed in bounded text pieces; derived JSON also obeys the UTF-8 detail capacity. */
   async detail(access: TaskAccess,id: string,offset: number,budget: number,projectionId?:string) : Promise<object> {
     if(!Number.isSafeInteger(budget)||budget<=0)throw new TaskError('invalid_request','task detail budget must be a positive safe integer')
     const data=this.openTask(access)
     const row=data.events.findLast(event=>event.type==='asset'&&event.data.id===id)
     const asset=row?{id,taskId:data.manifest.scope.taskId,kind:row.data.kind,source:row.data.source,sourceSeq:row.seq,data:(row.data.data as Record<string, unknown>)}:undefined
     let criterion=taskFacts(data).criteria.find(item=>item.id===id)
-    let value,currentProjection:string|undefined
+    let value,currentProjection:string|undefined,serialized:string|undefined
     if(!Number.isSafeInteger(offset)||offset<0)throw new TaskError('invalid_request','detail offset must be a nonnegative safe integer')
+    if((id==='graph'||id.startsWith('digest-'))&&offset>this.graphConfig.graphMaxDetailBytes)throw new TaskError('invalid_request','detail offset exceeds the configured graph capacity')
     if(asset||id==='waiting'||criterion||id==='criteria'||id==='goal'||data.snapshot?.definition.resources.includes(id)){
       await this.refreshEvidence(access);this.openTask(access);criterion=taskFacts(data).criteria.find(item=>item.id===id)
     }
@@ -570,15 +572,23 @@ tail: Promise<void>;
       data.liveDocumentToken=this.controlDocument?.(access)
       const input=graphInput(data,this.graphConfig),hash=graphHash(JSON.stringify(input));currentProjection=graphProjectionId(hash)
       if(((id==='graph'||id.startsWith('digest-'))&&offset>0&&!projectionId) || (projectionId!==undefined&&projectionId!==currentProjection))throw new TaskError('task_not_bound','projection changed or identity is missing; restart detail at offset zero')
-      try{value=await this.graph.detail(input,id,()=>{try{const latest=this.openTask(access);latest.liveDocumentToken=this.controlDocument?.(access);return graphHash(JSON.stringify(graphInput(latest,this.graphConfig)))===hash}catch{return false}})}catch(error){
+      const known=this.detailLengths.get(data)
+      if(known?.projectionId===currentProjection&&known.ref===id&&offset>known.totalChars)throw new TaskError('invalid_request','detail offset exceeds its total characters')
+      const current=()=>{try{const latest=this.openTask(access);latest.liveDocumentToken=this.controlDocument?.(access);return graphHash(JSON.stringify(graphInput(latest,this.graphConfig)))===hash}catch{return false}}
+      try{value=await this.graph.detail(input,id,current)}catch(error){
         const code=error instanceof GraphError?error.code:'graph_failed'
         throw new TaskError(['stale_reference','stale_projection'].includes(code)?'task_not_bound':'task_unavailable',`graph detail unavailable: ${code}`)
       }
+      serialized=JSON.stringify(value)
+      if(Buffer.byteLength(serialized,'utf8')>this.graphConfig.graphMaxDetailBytes)throw new TaskError('task_unavailable','graph detail unavailable: detail_capacity')
+      if(!current())throw new TaskError('task_not_bound','projection changed during detail retrieval; restart detail at offset zero')
+      this.detailLengths.set(data,{projectionId:currentProjection,ref:id,totalChars:serialized.length})
+      if(offset>serialized.length)throw new TaskError('invalid_request','detail offset exceeds its total characters')
       await this.refreshEvidence(access)
       this.openTask(access);data.liveDocumentToken=this.controlDocument?.(access)
       if(graphHash(JSON.stringify(graphInput(data,this.graphConfig)))!==hash)throw new TaskError('task_not_bound','projection changed during evidence verification; restart detail at offset zero')
     }
-    const serialized=JSON.stringify(value)
+    serialized??=JSON.stringify(value)
     if(offset>serialized.length)throw new TaskError('invalid_request','detail offset exceeds its total characters')
     return {task:access.run,contextVersion:data.events.length,ref:id,...(currentProjection?{projectionId:currentProjection}:{}),offset,totalChars:serialized.length,text:serialized.slice(offset,offset+budget),complete:offset+budget>=serialized.length}
   }

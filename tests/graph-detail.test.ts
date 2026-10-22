@@ -6,7 +6,7 @@ import {resolveConfig} from '../src/config.ts'
 import type {GraphInput} from '../src/graph/protocol.ts'
 import {graphRuntime,graphBinary} from './helpers/graph-process.ts'
 import {TASK} from './helpers/task-scope.ts'
-import {expectRecord,expectList,present} from './helpers/assertions.ts'
+import {expectRecord,expectList,expectString,expectNumber,expectFailure,present} from './helpers/assertions.ts'
 import {taskHost} from './helpers/task-host.ts'
 import {PassThrough} from 'node:stream'
 import {Frames,frame} from '../src/graph/protocol.ts'
@@ -38,6 +38,85 @@ it('pins outer continuations to the same projection and rejects offsets beyond t
  await store.asset(access,'page',{documentToken:'new-document'})
  await assert.rejects(store.detail(access,'graph',30,30,String(first.projectionId)),/projection/)
  await assert.rejects(store.detail(access,'graph',Number.MAX_SAFE_INTEGER,30,String(first.projectionId)))
+})
+it('rejects impossible scoped offsets before graph or evidence work at both public and store entries',async t=>{
+ const env=await taskHost(t);await env.task('a');const store=env.service.tasks,access=present(store.current('session-a'))
+ const first=expectRecord(await store.detail(access,'graph',0,30)),projectionId=expectString(first.projectionId)
+ let graphs=0,evidence=0,dispatches=0
+ const detail=env.service.graph.detail.bind(env.service.graph),refresh=store.refreshEvidence.bind(store),observe=env.service.observe.bind(env.service)
+ env.service.graph.detail=async(...args)=>{graphs++;return detail(...args)}
+ store.refreshEvidence=async(...args)=>{evidence++;return refresh(...args)}
+ env.service.observe=async(...args)=>{dispatches++;return observe(...args)}
+ for(const ref of ['graph','digest-impossible'])for(const offset of [env.service.config.graphMaxDetailBytes+1,Number.MAX_SAFE_INTEGER]){
+  assert.equal(expectFailure(await env.tool('a','browser_observe',{view:'task',ref,offset,projectionId})).code,'invalid_request')
+  await assert.rejects(store.detail(access,ref,offset,30,projectionId),{code:'invalid_request'})
+ }
+ assert.equal(dispatches,0);assert.equal(graphs,0);assert.equal(evidence,0)
+})
+it('reuses one current length across worker retirement to reject known overflow without graph or evidence work',async t=>{
+ const env=await taskHost(t);await env.task('a');const store=env.service.tasks,access=present(store.current('session-a'))
+ const first=expectRecord(await store.detail(access,'graph',0,30)),projectionId=expectString(first.projectionId),total=expectNumber(first.totalChars)
+ await env.service.graph.retire(access.scope.taskId)
+ let graphs=0,evidence=0;const detail=env.service.graph.detail.bind(env.service.graph),refresh=store.refreshEvidence.bind(store)
+ env.service.graph.detail=async(...args)=>{graphs++;return detail(...args)}
+ store.refreshEvidence=async(...args)=>{evidence++;return refresh(...args)}
+ await assert.rejects(store.detail(access,'graph',total+1,30,projectionId),{code:'invalid_request'})
+ assert.equal(graphs,0);assert.equal(evidence,0)
+ const end=expectRecord(await store.detail(access,'graph',total,30,projectionId))
+ assert.equal(end.text,'');assert.equal(end.complete,true)
+})
+it('checks an unknown detail length before evidence and remembers only the validated current length',async t=>{
+ const env=await taskHost(t);await env.task('a');const store=env.service.tasks,access=present(store.current('session-a'))
+ const projectionId=graphProjectionId(graphHash(JSON.stringify(graphInput(store.openTask(access),env.service.config))))
+ let graphs=0,evidence=0;const detail=env.service.graph.detail.bind(env.service.graph),refresh=store.refreshEvidence.bind(store)
+ env.service.graph.detail=async(...args)=>{graphs++;return detail(...args)}
+ store.refreshEvidence=async(...args)=>{evidence++;return refresh(...args)}
+ const invalid=()=>store.detail(access,'graph',env.service.config.graphMaxDetailBytes,30,projectionId)
+ await assert.rejects(invalid(),{code:'invalid_request'})
+ assert.equal(graphs,1);assert.equal(evidence,0)
+ await assert.rejects(invalid(),{code:'invalid_request'})
+ assert.equal(graphs,1);assert.equal(evidence,0)
+})
+it('does not use another task or projection length and refuses stale identities before graph work',async t=>{
+ const env=await taskHost(t);await env.task('a');await env.task('b')
+ const store=env.service.tasks,a=present(store.current('session-a')),b=present(store.current('session-b'))
+ const first=expectRecord(await store.detail(a,'graph',0,30)),oldId=expectString(first.projectionId),offset=expectNumber(first.totalChars)+1
+ await store.asset(a,'page',{documentToken:'next-document'})
+ let graphs=0;const detail=env.service.graph.detail.bind(env.service.graph)
+ env.service.graph.detail=async(...args)=>{graphs++;return detail(...args)}
+ await assert.rejects(store.detail(a,'graph',offset,30,oldId),{code:'task_not_bound'})
+ await assert.rejects(store.detail(b,'graph',offset,30,oldId),{code:'task_not_bound'});assert.equal(graphs,0)
+ const newId=graphProjectionId(graphHash(JSON.stringify(graphInput(store.openTask(a),env.service.config))))
+ const next=expectRecord(await store.detail(a,'graph',offset,30,newId))
+ assert.equal(next.offset,offset);assert.ok(expectNumber(next.totalChars)>offset);assert.equal(graphs,1)
+})
+it('enforces the Host canonical UTF-8 detail capacity before publishing or checking evidence',async t=>{
+ const env=await taskHost(t);await env.task('a');const store=env.service.tasks,access=present(store.current('session-a'))
+ const detail=env.service.graph.detail.bind(env.service.graph);let evidence=0
+ // The parser normally bounds the wire body; Host serialization must independently bound normalized output.
+ env.service.graph.detail=async(...args)=>({...expectRecord(await detail(...args)),synthetic:'中😀'.repeat(15000)})
+ store.graphConfig={...store.graphConfig,graphMaxFrameBytes:65536,graphMaxDetailBytes:65536}
+ store.refreshEvidence=async()=>{evidence++}
+ await assert.rejects(store.detail(access,'graph',0,30),/detail_capacity/);assert.equal(evidence,0)
+})
+it('continues a real scoped graph beyond two million characters without losing Chinese or emoji',async t=>{
+ const env=await taskHost(t);await env.task('a',{goal:'中文😀 scoped continuation',origins:['https://a.example']})
+ const store=env.service.tasks,access=present(store.current('session-a'))
+ for(let i=0;i<6500;i++)await store.asset(access,'page',{documentToken:`${i}-`+'中文😀'.repeat(40)})
+ const input=graphInput(store.openTask(access),env.service.config),expected=JSON.stringify(await env.service.graph.detail(input,'graph',()=>true))
+ assert.ok(expected.length>2_000_001,`fixture must exceed two million characters: ${expected.length}`);assert.ok(Buffer.byteLength(expected)<env.service.config.graphMaxDetailBytes)
+ const first=expectRecord(await store.detail(access,'graph',0,1_000_003)),projectionId=expectString(first.projectionId)
+ let text=expectString(first.text)
+ while(text.length<expected.length){
+  const part=expectRecord(await store.detail(access,'graph',text.length,1_000_003,projectionId))
+  assert.equal(part.projectionId,projectionId);assert.equal(part.totalChars,expected.length)
+  text+=expectString(part.text)
+ }
+ assert.equal(text,expected)
+ const tail=expectRecord(await store.detail(access,'graph',2_000_001,1000,projectionId))
+ assert.equal(tail.text,expected.slice(2_000_001,2_001_001))
+ const end=expectRecord(await store.detail(access,'graph',expected.length,1000,projectionId))
+ assert.equal(end.text,'');assert.equal(end.complete,true)
 })
 it('assembles a detail larger than the default 8 MiB frame without losing members',async t=>{
  const config=resolveConfig({}),workers=new GraphWorkers(config,graphBinary);workers.attach(graphRuntime());t.after(()=>workers.close())

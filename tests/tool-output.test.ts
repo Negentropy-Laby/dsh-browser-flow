@@ -129,6 +129,14 @@ describe('browser_observe output', () => {
     assert.deepEqual(expectRecord(expectRecord(present(observe).parameters.properties).view).enum, ['page', 'bjrsj_import','task'])
     assert.equal(present(observe).parameters.additionalProperties, false)
   })
+
+  it('rejects graph offsets beyond the configured detail capacity before resolving or dispatching',async()=>{
+    const {tools,calls,service}=toolsWith({observe:success({})}),config=resolveConfig({graphMaxFrameBytes:65536,graphMaxDetailBytes:65536})
+    const observe=present(createTools(service,config).find(tool=>tool.name==='browser_observe'))
+    const outcome=await observe.execute({view:'task',ref:'graph',projectionId:'a'.repeat(64),offset:65537},caller)
+    assert.equal(outcome.ok,false);assert.equal(outcome.error?.code,'invalid_request');assert.equal(calls.length,0)
+    assert.equal((await present(tools.get('browser_observe')).execute({view:'task',ref:'graph',offset:2_000_001,projectionId:'a'.repeat(64)},caller)).ok,true)
+  })
 })
 
 describe('browser_find output', () => {

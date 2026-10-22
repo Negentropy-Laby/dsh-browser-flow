@@ -10,6 +10,13 @@ change. `graphMaxDetailBytes` defaults to 32 MiB and must be at least the frame
 limit; detail capacity errors require reducing task size or increasing this
 explicit setting. A missing graph never changes permissions or business facts.
 
+Continuation offsets still count JavaScript characters. Graph and digest offsets
+above `graphMaxDetailBytes`, or above the known length of the same projection and
+reference, are rejected before graph work or evidence reads. Unknown lengths are
+checked after detail validation and before evidence verification. Canonical Host
+detail JSON also obeys the UTF-8 capacity. `offset === totalChars` returns an empty
+completed piece; valid continuations above two million characters remain supported.
+
 Cancellation and revision report their committed journal result immediately.
 Pending or failed worker retirement appears separately at
 `active_context.graph.cleanup`; termination grace controls escalation, not an
