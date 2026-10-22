@@ -74,7 +74,13 @@ inventory is a fixture; it does not prove manual authorization or website
 acceptance. Normal Agent runs and actual Desktop identities must be recorded
 separately in private evidence. Preserve failed receipts alongside later runs.
 
-The target fixture consumes built Host and worker modules. It also waits for actual idle exit when acquisition expires before the first RPC, changes a private synthetic proof original, and checks that Host facts and graph details no longer present it as verified. Run it after building the candidate; do not mix source and built class identities.
+The target fixture consumes built Host and worker modules. It waits for actual idle
+exit when acquisition expires before the first RPC, and for owned retirement before
+serving a same-scope replacement. It checks cheap scoped offset rejection, exact-end
+continuation and two-phase verification of private synthetic originals. A fixed
+metadata provider isolates changed-content rejection; it does not demonstrate a
+metadata-preserving attack on a real volume. Run it after building the candidate;
+do not mix source and built class identities.
 
 Compiler checks include the test fixtures. Synthetic JSON assertions narrow dynamic
 page and IPC results; intentional static counterexamples use local, documented

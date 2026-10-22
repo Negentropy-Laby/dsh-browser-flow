@@ -180,8 +180,10 @@ entry. A missing compiler fails the check. Host tests also
 report skips when their optional artifacts are unavailable. Automated checks
 and synthetic fixtures do not establish logged-in website or business acceptance.
 
-The [control panel UI qualification](docs/qualification/panel-ui.md) records the
-current UI candidate and target Desktop checks. The preceding
+The [scoped graph read qualification](docs/qualification/graph-read-repair.md)
+records the current repair candidate, retained failed runs and target checks.
+The [control panel UI qualification](docs/qualification/panel-ui.md) retains its
+own UI candidate and target Desktop checks. The preceding
 [task graph repair qualification](docs/qualification/task-graph-repair.md) retains
 its own candidate and results. Website acceptance remains separate.
 

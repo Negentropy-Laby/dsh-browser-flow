@@ -15,6 +15,7 @@ import type {GraphInput} from '../src/graph/protocol.ts'
 import {TASK} from './helpers/task-scope.ts'
 import {syntheticDefinition} from './helpers/task-definition.ts'
 
+function barrier(){let release=()=>{},entered=()=>{};const gate=new Promise<void>(r=>{release=r}),ready=new Promise<void>(r=>{entered=r});return {release,entered,gate,ready}}
 async function main(){
  if(process.platform!=='win32'||process.arch!=='x64')throw new Error('NOT_RUN: this fixture requires Windows x64')
  const checkout=process.env.DSH_CHECKOUT??process.argv[2],receipt=process.env.DSH_BF_GRAPH_RECEIPT??process.argv[3]
@@ -87,6 +88,22 @@ async function main(){
    }finally{await detach();await probe.close()}
   }
   checks.push('complete detail over 64 KiB frames','16001 events within default request budget','complete detail over 8 MiB frame')
+  const retirement=new GraphWorkers(resolveConfig({})),hold=barrier();let retiredHandle:import('../src/graph/protocol.ts').ProcessHandle|undefined
+  const detachRetirement=retirement.attach({spawn(spec){const handle=runtime.spawn(spec);retiredHandle=handle;return handle}})
+  try{
+   await retirement.project(sequential(0),6000,()=>true)
+   const handle=present(retiredHandle),wait=handle.waitForExit.bind(handle)
+   handle.waitForExit=async()=>{hold.entered();await hold.gate;return wait()}
+   const retiring=retirement.retire(TASK.taskId);await hold.ready
+   const count=owned.length;let completed=false
+   const reading=retirement.project(sequential(0),6000,()=>true).then(value=>{completed=true;return value})
+   const outcome=Promise.allSettled([reading])
+   await new Promise(resolve=>setImmediate(resolve))
+   assert.equal(completed,false);assert.equal(owned.length,count)
+   hold.release();await retiring
+   assert.equal((await outcome)[0].status,'fulfilled');assert.equal(owned.length,count+1)
+   checks.push('same-scope read waits for actual owned Windows worker exit before replacement')
+  }finally{hold.release();await detachRetirement();await retirement.close()}
   let clock=0,idleHandle:import('../src/graph/protocol.ts').ProcessHandle|undefined
   const idle=new GraphWorkers(resolveConfig({graphIdleMs:1000}),undefined,()=>clock)
   const detachIdle=idle.attach({spawn(spec){const h=runtime.spawn(spec);idleHandle=h;clock=6000;return h}})
@@ -106,11 +123,27 @@ async function main(){
    assert.equal(await store.verdict(access,{verdict:'entry_reached'},proofRef),'entry_reached')
    const before=await store.view(access,8000);assert.equal(before.active_context.businessVerdict,'entry_reached')
    const artifact=expectRecord(present(store.openTask(access).events.find(e=>e.type==='asset'&&e.data.id===proofRef)).data.data)
-   await writeFile(join(store.openTask(access).dir,expectString(artifact.artifact)),'{}\n')
+   const first=expectRecord(await store.detail(access,'graph',0,100)),projectionId=expectString(first.projectionId),totalChars=Number(first.totalChars)
+   let graphs=0,evidence=0,reads=0
+   const detail=evidenceGraph.detail.bind(evidenceGraph),refresh=store.refreshEvidence.bind(store),read=store.readArtifact.bind(store)
+   evidenceGraph.detail=async(...args)=>{graphs++;return detail(...args)}
+   store.refreshEvidence=async(...args)=>{evidence++;return refresh(...args)}
+   store.readArtifact=async(...args)=>{reads++;return read(...args)}
+   await assert.rejects(store.detail(access,'graph',Number.MAX_SAFE_INTEGER,100,projectionId),{code:'invalid_request'})
+   await assert.rejects(store.detail(access,'graph',totalChars+1,100,projectionId),{code:'invalid_request'})
+   assert.equal(graphs,0);assert.equal(evidence,0);assert.equal(reads,0)
+   const end=expectRecord(await store.detail(access,'graph',totalChars,100,projectionId));assert.equal(end.text,'');assert.equal(end.complete,true)
+   assert.equal(reads,2);checks.push('scoped offset preflight skips Windows graph and evidence reads','two-phase unique original verification and exact-end continuation')
+   const ref={role:'proof',path:expectString(artifact.artifact),sha256:expectString(artifact.sha256),bytes:Number(artifact.bytes)},state=store.artifactState.bind(store),data=store.openTask(access),fixed=await state(data,ref)
+   reads=0
+   store.artifactState=async(owner,item)=>item.path===ref.path?fixed:state(owner,item)
+   store.readArtifact=async(...args)=>{reads++;const bytes=await read(...args);if(reads===1)await writeFile(join(data.dir,ref.path),Buffer.alloc(bytes.length,32));return bytes}
    const after=await store.view(access,8000);assert.equal(after.active_context.businessVerdict,'unverified');assert.equal(after.active_context.graph.reason,'stale_projection')
+   assert.equal(reads,2);assert.equal(data.checkedProofs?.has(proofRef),false)
+   store.artifactState=state;store.readArtifact=read
    const details=expectRecord(await store.detail(access,'criteria',0,8000))
    assert.ok(expectList(JSON.parse(expectString(details.text))).every(c=>expectRecord(c).status!=='passed'))
-   checks.push('private original change invalidates Host proof and stale graph','fact detail independently rechecks evidence')
+   checks.push('changed bytes with fixed reported metadata invalidate Host proof and stale graph','fact detail independently rechecks evidence')
   }finally{await store.close();await detachEvidence();await evidenceGraph.close()}
   await context.fiber.dispose();assert.ok((await Promise.all(owned.map(handle=>handle.waitForExit()))).every(Boolean));assert.equal(context.tools?.schemas().filter((row)=>row.name.startsWith('browser_')).length??0,0);checks.push('awaited provider and plugin disposal')
   const manifest=JSON.parse(await readFile(new URL('../lib/native/manifest.json',import.meta.url),'utf8'))
