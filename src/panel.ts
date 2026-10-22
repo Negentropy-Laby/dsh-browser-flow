@@ -1,5 +1,6 @@
 import type {PanelUi,PanelElementType} from './panel-ui.ts'
 import type {RunScope} from './task-scope.ts'
+import {renderPanelView,type TaskForm,type FileForm,type TaskOperation} from './panel-view.ts'
 import type {PagePolicy} from './page/input.ts'
 interface GuestElement extends HTMLElement {executeJavaScript(source:string,userGesture?:boolean):Promise<unknown>}
 interface PanelBinding {task:RunScope;lease:string;partition:string;tabId:string;controlLeaseId:string;epoch:number;documentToken:string;url?:string;expectedSequence:number;element?:GuestElement;pagePolicy?:PagePolicy;origins?:string[];importOwner?:string}
@@ -111,6 +112,7 @@ export const COPY: {
     en: Record<string, string>;
 } = Object.freeze({
   zh: {
+    "stateActive":"进行中","stateReadOnly":"只读记录","stateBlocked":"写操作已阻断","stateCancelled":"已取消","stateHandedOff":"已交接","stateUnknown":"无法识别的状态","stateUnbound":"未绑定","notAuthorized":"未授权","reauthorize":"重新授权","pagesTitle":"控制页面","authorizationTarget":"授权对象详情","pageAddress":"完整地址","agentUnavailable":"暂无 Agent","taskActions":"任务操作","editTask":"编辑目标与范围","cancelEdit":"取消编辑","reloadDraft":"重新加载当前任务","draftChanged":"任务范围已变化。请重新加载当前任务后编辑。","operationFailed":"操作未完成。请查看下方诊断详情，并核对当前连接和权限。","unknownStateHint":"无法识别任务状态，请配套重载 Host 和 Client。当前仅允许安全读取、撤销和交接。","working":"处理中…","fileReview":"请确认文件摘要","fileSize":"文件大小","fileRows":"解析数据行数","fileDigest":"SHA-256","detailsTitle":"详情与诊断","taskId":"任务标识","taskScope":"范围版本","goalRequired":"请填写任务目标。","originsRequired":"请填写完整的 HTTP(S) 源站，以逗号分隔；不包含路径。","definitionRequired":"此本地定义不可用，请重新选择。","workflowRequired":"请为所选定义选择有效的操作说明。",
     resumeTask:'核对新输入并继续', userInput:'新提供的人工输入', waitingUser:'等待用户', taskReadOnly:'旧任务记录只读；请使用新会话开始新任务。',
     taskTitle:'当前任务', taskGoal:'目标', taskOrigins:'允许的源站（以逗号分隔）', taskDefinition:'本地任务定义', taskGeneric:'通用任务', taskWorkflow:'操作说明', createTask:'创建并绑定任务', openTask:'打开本会话任务', reviseTask:'修订目标与范围', cancelTask:'取消任务并撤销', finishTask:'结束并人工交接', invalidReply: 'Host 响应无效，请配套重载 Host 和 Client',
     taskMissing:'先创建或打开当前会话的任务，再授权页面。', taskBlocked:'此任务的写结果未知或日志不可用：仅允许读取、撤销及人工交接。',
@@ -139,6 +141,7 @@ export const COPY: {
     agentInstance: 'Agent 实例',
   },
   en: {
+    "stateActive":"In progress","stateReadOnly":"Read-only history","stateBlocked":"Writes blocked","stateCancelled":"Cancelled","stateHandedOff":"Handed off","stateUnknown":"Unrecognized state","stateUnbound":"Not bound","notAuthorized":"Not authorized","reauthorize":"Authorize again","pagesTitle":"Controlled pages","authorizationTarget":"Authorization target details","pageAddress":"Full address","agentUnavailable":"No Agent","taskActions":"Task actions","editTask":"Edit goal and scope","cancelEdit":"Cancel editing","reloadDraft":"Reload current task","draftChanged":"The task scope changed. Reload the current task before editing.","operationFailed":"The operation did not complete. Review the diagnostics below and check the connection and permissions.","unknownStateHint":"Unrecognized task state. Reload the paired Host and Client. Only safe reads, revocation and handoff remain available.","working":"Working\u2026","fileReview":"Confirm the file summary","fileSize":"File size","fileRows":"Parsed data rows","fileDigest":"SHA-256","detailsTitle":"Details and diagnostics","taskId":"Task ID","taskScope":"Scope revision","goalRequired":"Enter a task goal.","originsRequired":"Enter full HTTP(S) origins separated by commas, without paths.","definitionRequired":"This local definition is unavailable. Select it again.","workflowRequired":"Select valid instructions for this definition.",
     resumeTask:'Check new input and resume', userInput:'New user input', waitingUser:'Awaiting user', taskReadOnly:'Legacy history is read-only; start new work in a new Session.',
     taskTitle:'Current task', taskGoal:'Goal', taskOrigins:'Allowed origins (comma separated)', taskDefinition:'Local definition', taskGeneric:'Generic task', taskWorkflow:'Instructions', createTask:'Create and bind task', openTask:'Open this session’s task', reviseTask:'Revise goal and scope', cancelTask:'Cancel task and revoke', finishTask:'End and hand off', invalidReply:'Host response is invalid; reload the paired Host and Client', taskMissing:'Create or open this session’s task before authorizing a page.', taskBlocked:'Unknown write or unavailable log: only read, revoke and hand off.',
     title: 'Browser Flow', connected:'Connected',
@@ -178,7 +181,7 @@ export const COPY: {
  * @returns {Function} React component.
  */
 export function createPanel({ React, t, ui, core = CORE, pageCode = PAGE_CODE }: {React:ReactLike;t:(key:string)=>string;ui:PanelUi;core?:ClientHelpers;pageCode?:PagePrograms}) {
-  const h = React.createElement,button=ui.button,input=ui.input
+  const h = React.createElement
 
   /**
    * One panel instance: page discovery, authorization and the command loop.
@@ -194,7 +197,7 @@ export function createPanel({ React, t, ui, core = CORE, pageCode = PAGE_CODE }:
     };
 }) {
     const sessionId = props.sessionId
-    const tabInfo = typeof props.useTabInfo === 'function' ? props.useTabInfo() : undefined
+    if(typeof props.useTabInfo==='function')props.useTabInfo()
 
     const [pages, setPages] = React.useState((([]) as DiscoveredPage[]))
     const [connected, setConnected] = React.useState(false)
@@ -204,14 +207,35 @@ export function createPanel({ React, t, ui, core = CORE, pageCode = PAGE_CODE }:
     const [error, setError] = React.useState<PanelError|undefined>(undefined)
     const [authorized, setAuthorized] = React.useState<string|undefined>(undefined)
     const [busy, setBusy] = React.useState(false)
-    const [fileForm,setFileForm] = React.useState({path:'',kind:'add',unitId:'',legalIdentity:'',firstRow:'2',lastRow:'2'})
+    const [fileForm,setFileForm] = React.useState<FileForm>({path:'',kind:'add',unitId:'',legalIdentity:'',firstRow:'2',lastRow:'2'})
     const [filePreview,setFilePreview] = React.useState<FilePreview|undefined>(undefined)
     const [supported] = React.useState(() => core.hostSupportsPageControl(((((globalThis) as Record<string, unknown>).dshDesktop) as object)))
 
     const [taskSummary,setTaskSummary]=React.useState<TaskSummary|undefined>(undefined)
     const [definitions,setDefinitions]=React.useState<DefinitionOption[]>([])
     const [userInput,setUserInput]=React.useState('')
-    const [taskForm,setTaskForm]=React.useState({goal:'',origins:'',definitionId:'',workflowRef:''})
+    const [taskForm,setTaskForm]=React.useState<TaskForm>({goal:'',origins:'',definitionId:'',workflowRef:''})
+    const [editing,setEditing]=React.useState<RunScope|undefined>(undefined)
+    const [moreOpen,setMoreOpen]=React.useState(false)
+    const [detailsOpen,setDetailsOpen]=React.useState(false)
+    const [pageDetails,setPageDetails]=React.useState<string[]>([])
+    const [fieldErrors,setFieldErrors]=React.useState<Record<string,string>>({})
+    const [operationError,setOperationError]=React.useState<PanelError|undefined>(undefined)
+    const [pendingAction,setPendingAction]=React.useState<string|undefined>(undefined)
+    const [uiOwner,setUiOwner]=React.useState(sessionId)
+    const uiSession=React.useRef(sessionId)
+    const uiGeneration=React.useRef(0)
+    if(uiSession.current!==sessionId){uiSession.current=sessionId;uiGeneration.current+=1}
+    const currentTask=React.useRef(taskSummary)
+    currentTask.current=taskSummary?.task.ownerSessionId===sessionId?taskSummary:undefined
+    const operationVersion=React.useRef(0)
+    const startOperation=(key:string)=>{const token=++operationVersion.current;setBusy(true);setPendingAction(key);setOperationError(undefined);return token}
+    const finishOperation=(token:number,owner:number)=>{if(alive.current&&uiGeneration.current===owner&&operationVersion.current===token){setBusy(false);setPendingAction(undefined)}}
+    React.useEffect(()=>{
+      setUiOwner(sessionId);setTaskForm({goal:'',origins:'',definitionId:'',workflowRef:''});setFileForm({path:'',kind:'add',unitId:'',legalIdentity:'',firstRow:'2',lastRow:'2'})
+      setEditing(undefined);setMoreOpen(false);setDetailsOpen(false);setPageDetails([]);setFieldErrors({});setOperationError(undefined);setPendingAction(undefined);setBusy(false);setFilePreview(undefined);setUserInput('')
+      setTaskSummary(undefined);setDefinitions([]);setAgentSummary(undefined);setConnected(false);setLiveAgent(false);setError(undefined);setPages([])
+    },[sessionId])
 
     const instanceId = React.useMemo(() => {
       const bytes = new Uint8Array(16)
@@ -513,7 +537,7 @@ export function createPanel({ React, t, ui, core = CORE, pageCode = PAGE_CODE }:
           setDefinitions(polled.value.definitions ?? [])
           if(bound.current && polledTask && !sameRunScope(bound.current.task,polledTask.task))suspendControl()
           setConnected(true)
-          setLiveAgent(true)
+          setLiveAgent(polled.value.agent?.id===sessionId)
           setAgentSummary(polled.value.agent ?? undefined)
           setError(undefined)
           if(bound.current && Array.isArray(polled.value.controls) && !polled.value.controls.includes(bound.current.controlLeaseId))suspendControl()
@@ -579,13 +603,13 @@ export function createPanel({ React, t, ui, core = CORE, pageCode = PAGE_CODE }:
       // The user must be able to tell which physical page they are granting.
       const twins = indistinguishableFrom(pages, page)
       if (twins.length > 0) {
-        setError({ code: 'page_ambiguous', message: `${String(twins.length + 1)} pages look identical; close one and authorize again` })
+        setOperationError({ code: 'page_ambiguous', message: `${String(twins.length + 1)} pages look identical; close one and authorize again` })
         return
       }
       const version = ++authorizationVersion.current
       const authorizedGeneration = generation.current
       const authorizedElement = elementOf(page.lease)
-      setBusy(true)
+      const owner=uiGeneration.current,operation=startOperation('authorize')
       try {
         const answer = await post(ROUTES.authorize, {
           instanceId,
@@ -597,14 +621,14 @@ export function createPanel({ React, t, ui, core = CORE, pageCode = PAGE_CODE }:
           tabId: page.tabId,
           task:taskSummary?.task,
         })
-        if (!alive.current || version !== authorizationVersion.current
+        if (!alive.current || uiGeneration.current!==owner || version !== authorizationVersion.current
           || authorizedGeneration !== generation.current) return
         if (answer?.ok === true) {
-          if(!validRunScope(answer.value.task)||typeof answer.value.controlLeaseId!=='string'||typeof answer.value.epoch!=='number'||typeof answer.value.documentToken!=='string'){setError({code:'protocol_violation',message:t('taskMissing')});return}
+          if(!validRunScope(answer.value.task)||typeof answer.value.controlLeaseId!=='string'||typeof answer.value.epoch!=='number'||typeof answer.value.documentToken!=='string'){setOperationError({code:'protocol_violation',message:t('taskMissing')});return}
           if (elementOf(page.lease) !== authorizedElement) {
             bound.current = undefined
             setAuthorized(undefined)
-            setError({ code: 'page_replaced', message: t('disconnected') })
+            setOperationError({ code: 'page_replaced', message: t('disconnected') })
             return
           }
           disposeImport(bound.current)
@@ -626,119 +650,90 @@ export function createPanel({ React, t, ui, core = CORE, pageCode = PAGE_CODE }:
             element: authorizedElement,
           }
           setAuthorized(page.lease)
-          setError(undefined)
+          setOperationError(undefined)
         } else {
-          setError(answer?.error)
+          setOperationError(answer?.error)
         }
+      } catch {
+        if(alive.current&&uiGeneration.current===owner)setOperationError({code:'connection_lost',message:t('disconnected')})
       } finally {
-        setBusy(false)
+        finishOperation(operation,owner)
       }
     }, [elementOf, instanceId, pages, post, sessionId, taskSummary])
 
     const fileOperation = async (operation: 'prepare' | 'confirm') => {
-      const binding=bound.current;const version=authorizationVersion.current
+      const binding=bound.current,version=authorizationVersion.current,owner=uiGeneration.current
       if(!binding)return
-      setBusy(true)
+      const token=startOperation(operation==='prepare'?'prepare-file':'confirm-file')
       try {
         const answer=await post(ROUTES.authorize,{
           instanceId,connectionGeneration:generation.current,sessionId,task:binding.task,lease:binding.lease,partition:binding.partition,tabId:binding.tabId,documentToken:binding.documentToken,
           fileOperation:operation,
           ...(operation==='prepare'?{path:fileForm.path,scope:{kind:fileForm.kind,unitId:fileForm.unitId,legalIdentity:fileForm.legalIdentity,firstRow:Number(fileForm.firstRow),lastRow:Number(fileForm.lastRow)}}:{fileGrantId:filePreview?.fileGrantId}),
         })
-        if(!alive.current||bound.current!==binding||version!==authorizationVersion.current)return
-        if(answer?.ok!==true){setError(answer?.error);return}
-        if(operation==='prepare'){if(isFilePreview(answer.value))setFilePreview(answer.value);else setError({code:'protocol_violation',message:t('invalidReply')})}else if(filePreview)setFilePreview({...filePreview,confirmed:true})
-      }catch{if(alive.current)setError({code:'connection_lost',message:t('disconnected')})}
-      finally{if(alive.current)setBusy(false)}
+        if(!alive.current||uiGeneration.current!==owner||bound.current!==binding||version!==authorizationVersion.current)return
+        if(answer?.ok!==true){setOperationError(answer?.error);return}
+        if(operation==='prepare'){if(isFilePreview(answer.value))setFilePreview(answer.value);else setOperationError({code:'protocol_violation',message:t('invalidReply')})}else if(filePreview)setFilePreview({...filePreview,confirmed:true})
+      }catch{if(alive.current&&uiGeneration.current===owner)setOperationError({code:'connection_lost',message:t('disconnected')})}
+      finally{finishOperation(token,owner)}
     }
 
-    const revoke = React.useCallback(async () => {
+    const revoke = async () => {
       suspendControl()
-      setBusy(true)
+      const owner=uiGeneration.current,token=startOperation('revoke')
       try {
-        const answer = await post(ROUTES.revoke, {
-          instanceId,
-          connectionGeneration: generation.current,
-          sessionId,
-        })
-        if (answer?.ok !== true) setError(answer?.error)
-      } catch (failure) {
-        setError({ code: 'connection_lost', message: t('disconnected') })
-      } finally {
-        setBusy(false)
-      }
-    }, [instanceId, post, sessionId, suspendControl])
+        const answer = await post(ROUTES.revoke, {instanceId,connectionGeneration:generation.current,sessionId})
+        if(alive.current&&uiGeneration.current===owner&&answer?.ok!==true)setOperationError(answer?.error)
+      } catch {
+        if(alive.current&&uiGeneration.current===owner)setOperationError({code:'connection_lost',message:t('disconnected')})
+      } finally {finishOperation(token,owner)}
+    }
 
-    const taskOperation=async (operation: 'create' | 'open' | 'revise' | 'cancel' | 'finish' | 'resume')=>{
+    const edit=()=>{
+      const task=currentTask.current;if(!task)return
+      setEditing(task.task);setTaskForm({goal:task.goal,origins:task.origins.join(', '),definitionId:'',workflowRef:task.task.workflowRef});setFieldErrors({})
+    }
+    const cancelEdit=()=>{setEditing(undefined);setFieldErrors({})}
+    const taskOperation=async (operation:TaskOperation)=>{
+      const target=currentTask.current
+      if(operation==='revise'&&(!editing||!target||!sameRunScope(editing,target.task))){setFieldErrors({goal:t('draftChanged')});return}
+      const origins=taskForm.origins.split(',').map(part=>part.trim()).filter(Boolean)
+      if(operation==='create'||operation==='revise'){
+        const errors:Record<string,string>={}
+        if(!taskForm.goal.trim())errors.goal=t('goalRequired')
+        if(operation==='create'&&taskForm.definitionId){
+          const definition=definitions.find(item=>item.id===taskForm.definitionId)
+          if(!definition)errors.definitionId=t('definitionRequired')
+          else if(!definition.workflows.some(item=>item.id===taskForm.workflowRef))errors.workflowRef=t('workflowRequired')
+        }else if(target?.adapter==='generic'||operation==='create'){
+          if(!origins.length||origins.some(origin=>{try{const url=new URL(origin);return !['https:','http:'].includes(url.protocol)||url.origin!==origin}catch{return true}}))errors.origins=t('originsRequired')
+        }
+        setFieldErrors(errors);if(Object.keys(errors).length)return
+      }
       if(['revise','cancel','finish'].includes(operation))suspendControl()
-      setBusy(true)
+      const owner=uiGeneration.current,token=startOperation('task-'+operation)
       try{
         const answer=await post(ROUTES.authorize,{instanceId,connectionGeneration:generation.current,sessionId,taskOperation:operation,
-          ...(operation==='create'?{spec:{goal:taskForm.goal,...(taskForm.definitionId?{definitionId:taskForm.definitionId,workflowRef:taskForm.workflowRef}:{origins:taskForm.origins.split(',').map((part: string)=>part.trim()).filter(Boolean)})}}:{}),
-          ...(operation==='revise'?{task:taskSummary?.task,spec:{goal:taskForm.goal,...(taskSummary?.adapter==='generic'?{origins:taskForm.origins.split(',').map((part: string)=>part.trim()).filter(Boolean)}:{})}}:{}),
-          ...(operation==='resume'?{task:taskSummary?.task,waitId:taskSummary?.active_context?.waiting?.id,userInput}:{}),
-          ...(['cancel','finish'].includes(operation)?{task:taskSummary?.task}:{})})
-        if(!alive.current)return
-        if(answer?.ok&&isTaskSummary(answer.value)){setTaskSummary(answer.value);if(operation==='resume')setUserInput('');setError(undefined)}else setError(answer?.error)
-      }catch{if(alive.current)setError({code:'connection_lost',message:t('disconnected')})}
-      finally{if(alive.current)setBusy(false)}
+          ...(operation==='create'?{spec:{goal:taskForm.goal,...(taskForm.definitionId?{definitionId:taskForm.definitionId,workflowRef:taskForm.workflowRef}:{origins})}}:{}),
+          ...(operation==='revise'?{task:editing,spec:{goal:taskForm.goal,...(target?.adapter==='generic'?{origins}:{})}}:{}),
+          ...(operation==='resume'?{task:target?.task,waitId:target?.active_context?.waiting?.id,userInput}:{}),
+          ...(['cancel','finish'].includes(operation)?{task:target?.task}:{})})
+        if(!alive.current||uiGeneration.current!==owner)return
+        if(answer?.ok&&isTaskSummary(answer.value)&&answer.value.task.ownerSessionId===sessionId){setTaskSummary(answer.value);if(operation==='resume')setUserInput('');if(operation==='revise')cancelEdit();setOperationError(undefined)}else setOperationError(answer?.error??{code:'protocol_violation',message:t('invalidReply')})
+      }catch{if(alive.current&&uiGeneration.current===owner)setOperationError({code:'connection_lost',message:t('disconnected')})}
+      finally{finishOperation(token,owner)}
     }
-    const selectedDefinition=definitions.find((item: DefinitionOption)=>item.id===taskForm.definitionId)
-    const taskPanel=h('section',{'data-browser-flow-task':''},h('h4',null,t('taskTitle')),
-      taskSummary ? h('p',{'data-browser-flow-task-identity':''},`${taskSummary.task.taskId} · ${taskSummary.state} · ${taskSummary.goal}`) : h('p',null,t('taskMissing')),
-      taskSummary?.writeBlocked ? h('p',{role:'alert'},taskSummary?.state==='read_only'?t('taskReadOnly'):t('taskBlocked')) : null,
-      taskSummary?.active_context?.waiting ? h('section',{'data-browser-flow-user-wait':''},h('p',null,t('waitingUser')+': '+taskSummary.active_context.waiting.reason),h('p',null,taskSummary.active_context.waiting.resumeCondition),h('label',null,t('userInput'),input({'data-browser-flow-input':'user-input',value:userInput,onChange:(event: {target:HTMLInputElement|HTMLSelectElement})=>setUserInput(event.target.value)})),button({type:'button','data-browser-flow-action':'task-resume',disabled:busy||taskSummary.writeBlocked,onClick:()=>{void taskOperation('resume')}},t('resumeTask'))) : null,
-      h('label',null,t('taskGoal'),input({'data-browser-flow-input':'task-goal',value:taskForm.goal,onChange:(event: {target:HTMLInputElement|HTMLSelectElement})=>setTaskForm({...taskForm,goal:event.target.value})})),
-      h('label',null,t('taskOrigins'),input({'data-browser-flow-input':'task-origins',value:taskForm.origins,onChange:(event: {target:HTMLInputElement|HTMLSelectElement})=>setTaskForm({...taskForm,origins:event.target.value})})),
-      h('label',null,t('taskDefinition'),h('select',{'data-browser-flow-input':'task-definition',value:taskForm.definitionId,disabled:!!taskSummary,onChange:(event: {target:HTMLInputElement|HTMLSelectElement})=>{const selected=definitions.find((item: DefinitionOption)=>item.id===event.target.value);setTaskForm({...taskForm,definitionId:event.target.value,workflowRef:selected?.workflows[0]?.id ?? ''})}},h('option',{value:''},t('taskGeneric')),...definitions.map((item: DefinitionOption)=>h('option',{key:item.id,value:item.id},item.id)))),
-      selectedDefinition ? h('label',null,t('taskWorkflow'),h('select',{'data-browser-flow-input':'task-workflow',value:taskForm.workflowRef,disabled:!!taskSummary,onChange:(event: {target:HTMLInputElement|HTMLSelectElement})=>setTaskForm({...taskForm,workflowRef:event.target.value})},...selectedDefinition.workflows.map((row: {id:string;description:string})=>h('option',{key:row.id,value:row.id},row.description)))) : null,
-      ...(['create','open','revise','cancel','finish']).map(operation=>button({type:'button','data-browser-flow-action':'task-'+operation,disabled:(['cancel','finish'].includes(operation)?false:busy)||(['revise','cancel','finish'].includes(operation)&&!taskSummary)||(operation==='create'&&!!taskSummary),onClick:()=>{void taskOperation(((operation) as 'create' | 'open' | 'revise' | 'cancel' | 'finish' | 'resume'))}},t(operation+'Task'))))
-
-    const rows = pages.map((page: DiscoveredPage) => h('li', { key: page.lease, 'data-browser-flow-page': page.lease },
-      h('div', { className: 'bf-page-title' }, page.title || page.url),
-      h('div', { className: 'bf-page-url' }, page.url),
-      // The alias is what makes two pages on the same address distinguishable.
-      h('div', { className: 'bf-page-alias' }, `${t('pageAlias')}: ${page.tabId}`),
-      h('div', { className: 'bf-page-state' }, authorized === page.lease ? ui.tag('success',t('authorized')) : null),
-      button( {
-        type: 'button',
-        disabled: busy || !supported || !taskSummary,
-        'data-browser-flow-action': 'authorize',
-        onClick: () => { void authorize(page) },
-      }, t('authorize'))))
-
-    const fileFields=(['path','unitId','legalIdentity','firstRow','lastRow'] as const).map(key=>h('label',{key},t('file_'+key),input({type:'text','data-browser-flow-input':key,value:fileForm[key],disabled:busy,onChange:(event: {target:HTMLInputElement|HTMLSelectElement})=>setFileForm({...fileForm,[key]:event.target.value})})))
-    const filePanel=authorized&&taskSummary?.adapter==='bjrsj'&&!taskSummary?.writeBlocked?h('section',{'data-browser-flow-import':''},h('h4',null,t('importTitle')),h('p',null,t('importHint')),...fileFields,
-      h('label',null,t('file_kind'),h('select',{'data-browser-flow-input':'kind',value:fileForm.kind,disabled:busy,onChange:(event: {target:HTMLInputElement|HTMLSelectElement})=>setFileForm({...fileForm,kind:event.target.value})},...['add','modify','reduce'].map(kind=>h('option',{key:kind,value:kind},t('file_'+kind))))),
-      button({type:'button','data-browser-flow-action':'prepare-file',disabled:busy,onClick:()=>{void fileOperation('prepare')}},t('prepareFile')),
-      filePreview?h('div',{'data-browser-flow-file-preview':''},h('p',null,filePreview.path),h('p',null,`${t('file_kind')}: ${t('file_'+filePreview.kind)}; ${filePreview.bytes} ${t('bytes')}; ${filePreview.rows} ${t('rows')}`),h('p',null,'SHA-256: '+filePreview.sha256),h('p',null,t('stopBoundary')),
-        button({type:'button','data-browser-flow-action':'confirm-file',disabled:busy||filePreview.confirmed,onClick:()=>{void fileOperation('confirm')}},t(filePreview.confirmed?'fileConfirmed':'confirmFile'))):null):null
-    return h('section', { 'data-browser-flow-panel': '', 'aria-label': t('title') },
-      taskPanel,
-      filePanel,
-      h('header', { className: 'bf-header' },
-        h('h3', null, t('title')),
-        h('span',{className:'bf-status',role:'status'},ui.dot(connected?'done':'idle'),t(connected?'connected':'disconnected')),
-        button( {
-          type: 'button',
-          'data-browser-flow-action': 'revoke',
-          disabled: !supported,
-          onClick: () => { void revoke() },
-        }, t('revoke'))),
-      !supported && h('p', { role: 'status' }, t('unsupportedHost')),
-      supported && !connected && h('p', { role: 'status' }, t('disconnected')),
-      supported && connected && !liveAgent && h('p', { role: 'status' }, t('noAgent')),
-      error !== undefined && h('p', { role: 'alert' }, `${t('error')}: ${error.code} ${error.message}`),
-      // The user must see which Session and which live Agent instance the grant
-      // is attached to before granting it.
-      h('p', { className: 'bf-target', 'data-browser-flow-target': '' },
-        `${t('session')}: ${sessionId}`,
-        agentSummary === undefined || agentSummary === null ? '' : ` · ${t('agentInstance')}: ${agentSummary.instance}`),
-      supported && pages.length === 0 ? h('p', null, t('empty')) : null,
-      supported && pages.length > 0 ? h('ul', { className: 'bf-pages' }, rows) : null,
-      h('p', { className: 'bf-note' }, t('privacy')),
-      h('p', { className: 'bf-note' }, t('limit')),
-      h('p', { className: 'bf-note' }, t('revokeHint')),
-      tabInfo === undefined ? null : h('p', { className: 'bf-note' }, tabInfo.tab.kind))
+    const owned=uiOwner===sessionId,task=owned?currentTask.current:undefined
+    return renderPanelView({h,ui,t,model:{
+      sessionId,supported,connected:owned&&connected,liveAgent:owned&&liveAgent,agent:owned&&agentSummary?.id===sessionId?agentSummary:undefined,error:owned?operationError??error:undefined,
+      task,pages:owned?pages.filter(page=>page.sessionId===sessionId):[],authorized:owned?authorized:undefined,busy:owned&&busy,pending:owned?pendingAction:undefined,
+      taskForm:owned?taskForm:{goal:'',origins:'',definitionId:'',workflowRef:''},fileForm:owned?fileForm:{path:'',kind:'add',unitId:'',legalIdentity:'',firstRow:'2',lastRow:'2'},filePreview:owned?filePreview:undefined,definitions:owned?definitions:[],userInput:owned?userInput:'',
+      editing:owned?editing:undefined,moreOpen:owned&&moreOpen,detailsOpen:owned&&detailsOpen,pageDetails:owned?pageDetails:[],errors:owned?fieldErrors:{},
+    },actions:{
+      task:operation=>{void taskOperation(operation)},authorize:page=>{void authorize(page)},revoke:()=>{void revoke()},edit,cancelEdit,reloadDraft:edit,
+      toggleMore:()=>setMoreOpen(value=>!value),toggleDetails:()=>setDetailsOpen(value=>!value),togglePage:lease=>setPageDetails(value=>value.includes(lease)?value.filter(item=>item!==lease):[...value,lease]),
+      changeTask:(key,value)=>{setFieldErrors(errors=>({...errors,[key]:''}));setTaskForm(form=>({...form,[key]:value,...(key==='definitionId'?{workflowRef:definitions.find(item=>item.id===value)?.workflows[0]?.id??''}:{})}))},
+      changeFile:(key,value)=>{setFilePreview(undefined);setFileForm(form=>({...form,[key]:value}))},changeUserInput:setUserInput,file:operation=>{void fileOperation(operation)},
+    }})
   }
 }

@@ -51,6 +51,16 @@ is embedded in the Client bundle and removed with the plugin. Reload the matchin
 Client after a rebuild; missing Host controls fail visibly rather than falling
 back to an unstyled form.
 
+The compact panel keeps connection status and **Revoke control** above its
+scrollable content. A bound task shows its goal and lifecycle; expand editing
+only when revising it. Polling preserves drafts. If the scope changes, reload
+that task before submitting the revision; **Cancel editing** sends no request.
+Wait reasons and unknown-write restrictions remain visible. Page cards expose
+their full authorization target on demand. File review appears only for an
+authorized, supported import workflow, with the complete confirmation summary.
+Waiting for input keeps explicit page authorization and file preparation available.
+Task lifecycle and graph availability do not imply business acceptance.
+
 ## Use a task
 
 1. Open the intended page in Sidebar Browser and log in yourself.

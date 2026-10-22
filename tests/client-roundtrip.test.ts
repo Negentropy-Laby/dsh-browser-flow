@@ -215,6 +215,10 @@ describe('panel round trip in a real DOM', { skip: ready ? false : `missing DOM 
       // The page discovery ran and the panel offered the page.
       // The user must be able to see which Session and Agent instance the grant
       // attaches to before granting it (§6.1).
+      const disclosure=container.querySelector('[data-browser-flow-disclosure="details"] button')
+      assert.notEqual(disclosure,null)
+      disclosure.click()
+      await settle()
       const target = container.querySelector('[data-browser-flow-target]')
       assert.notEqual(target, null, 'the panel must name the authorization target')
       assert.equal(target.textContent.includes('session-1'), true, `the Session must be shown: ${target.textContent}`)

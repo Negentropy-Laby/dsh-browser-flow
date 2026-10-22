@@ -3,7 +3,7 @@ import type {ReactLike} from '../../src/panel.ts'
 import type {PanelUi,PanelButtonProps,PanelInputProps} from '../../src/panel-ui.ts'
 
 /** @param React - fixture renderer. @returns Controls exposing native DOM behavior to controller tests. */
-export function fixturePanelUi(React:ReactLike):PanelUi {
+export function fixturePanelUi(React:Pick<ReactLike,'createElement'>):PanelUi {
  const h=React.createElement
  return {button:(props,...children)=>h('button',props,...children),input:props=>h('input',props),tag:(tone,text)=>h('span',{'data-tone':tone},text),dot:state=>h('span',{'data-state':state,'aria-hidden':true}),disclosure:props=>h('div',null,h('button',{type:'button',onClick:props.onToggle,'aria-expanded':props.open},props.title),props.open?props.children:null)}
 }

@@ -60,3 +60,11 @@ it('revising a task revokes page control; release remains independent of task st
   assert.equal(expectRecord(expectOk((await env.tool('a','browser_release')))).pageRetained,true)
   assert.equal(env.service.leaseOf(expectOk(env.service.resolveCaller({agent:env.agents.get('session-a')}))).ok,false)
 })
+
+it('returns the full bounded goal so an edit cannot truncate the current task',async t=>{
+  const env=await taskHost(t),goal='长'.repeat(2000)
+  const created=await env.task('a',{goal,origins:['https://a.example']})
+  assert.equal(created.body.value.goal,goal)
+  const polled=await env.post('poll',{instanceId:'panel-a',connectionGeneration:1,sessionId:'session-a',pages:[]})
+  assert.equal(polled.body.value.task.goal,goal)
+})

@@ -5,6 +5,7 @@
     "src/clientcore.ts",
     "src/panel.ts",
     "src/panel-ui.ts",
+    "src/panel-view.ts",
     "src/pagecode.ts",
     "src/import-page.ts",
     "src/task-scope.ts",
