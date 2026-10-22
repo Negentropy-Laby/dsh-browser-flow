@@ -59,6 +59,13 @@ unreadable originals invalidate every dependent proof. This verifies content at
 the final read, without promising an atomic filesystem transaction or caching
 proof validity across requests.
 
+Each original read allocates and reads at most its initial stat size plus one
+sentinel byte, with a maximum allocation of 16,000,001 bytes. Growing and truncated
+files are rejected without reading to EOF. New proof readback uses the same bounded
+entry, including the 16,000,000-byte original limit. File identity and digest checks
+still apply to both verification phases. This bounds each file read, not total
+Host memory across concurrent requests or retained proof assets.
+
 Invalid duplicate receipts do not change the unknown-write block. Failed task
 creation cleans only an exclusively allocated, confirmed-unregistered directory;
 uncertain registration or cleanup preserves history and refuses repeated creation

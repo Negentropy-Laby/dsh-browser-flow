@@ -138,7 +138,7 @@ export declare class TaskStore {
     artifact(access: TaskAccess, path: string, role: string): Promise<import('./task-criteria.ts').Artifact>;
     /** @param data - opened owner. @param ref - relative evidence file. @returns Current identity and timestamps after checking private ownership and size. */
     artifactState(data: TaskData, ref: import('./task-criteria.ts').Artifact): Promise<BigIntStats>;
-    /** @param {TaskData} data - owner. @param {import('./task-criteria.ts').Artifact} ref - relative reference. @param {boolean} [verify] - enforce recorded digest. @returns {Promise<Buffer>} complete bounded bytes from an unchanged regular file. */
+    /** @param {TaskData} data - owner. @param {import('./task-criteria.ts').Artifact} ref - relative reference. @param {boolean} [verify] - enforce recorded digest. @returns {Promise<Buffer>} complete bytes from an unchanged regular file, allocating and reading at most its initial size plus one byte (16,000,001 maximum). */
     readArtifact(data: TaskData, ref: import('./task-criteria.ts').Artifact, verify?: boolean): Promise<Buffer>;
     /** @param {TaskAccess} access - owner. @returns {Promise<void>} request-local verification and final content recheck of each unique original, fenced to the exact run and journal position. */
     refreshEvidence(access: TaskAccess): Promise<void>;
