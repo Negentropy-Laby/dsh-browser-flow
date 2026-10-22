@@ -4,12 +4,12 @@ import { join } from 'node:path'
 import { taskHost } from './task-host.ts'
 import { syntheticDefinition } from './task-definition.ts'
 
-export async function navigation(t:import('node:test').TestContext){
+export async function navigation(t:import('node:test').TestContext,criteria=['A free-text criterion stays unverified']){
   const env=await taskHost(t),def=syntheticDefinition({root:env.root})
   await writeFile(join(def.dir,'definition.json'),JSON.stringify({...def.definition,adapter:'bjrsj',origins:['https://fuwu.rsj.beijing.gov.cn'],workflows:def.definition.workflows.map(row=>({...row,id:'navigation',stopBoundary:'before_file_selection'}))}))
   const page={...env.page('a'),url:'https://fuwu.rsj.beijing.gov.cn/zhrs/yltc/information-third-new/imp'}
   await env.post('hello',{kind:'hello',connectionGeneration:1,sessionId:'session-a',panel:{instanceId:'panel-a',pages:[page]}})
-  await env.post('authorize',{instanceId:'panel-a',connectionGeneration:1,sessionId:'session-a',taskOperation:'create',spec:{definitionId:'synthetic',workflowRef:'navigation',goal:'Reach navigation entry',criteria:['A free-text criterion stays unverified']}})
+  await env.post('authorize',{instanceId:'panel-a',connectionGeneration:1,sessionId:'session-a',taskOperation:'create',spec:{definitionId:'synthetic',workflowRef:'navigation',goal:'Reach navigation entry',criteria}})
   await env.post('authorize',{instanceId:'panel-a',connectionGeneration:1,sessionId:'session-a',...page})
   const pending=env.tool('a','browser_observe')
   const command=(await env.post('poll',{instanceId:'panel-a',connectionGeneration:1,sessionId:'session-a',pages:[page]})).body.value.commands[0]

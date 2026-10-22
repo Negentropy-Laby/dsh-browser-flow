@@ -49,7 +49,7 @@ export function evidenceVerdict(task: import('./task-store.ts').TaskData,row: Re
   try {
     if(proof.kind==='navigation'&&criterion.validatorId==='bjrsj-navigation-entry'&&typeof proof.pageRef==='string'){
       const page=assetData(task,proof.pageRef,'page',run)
-      return page&&navigationVerdict(task.manifest,page).verdict==='entry_reached'&&row.verdict==='entry_reached'?'entry_reached':'unverified'
+      return page&&page.contextOnly!==true&&!(taskRecord(page.resourceIdentity)&&page.resourceIdentity.snapshotKind==='context')&&navigationVerdict(task.manifest,page).verdict==='entry_reached'&&row.verdict==='entry_reached'?'entry_reached':'unverified'
     }
     if(proof.kind!=='import'||criterion.validatorId!=='bjrsj-import-confirmed'||row.verdict!=='import_confirmed'||row.qualified!==true||typeof proof.fileRef!=='string'||typeof proof.attemptId!=='string'||typeof proof.fileGrantId!=='string')return 'unverified'
     const file=assetData(task,proof.fileRef,'file',run),result=typeof proof.resultRef==='string'?assetData(task,proof.resultRef,'import_result',run):undefined

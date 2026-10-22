@@ -194,6 +194,13 @@ export declare class BrowserFlowService {
             evidenceIssues: string[];
             unmetCriteria: string[];
             criteriaRef: string;
+            coverageRef: string;
+            coverage: {
+                total: number;
+                verified: number;
+                unverified: number;
+                ratio: number | null;
+            };
             currentRun: import("./task-scope.ts").RunId;
             pendingAttempts: string[];
             unknownOutcomes: unknown[];
@@ -251,6 +258,7 @@ export declare class BrowserFlowService {
         };
         knowledge_graph: {
             details: string;
+            views: unknown;
             digestCount: {};
         };
         active_context: {
@@ -287,6 +295,13 @@ export declare class BrowserFlowService {
                 issue: string | null;
             };
             criteriaRef: string;
+            coverageRef: string;
+            coverage: {
+                total: number;
+                verified: number;
+                unverified: number;
+                ratio: number | null;
+            };
             currentRun: import("./task-scope.ts").RunId;
             pendingAttempts: string[];
             graph: {

@@ -49,6 +49,7 @@ export type TaskAccess = {
 };
 /** Profile-owned task store. Durable ownership never grants page control or replays commands. */
 import { taskView } from './task-projections.ts';
+import { pageIdentity } from './task-resources.ts';
 import type { Stats, BigIntStats } from 'node:fs';
 /** Expected task failures are sanitized at the tool/HTTP boundary. */
 export declare class TaskError extends Error {
@@ -148,6 +149,8 @@ export declare class TaskStore {
     asset(access: TaskAccess, kind: string, data: Record<string, unknown>, source?: 'host' | 'code_verified'): Promise<string>;
     /** @param {TaskAccess} access - capability. @param {string} from - existing task asset. @param {string} to - existing task asset. @param {string} relation - fixed relation. @returns {Promise<string>} journaled relation after both ownership checks. */
     relate(access: TaskAccess, from: string, to: string, relation: string): Promise<string>;
+    /** Verified guest context for an operation; a missing observation stays context-only. */
+    pageContext(access: TaskAccess, guest: Parameters<typeof pageIdentity>[1]): Promise<string>;
     /** @param {TaskAccess} access - capability. @param {string} id - task-local detail. @param {number} offset - safe character continuation, bounded by configured bytes and any known current derived length. @param {number} budget - character budget. @param projectionId - identity required for graph/digest continuation after offset zero. @returns {Promise<object>} validated detail from one run and journal position, exposed in bounded text pieces; all canonical detail JSON obeys the configured UTF-8 capacity. */
     detail(access: TaskAccess, id: string, offset: number, budget: number, projectionId?: string): Promise<object>;
     /** @returns {Promise<void>} read immutable ownership plus complete validated journal prefixes; no commands or control are restored. */

@@ -28,7 +28,7 @@
           "workflowRef": "import"
         },
         "taskState": "active",
-        "contextVersion": 9
+        "contextVersion": 12
       }
     }
   },
@@ -55,7 +55,7 @@
           "workflowRef": "import"
         },
         "taskState": "active",
-        "contextVersion": 11
+        "contextVersion": 16
       }
     }
   },
@@ -93,7 +93,7 @@
           "workflowRef": "import"
         },
         "taskState": "active",
-        "contextVersion": 17
+        "contextVersion": 23
       }
     }
   }

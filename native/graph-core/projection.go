@@ -33,20 +33,21 @@ type Criterion struct {
 
 // Event excludes original assets, files, paths and business response bodies.
 type Event struct {
-	Seq           int64  `json:"seq"`
-	Hash          string `json:"hash"`
-	Type          string `json:"type"`
-	Run           Scope  `json:"run"`
-	ID            string `json:"id,omitempty"`
-	Kind          string `json:"kind,omitempty"`
-	Source        string `json:"source,omitempty"`
-	Action        string `json:"action,omitempty"`
-	Outcome       string `json:"outcome,omitempty"`
-	From          string `json:"from,omitempty"`
-	To            string `json:"to,omitempty"`
-	Relation      string `json:"relation,omitempty"`
-	Goal          string `json:"goal,omitempty"`
-	DocumentToken string `json:"documentToken,omitempty"`
+	Seq           int64               `json:"seq"`
+	Hash          string              `json:"hash"`
+	Type          string              `json:"type"`
+	Run           Scope               `json:"run"`
+	ID            string              `json:"id,omitempty"`
+	Kind          string              `json:"kind,omitempty"`
+	Source        string              `json:"source,omitempty"`
+	Action        string              `json:"action,omitempty"`
+	Outcome       string              `json:"outcome,omitempty"`
+	From          string              `json:"from,omitempty"`
+	To            string              `json:"to,omitempty"`
+	Relation      string              `json:"relation,omitempty"`
+	Goal          string              `json:"goal,omitempty"`
+	DocumentToken string              `json:"documentToken,omitempty"`
+	Resource      *ResourceDescriptor `json:"resource,omitempty"`
 }
 
 // Input is a complete sanitized replay snapshot plus current proof references.
@@ -110,16 +111,19 @@ type Digest struct {
 
 // Projection is disposable and reconstructable from Input; it owns no task facts.
 type Projection struct {
-	Input        Input
-	ID           string
-	Nodes        []*Node
-	Edges        []Edge
-	Attempts     []*Attempt
-	Digests      []Digest
-	replayVisits int
-	Round        int64
-	index        map[string]*Node
-	covered      map[string]bool
+	Input            Input
+	ID               string
+	Nodes            []*Node
+	Edges            []Edge
+	Attempts         []*Attempt
+	Digests          []Digest
+	replayVisits     int
+	Round            int64
+	index            map[string]*Node
+	covered          map[string]bool
+	Resources        []Resource
+	Anchors          []Anchor
+	snapshotResource map[string]string
 }
 
 func pageWrite(action string) bool {
@@ -188,6 +192,10 @@ func buildReplay(ctx context.Context, in Input, id string, oracle func(*Projecti
 			data := map[string]any{}
 			if event.Kind == "page" {
 				data["documentToken"] = event.DocumentToken
+			}
+			if event.Resource != nil {
+				data["resourceRef"] = event.Resource.ID
+				data["snapshotKind"] = event.Resource.SnapshotKind
 			}
 			p.add(event.ID, event.Kind, event.Source, event.Seq, event.Run, data)
 		case "edge":
@@ -269,6 +277,9 @@ func buildReplay(ctx context.Context, in Input, id string, oracle func(*Projecti
 	}
 	sort.Slice(p.Digests, func(i, j int) bool { return p.Digests[i].ID < p.Digests[j].ID })
 	p.replayVisits = replay.visits
+	if err := p.buildResources(); err != nil {
+		return nil, err
+	}
 	return p, ctx.Err()
 }
 func (p *Projection) causal() *coldGraph {
@@ -400,11 +411,13 @@ func (p *Projection) View(budget int) map[string]any {
 		"knowledge_graph":      map[string]any{"nodes": graphNodes, "edges": edges, "totalEdges": len(p.Edges), "totalNodes": len(p.Nodes), "digests": digests, "digestCount": len(p.Digests), "details": "graph"},
 		"active_context":       map[string]any{"recentAssets": assets, "round": p.Round, "complete": true},
 	}
+	value["knowledge_graph"].(map[string]any)["views"] = p.graphSummary()
 	b, _ := json.Marshal(value)
 	if len(b) > budget {
 		value["procedural_law_index"] = map[string]any{"details": "goal", "criteriaRef": "criteria"}
 		value["technical_law_index"] = map[string]any{"total": totalAssets}
 		value["knowledge_graph"] = map[string]any{"details": "graph", "totalEdges": len(p.Edges), "digestCount": len(p.Digests)}
+		value["knowledge_graph"].(map[string]any)["views"] = p.graphSummary()
 		value["active_context"] = map[string]any{"recentAssets": []any{}, "round": p.Round, "complete": false, "truncated": true}
 	}
 	return value
@@ -412,6 +425,9 @@ func (p *Projection) View(budget int) map[string]any {
 
 // Detail exposes only sanitized projection data and rejects expired digest IDs.
 func (p *Projection) Detail(ref string) (any, error) {
+	if ref == "graph:assets" || ref == "graph:exploration" || len(ref) > 9 && ref[:9] == "resource-" {
+		return p.dualDetail(ref)
+	}
 	if ref == "graph" {
 		nodes := append([]*Node{}, p.Nodes...)
 		edges := append([]Edge{}, p.Edges...)

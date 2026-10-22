@@ -23,6 +23,14 @@ it('reads a complete graph whose detail exceeds its 64 KiB frame',async t=>{
  assert.ok(Buffer.byteLength(JSON.stringify(detail))>config.graphMaxFrameBytes)
  assert.equal(expectList(detail.nodes).filter(n=>expectRecord(n).kind!=='digest').length,201)
 })
+it('reads the exploration view beyond one wire frame and retains all original nodes',async t=>{
+ const config=resolveConfig({graphMaxFrameBytes:65536}),workers=new GraphWorkers(config,graphBinary);workers.attach(graphRuntime());t.after(()=>workers.close())
+ const input=large(100)
+ const detail=expectRecord(await workers.detail(input,'graph:exploration',()=>true))
+ assert.ok(Buffer.byteLength(JSON.stringify(detail))>config.graphMaxFrameBytes)
+ assert.equal(expectList(detail.nodes).filter(n=>expectRecord(n).kind!=='digest').length,201)
+ assert.deepEqual(detail.anchors,[])
+})
 it('pins outer continuations to the same projection and rejects offsets beyond the detail',async t=>{
  const env=await taskHost(t);await env.task('a');const access=present(env.service.tasks.current('session-a')),store=env.service.tasks
  const first=expectRecord(await store.detail(access,'graph',0,30))
@@ -139,7 +147,7 @@ it('rejects corrupt fragments and unowned complete JSON before returning detail'
  for(const mode of ['offset','total','empty','duplicate','base64','utf8','json','foreign','limit','binding'] as const){
   const stdin=new PassThrough(),stdout=new PassThrough();let end!:()=>void;const done=new Promise<void>(resolve=>{end=resolve});let chunks=0
   const decoder=new Frames(config.graphMaxFrameBytes,raw=>{
-   const q=expectRecord(raw);let value:unknown=q.op==='hello'?{kernelVersion:'3',rulesVersion:'structural-v1'}:view
+   const q=expectRecord(raw);let value:unknown=q.op==='hello'?{kernelVersion:'4',rulesVersion:'structural-v1'}:view
    if(q.op==='detail'){
     chunks++;const offset=Number(q.offsetBytes??0),data=mode==='utf8'?Buffer.from([255]):mode==='json'?Buffer.from('{broken'):mode==='foreign'?Buffer.from('{"nodes":[],"edges":[],"digests":[]}'):serialized
     const count=chunks===1&&['total','duplicate'].includes(mode)?10:data.length-offset

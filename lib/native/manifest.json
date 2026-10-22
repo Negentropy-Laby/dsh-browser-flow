@@ -1,6 +1,6 @@
 {
   "protocolVersion": 2,
-  "kernelVersion": "3",
+  "kernelVersion": "4",
   "rulesVersion": "structural-v1",
   "goVersion": "go1.26.5",
   "platform": "win32",
@@ -10,6 +10,6 @@
     "-buildvcs=false",
     "-ldflags=-s -w -buildid="
   ],
-  "sourceSha256": "5149eb663719745a9b237c0a021872df10c7dc1bca083fce2fe2a474e7275547",
-  "sha256": "71aa4ec469d751914ca3b6cbce23ef0578e3df9b634a743d31b8be8631e16b07"
+  "sourceSha256": "648728ed81fb0bd5996aa60909877fb99412c5bf9047308bc1c35a37c7caa30d",
+  "sha256": "82735bc200263c55c00356f79a5e567740629fd6cb91e265a76c88812e65acf5"
 }

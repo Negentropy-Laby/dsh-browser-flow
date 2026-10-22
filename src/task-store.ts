@@ -50,7 +50,8 @@ export type TaskAccess = {
 
 /** Profile-owned task store. Durable ownership never grants page control or replays commands. */
 import { graphInput, taskView } from './task-projections.ts'
-import { taskFacts, taskReferences } from './task-facts.ts'
+import { taskFacts, taskReferences, taskCoverage, currentRunReferences } from './task-facts.ts'
+import { pageIdentity, resourceDescriptor } from './task-resources.ts'
 import { GraphError } from './graph/protocol.ts'
 import { graphHash, graphProjectionId } from './graph/worker.ts'
 import { resolveConfig } from './config.ts'
@@ -546,12 +547,22 @@ tail: Promise<void>;
   }
   /** @param {TaskAccess} access - capability. @param {string} from - existing task asset. @param {string} to - existing task asset. @param {string} relation - fixed relation. @returns {Promise<string>} journaled relation after both ownership checks. */
   async relate(access: TaskAccess,from: string,to: string,relation: string) : Promise<string> {
-    const references=taskReferences(this.openTask(access))
+    return this.serial(async()=>{
+    const data=this.openTask(access),references=currentRunReferences(data)
     if(!references.has(from)||!references.has(to))throw new TaskError('task_not_bound','one or more task references are inaccessible')
     if(!['observed_on','validated_by','derived_from','selected_from','proves','yields'].includes(relation))throw new TaskError('invalid_request','unsupported task relation')
     const id='edge-'+randomUUID()
-    await this.append(access,'edge',{id,from,to,relation,run:access.run})
+    await this.appendOwned(data,'edge',{id,from,to,relation,run:access.run})
     return id
+    })
+  }
+  /** Verified guest context for an operation; a missing observation stays context-only. */
+  async pageContext(access:TaskAccess,guest:Parameters<typeof pageIdentity>[1]):Promise<string> {
+    const identity=pageIdentity(access.run,guest,'context'),task=this.openTask(access)
+    const resource=resourceDescriptor(access.run,'page','context',{resourceIdentity:identity}).id
+    const prior=task.events.findLast(e=>e.type==='asset'&&e.data.kind==='page'&&validRunScope(e.data.run)&&sameRunScope(e.data.run,access.run)&&record(e.data.data)&&e.data.data.documentToken===guest.documentToken&&resourceDescriptor(access.run,'page',String(e.data.id),e.data.data).id===resource)
+    if(prior)return String(prior.data.id)
+    return this.asset(access,'page',{documentToken:guest.documentToken,resourceIdentity:identity,contextOnly:true})
   }
   /** @param {TaskAccess} access - capability. @param {string} id - task-local detail. @param {number} offset - safe character continuation, bounded by configured bytes and any known current derived length. @param {number} budget - character budget. @param projectionId - identity required for graph/digest continuation after offset zero. @returns {Promise<object>} validated detail from one run and journal position, exposed in bounded text pieces; all canonical detail JSON obeys the configured UTF-8 capacity. */
   async detail(access: TaskAccess,id: string,offset: number,budget: number,projectionId?:string) : Promise<object> {
@@ -564,25 +575,31 @@ tail: Promise<void>;
     const asset=row?{id,taskId:data.manifest.scope.taskId,kind:row.data.kind,source:row.data.source,sourceSeq:row.seq,data:(row.data.data as Record<string, unknown>)}:undefined
     let criterion=taskFacts(data).criteria.find(item=>item.id===id)
     let value,currentProjection:string|undefined,serialized:string|undefined
-    if(asset||id==='waiting'||criterion||id==='criteria'||id==='goal'||data.snapshot?.definition.resources.includes(id)){
+    if(asset||id==='waiting'||criterion||id==='criteria'||id==='coverage'||id==='goal'||data.snapshot?.definition.resources.includes(id)){
       await this.refreshEvidence(access);this.openTask(access)
       if(data.events.length!==position.version||data.events.at(-1)?.hash!==position.tail)throw new TaskError('task_busy','task history changed during detail verification; read the current task again')
       criterion=taskFacts(data).criteria.find(item=>item.id===id)
     }
     if(asset)value=asset.kind==='evidence'?{...asset,data:{sha256:asset.data.sha256,bytes:asset.data.bytes,originalAvailable:data.checkedProofs?.has(asset.id)??false}}:asset
     else if(id==='waiting')value={current:data.state==='active'?data.waiting??null:null,history:data.events.filter(event=>['wait_requested','wait_input','wait_resolved'].includes(event.type)).map(event=>({sourceSeq:event.seq,type:event.type,...event.data}))}
-    else if(criterion)value={id:criterion.id,kind:'criterion',source:criterion.source,data:criterion}
+    else if(criterion)value={id:criterion.id,kind:'criterion',source:criterion.source,data:criterion,proofRefs:taskCoverage(data).conditions.find(c=>c.id===id)?.proofRefs??[],traceRef:'graph:exploration'}
     else if(id==='criteria')value=taskFacts(data).criteria
+    else if(id==='coverage'){
+      value=taskCoverage(data)
+      currentProjection=graphProjectionId(graphHash(JSON.stringify([position,value,data.evidenceIssues??[]])))
+      if((offset>0&&!projectionId)||(projectionId!==undefined&&projectionId!==currentProjection))throw new TaskError('task_not_bound','coverage changed or identity is missing; restart detail at offset zero')
+    }
     else if(id==='goal')value={goal:data.manifest.goal,constraints:data.manifest.constraints,criteria:data.manifest.criteria,source:'user_declared'}
     else if(data.snapshot?.definition.resources.includes(id))value={name:id,text:data.snapshot.files[id],source:'definition_snapshot',digest:data.manifest.definitionDigest}
     else {
-      if(id!=='graph'&&!id.startsWith('digest-')&&!taskReferences(data).has(id))throw new TaskError('task_not_bound','task reference is inaccessible')
+      const resource=data.events.some(e=>e.type==='asset'&&validRunScope(e.data.run)&&resourceDescriptor(e.data.run,String(e.data.kind),String(e.data.id),e.data.data).id===id)
+      if(!['graph','graph:assets','graph:exploration'].includes(id)&&!resource&&!id.startsWith('digest-')&&!taskReferences(data).has(id))throw new TaskError('task_not_bound','task reference is inaccessible')
       if(data.readOnly)throw new TaskError('task_read_only','derived details are unavailable for read-only history; original details remain readable')
       if(data.unhealthy)throw new TaskError('task_unavailable','derived details require healthy task history; original details remain readable')
       if(!this.graph)throw new TaskError('task_unavailable','graph component is unavailable')
       data.liveDocumentToken=this.controlDocument?.(access)
       const input=graphInput(data,this.graphConfig),hash=graphHash(JSON.stringify(input));currentProjection=graphProjectionId(hash)
-      if(((id==='graph'||id.startsWith('digest-'))&&offset>0&&!projectionId) || (projectionId!==undefined&&projectionId!==currentProjection))throw new TaskError('task_not_bound','projection changed or identity is missing; restart detail at offset zero')
+      if((offset>0&&!projectionId) || (projectionId!==undefined&&projectionId!==currentProjection))throw new TaskError('task_not_bound','projection changed or identity is missing; restart detail at offset zero')
       const known=this.detailLengths.get(data)
       if(known?.projectionId===currentProjection&&known.ref===id&&offset>known.totalChars)throw new TaskError('invalid_request','detail offset exceeds its total characters')
       const current=()=>{try{const latest=this.openTask(access);latest.liveDocumentToken=this.controlDocument?.(access);return graphHash(JSON.stringify(graphInput(latest,this.graphConfig)))===hash}catch{return false}}

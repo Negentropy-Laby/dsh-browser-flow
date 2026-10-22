@@ -22,6 +22,20 @@ Unversioned task history is read-only. Use its task view, revoke and hand off; c
 
 Business verdicts require recoverable originals and the exact task/run, criterion and validator version. Prior bare verdict labels remain historical/unverified; they are not upgraded into proofs. Generic goals and free-text criteria have no implicit business-success validator. Supported trusted adapters supply their own fixed predicates. Criterion and graph details are available through existing task observation references.
 
+## Paired graph kernel v4 upgrade
+
+Install the Host and packaged Windows helper from the same build. Kernel v4 adds
+task-local resource grouping, `graph:assets`, `graph:exploration`, opaque resource
+details and Host-owned `coverage`. It rejects a kernel-v3 helper or continuation
+identity; begin new detail reads at offset zero. Browser Flow v3, RPC v2 and
+journal generation 1 stay unchanged. No historical asset is rewritten, and its
+original UUID still identifies the same snapshot. See [the identity and query
+contract](graph-kernel.md#kernel-v4-task-local-resource-and-exploration-views).
+
+Free-text criteria remain in the coverage denominator with `no_validator`.
+Coverage is informational and does not complete a task or establish business
+success. Old records without reliable identity stay independently queryable.
+
 ## Agent-declared waits
 
 `browser_act` now has a Host-only `await_user` branch requiring only `action` and the bounded `wait` declaration. Page actions still require documentToken and elementRef. The six tools and seven routes are unchanged; the existing task route additionally accepts the user's resume operation. Update tool consumers and reload both Host and Client. The model cannot resume, authorize a page, confirm a file or write a verified result through this branch. Unknown-outcome write blocking includes await_user.
