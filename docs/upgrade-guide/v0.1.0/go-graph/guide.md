@@ -15,6 +15,12 @@ Pending or failed worker retirement appears separately at
 `active_context.graph.cleanup`; termination grace controls escalation, not an
 exit-observation timeout.
 
+Reads arriving during worker retirement wait for confirmed exit within their
+original request deadline. Per-task acquisition and RPC queues use `queueLimit`;
+other tasks retain independent queues. Cancelling or timing out a read does not
+cancel managed exit observation or free unconfirmed process capacity. Failed exit
+observation remains a separate cleanup failure; an already sent RPC is never retried.
+
 The package entry and existing Host export subpaths now resolve to built ESM
 under `lib/host`. The new TypeScript adapter is compiled at build time; installed
 profiles require neither a TypeScript loader nor a Go toolchain. Windows x64

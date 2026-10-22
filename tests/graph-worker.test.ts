@@ -56,6 +56,77 @@ function heldRuntime(reply:(request:Record<string,unknown>,stdout:PassThrough)=>
  const decoder=new Frames(8*1024*1024,q=>reply(expectRecord(q),stdout));stdin.on('data',b=>decoder.push(b))
  return {get terminated(){return terminated},spawn(){return {stdin,stdout,done,terminate(){terminated=true;finish({})},async waitForExit(){await done;return true}}}}
 }
+function barrier(){let release=()=>{},entered=()=>{};const gate=new Promise<void>(r=>{release=r}),ready=new Promise<void>(r=>{entered=r});return {release,entered,gate,ready}}
+for(const reason of ['idle','io'] as const)it(`waits for ${reason} retirement before serving concurrent reads in one replacement`,async t=>{
+ t.mock.timers.enable({apis:['setTimeout']})
+ const {workers,runtime}=setup(t,{graphIdleMs:1000}),hold=barrier()
+ try{
+  await workers.project(input(),6000,()=>true)
+  const first=runtime.handles[0],wait=first.waitForExit
+  first.waitForExit=async()=>{hold.entered();await hold.gate;return wait()}
+  if(reason==='idle')t.mock.timers.tick(1001);else first.stdout?.emit('error',new Error('synthetic I/O failure'))
+  await hold.ready
+  let complete=false
+  const reads=Promise.allSettled([workers.project(input(),6000,()=>true),workers.detail(input(),'graph',()=>true)]).then(value=>{complete=true;return value})
+  await new Promise(resolve=>setImmediate(resolve))
+  assert.equal(runtime.handles.length,1);assert.equal(complete,false)
+  hold.release()
+  const results=await reads
+  assert.ok(results.every(row=>row.status==='fulfilled'),JSON.stringify(results))
+  assert.equal(runtime.handles.length,2)
+ }finally{hold.release();await workers.close()}
+})
+it('bounds retirement admission per task without blocking an independent task',async t=>{
+ const {workers,runtime}=setup(t,{queueLimit:2,graphMaxWorkers:2}),hold=barrier()
+ try{
+  await workers.project(input(),6000,()=>true)
+  const first=runtime.handles[0],wait=first.waitForExit
+  first.waitForExit=async()=>{hold.entered();await hold.gate;return wait()}
+  const retiring=workers.retire(scope.taskId);await hold.ready
+  const reads=Promise.allSettled([workers.project(input(),6000,()=>true),workers.detail(input(),'graph',()=>true)])
+  await assert.rejects(workers.project(input(),8000,()=>true),/graph_busy/)
+  await workers.project(input(runScope({...scope,taskId:'task-22222222-2222-4222-8222-222222222222'})),6000,()=>true)
+  assert.equal(runtime.handles.length,2)
+  hold.release();await retiring
+  assert.ok((await reads).every(row=>row.status==='fulfilled'))
+  assert.equal(runtime.handles.length,3)
+ }finally{hold.release();await workers.close()}
+})
+for(const mode of ['timeout','cancel'] as const)it(`ends only the reader's ${mode} wait while retaining retirement ownership`,async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});let clock=0
+ const runtime=graphRuntime(),workers=new GraphWorkers(resolveConfig({graphMaxWorkers:1,queueLimit:1}),graphBinary,()=>clock),hold=barrier();workers.attach(runtime)
+ try{
+  await workers.project(input(),6000,()=>true)
+  const first=runtime.handles[0],wait=first.waitForExit
+  first.waitForExit=async()=>{hold.entered();await hold.gate;return wait()}
+  const retiring=workers.retire(scope.taskId);await hold.ready
+  const controller=new AbortController(),reading=workers.project(input(),6000,()=>true,controller.signal)
+  const rejected=assert.rejects(reading,mode==='timeout'?/graph_timeout/:/graph_cancelled/)
+  await new Promise(resolve=>setImmediate(resolve))
+  if(mode==='timeout'){clock=5001;t.mock.timers.tick(5001)}else controller.abort()
+  await rejected;await new Promise(resolve=>setImmediate(resolve))
+  assert.equal(runtime.handles.length,1)
+  await assert.rejects(workers.project(input(runScope({...scope,taskId:'task-22222222-2222-4222-8222-222222222222'})),6000,()=>true),/graph_capacity/)
+  // The expired acquisition must leave its queue without cancelling managed cleanup.
+  const next=workers.project(input(),6000,()=>true),settled=Promise.allSettled([next])
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(runtime.handles.length,1)
+  hold.release();await retiring
+  assert.equal((await settled)[0].status,'fulfilled');assert.equal(runtime.handles.length,2)
+ }finally{hold.release();await workers.close()}
+})
+it('does not replace a retiring worker after service disposal begins',async t=>{
+ const {workers,runtime}=setup(t),hold=barrier()
+ try{
+  await workers.project(input(),6000,()=>true)
+  const first=runtime.handles[0],wait=first.waitForExit
+  first.waitForExit=async()=>{hold.entered();await hold.gate;return wait()}
+  const retiring=workers.retire(scope.taskId);await hold.ready
+  const reading=workers.project(input(),6000,()=>true),rejected=assert.rejects(reading,/graph_closed/)
+  await new Promise(resolve=>setImmediate(resolve))
+  const closing=workers.close();hold.release()
+  await Promise.all([retiring,closing,rejected]);assert.equal(runtime.handles.length,1)
+ }finally{hold.release();await workers.close()}
+})
 it('rejects wrong identities, malformed frames and fake authority without replay',async t=>{
  for(const mode of ['owner','generation','version','malformed','authority'] as const){
   let deliveries=0

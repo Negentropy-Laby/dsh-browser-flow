@@ -25,7 +25,7 @@ function packagedBinary():()=>Binary {
 interface Pending {request: GraphRequest; resolve: (value: unknown)=>void; reject: (error: GraphError)=>void; timer: ReturnType<typeof setTimeout>}
 class Worker {
   readonly generation=randomUUID();readonly handle: ProcessHandle;readonly scope: GraphInput['scope']
-  closing=false;stopped=false;busy=false;private pending: Pending | undefined;private counter=0
+  closing=false;stopped=false;private pending: Pending | undefined;private counter=0
   cleanup: {state:'pending'|'failed';code?:string} | undefined
   private readonly drainError=()=>{}
   private idle: ReturnType<typeof setTimeout> | undefined;private stopping: Promise<void> | undefined
@@ -70,7 +70,7 @@ class Worker {
   async rpc(op: GraphRequest['op'],input: GraphInput,hash:string,budget:number,deadline:number,ref?:string,offsetBytes?:number): Promise<unknown> {
     if(this.closing||this.pending)throw new GraphError('graph_busy')
     const remaining=Math.floor(deadline-this.now());if(remaining<=0)throw new GraphError('graph_timeout')
-    clearTimeout(this.idle);this.busy=true
+    clearTimeout(this.idle)
     const q: GraphRequest={protocolVersion:2,id:String(++this.counter),generation:this.generation,scope:this.scope,version:input.version,tailHash:input.tailHash,inputHash:hash,op,budgetMs:remaining,budget,...(op==='project'?{input}:{}),...(ref?{ref}:{}),...(offsetBytes===undefined?{}:{offsetBytes})}
     const encoded=frame(q,this.config.graphMaxFrameBytes)
     try{return await new Promise<unknown>((resolve,reject)=>{
@@ -79,7 +79,7 @@ class Worker {
       this.pending={request:q,resolve,reject,timer}
       if(!this.handle.stdin||!this.handle.stdout){this.fail('worker_io');return}
       this.handle.stdin.write(encoded,error=>{if(error)this.fail('worker_io')})
-    })}finally{this.busy=false;this.armIdle()}
+    })}finally{this.armIdle()}
   }
   /** @param job - serial RPC operation. @param deadline - original request deadline. @param current - live binding. @returns One bounded queued operation; expired work never dispatches. */
   run<T>(job:()=>Promise<T>,deadline:number,current:()=>boolean):Promise<T>{
@@ -133,7 +133,8 @@ class Worker {
 }
 /** Task-scoped registry. Missing services affect graph reads, never permission withdrawal. */
 export class GraphWorkers {
-  private runtime: SubprocessPort | undefined;private workers=new Map<string,Worker>();private closed=false;private acquisitions=new Map<string,Promise<void>>()
+  private runtime: SubprocessPort | undefined;private workers=new Map<string,Worker>();private closed=false
+  private acquisitions=new Map<string,{tail:Promise<void>;count:number}>()
   /** @param config - resolved settings. @param binary - package resolver; tests may supply an owned helper. @param now - monotonic clock, injectable for deadline tests. */
   constructor(private readonly config: GraphConfig,private readonly binary: ()=>Binary=packagedBinary(),private readonly now:()=>number=()=>performance.now()) {}
   /** @param runtime - newly mounted service. @returns Disposal joined before the provider is released. */
@@ -144,14 +145,16 @@ export class GraphWorkers {
     if(results.some(row=>row.status==='rejected'))throw new GraphError('cleanup_failed')
   }
   private async disposeWorkers():Promise<void>{
-    const result=await Promise.allSettled([this.stopAll(),...this.acquisitions.values()])
+    const result=await Promise.allSettled([this.stopAll(),...[...this.acquisitions.values()].map(entry=>entry.tail)])
     if(result.some(row=>row.status==='rejected'))throw new GraphError('cleanup_failed')
   }
   private worker(input: GraphInput,deadline:number,current:()=>boolean,signal?:AbortSignal): Promise<{worker:Worker;fresh:boolean}> {
-    const key=input.scope.taskId,previous=this.acquisitions.get(key)??Promise.resolve()
-    const result=previous.then(()=>this.acquire(input,deadline,current,signal)),settled=result.then(()=>{},()=>{})
-    this.acquisitions.set(key,settled)
-    void settled.then(()=>{if(this.acquisitions.get(key)===settled)this.acquisitions.delete(key)})
+    const key=input.scope.taskId,entry=this.acquisitions.get(key)??{tail:Promise.resolve(),count:0}
+    if(entry.count>=this.config.queueLimit)return Promise.reject(new GraphError('graph_busy'))
+    entry.count++
+    const result=this.bounded(entry.tail.then(()=>this.acquire(input,deadline,current,signal)),deadline,signal),settled=result.then(()=>{},()=>{})
+    entry.tail=settled;this.acquisitions.set(key,entry)
+    void settled.then(()=>{entry.count--;if(entry.count===0&&this.acquisitions.get(key)===entry)this.acquisitions.delete(key)})
     return result
   }
   private async acquire(input: GraphInput,deadline:number,current:()=>boolean,signal?:AbortSignal): Promise<{worker:Worker;fresh:boolean}> {
@@ -159,13 +162,11 @@ export class GraphWorkers {
     if(!current()||signal?.aborted)throw new GraphError('stale_projection')
     if(this.closed)throw new GraphError('graph_closed');if(!this.runtime)throw new GraphError('subprocess_unavailable')
     const key=input.scope.taskId;let worker=this.workers.get(key)
-    if(worker?.closing&&!worker.stopped){
-      if(worker.cleanup?.state!=='failed')throw new GraphError('cleanup_pending')
-      await worker.stop()
-    }
-    if(worker&&(worker.stopped||!sameRunScope(worker.scope,input.scope))){await worker.stop();if(this.workers.get(key)===worker)this.workers.delete(key);worker=undefined}
+    if(worker?.closing&&!worker.stopped)await this.bounded(worker.stop(),deadline,signal)
+    if(worker&&(worker.stopped||!sameRunScope(worker.scope,input.scope))){await this.bounded(worker.stop(),deadline,signal);if(this.workers.get(key)===worker)this.workers.delete(key);worker=undefined}
     if(this.now()>=deadline)throw new GraphError('graph_timeout')
     if(!current()||signal?.aborted)throw new GraphError('stale_projection')
+    if(this.closed||!this.runtime)throw new GraphError('graph_closed')
     if(worker)return {worker,fresh:false}
     for(const [id,entry]of this.workers)if(entry.stopped)this.workers.delete(id)
     if(this.workers.size>=this.config.graphMaxWorkers)throw new GraphError('graph_capacity')

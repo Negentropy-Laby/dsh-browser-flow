@@ -12,7 +12,6 @@ declare class Worker {
     readonly scope: GraphInput['scope'];
     closing: boolean;
     stopped: boolean;
-    busy: boolean;
     private pending;
     private counter;
     cleanup: {
