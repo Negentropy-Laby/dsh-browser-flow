@@ -16,9 +16,12 @@
   },
   "files": [
     "lib",
-    "src",
     "cordis.patch.yml",
-    "docs",
+    "docs/workflow.md",
+    "docs/local-tasks.md",
+    "docs/graph-kernel.md",
+    "docs/upgrade-v3.md",
+    "docs/upgrade-guide",
     "README.md",
     "vendor",
     "native/graph-core/GO-LICENSE",
@@ -65,7 +68,7 @@
   "types": "./lib/host/index.d.ts",
   "imports": {
     "#browser-flow/page-programs": {
-      "types": "./src/page/program-sources.d.ts",
+      "types": "./lib/page-programs.d.ts",
       "default": "./lib/page-programs.js"
     }
   }

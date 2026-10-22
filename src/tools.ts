@@ -56,7 +56,7 @@ export function createTools(service: ToolService, config: import('./config.ts').
   const definitions = [
     tabsTool(service),
     observeTool(service, config),
-    findTool(service, config),
+    findTool(service),
     actTool(service),
     waitTool(service, config),
     releaseTool(service),
@@ -132,8 +132,8 @@ function observeTool(service: ToolService, config: import('./config.ts').Browser
   }
 }
 
-/** @param {ToolService} service - Host service. @param {import('./config.ts').BrowserFlowConfig} config - config. @returns {object} `browser_find`. */
-function findTool(service: ToolService, config: import('./config.ts').BrowserFlowConfig) {
+/** @param {ToolService} service - Host service. @returns {object} `browser_find`. */
+function findTool(service: ToolService) {
   return {
     name: 'browser_find',
     description: 'Locate elements on the authorized page by visible text, by an explicit DOM attribute value, or by ARIA role. '

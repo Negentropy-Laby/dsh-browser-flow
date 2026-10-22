@@ -17,7 +17,11 @@
     "src/client-wire.ts"
   ],
   "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "src",
+    "outDir": ".cache/client-js",
+    "rewriteRelativeImportExtensions": true,
     "composite": true,
-    "tsBuildInfoFile": ".cache/client.tsbuildinfo"
+    "tsBuildInfoFile": ".cache/client-emit.tsbuildinfo"
   }
 }

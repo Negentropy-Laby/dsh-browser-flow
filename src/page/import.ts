@@ -2,7 +2,7 @@ import type {PageRuntime} from './runtime.ts'
 import type {ImportInput,ImportConfig,ImportState,ObservedRequest,ImportFacts,PageResult} from './types.ts'
 /** Fixed page operation; parameters are serialized as JSON by the Host/Client builder. */
 export function passiveImport(runtime:PageRuntime,input:ImportInput,config:ImportConfig) {
-const {REGISTRY,SENSITIVE_QUERY,registry,mintToken,mintRef,elementOf,visible,operable,isPasswordField,isHiddenField,tagOf,roleOf,labelOf,textOf,valueOf,stateOf,describe,safeUrl,documentToken}=runtime;
+const {registry,elementOf,visible,operable,textOf,documentToken}=runtime;
 const {origin,paths,tabs,knowledge,limit}=config;
 
     const refusal = (code:string,message:string): PageResult => ({ok:false,error:{code,message}});

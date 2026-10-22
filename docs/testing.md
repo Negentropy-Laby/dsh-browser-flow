@@ -44,12 +44,42 @@ Synthetic tests and code validators can be public; local run artifacts cannot.
 Before publishing, inspect staged files, the actual package archive and reachable
 Git history. A clean working tree or an ignore rule alone does not establish this.
 
+The [simplification review revision](qualification/simplification-r2.md) separates
+the current test checks from retained runtime evidence and records the subsequent
+PR #2 publication of the original local commits.
+
 Fixed page programs are compiled with a DOM-only TypeScript program before they
 are serialized into the Host/Client data module. Run `npm run build:fixtures` to
 assemble the three static HTML fixtures with their compiled TypeScript behavior
 under `.cache/fixtures/`. The native import fixture reads that generated page.
 Tracked HTML contains no inline executable script. Fixture generation is for
 synthetic checks and does not establish real website acceptance.
+
+Page-program verification metadata is generated under `.cache/page-programs.json`.
+The installed package reads the generated JavaScript and carries its paired
+declarations; verification metadata is not a runtime dependency. Client-only
+import-program builders are bundled into the Client rather than emitted as
+unused Host modules.
+
+### Run the page-program test by itself
+
+After installing the locked development dependencies, prepare both generated
+inputs before running the test directly or through an editor:
+
+```sh
+node --import tsx/esm scripts/build-page.ts
+npm run build:fixtures
+node --import tsx/esm --test tests/page-program-generation.test.ts
+```
+
+This preparation requires neither Go nor Desktop. `npm run build` alone does
+not assemble the HTML fixtures. Missing generated inputs fail with the relevant
+preparation command; the test does not build them, skip checks or repair stale
+inputs. `npm test` and `npm run verify` already prepare both inputs.
+
+With the locked TypeScript 6.0.3 compiler, `npm run typecheck` can run before any
+build and without an existing `.cache/` directory. The compiler creates its
+incremental-record directories.
 
 ## Go graph qualification
 

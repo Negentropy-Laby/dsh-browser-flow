@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { checkBundle } from '../scripts/build-client.ts'
+import { checkBundle, stripModuleSyntax } from '../scripts/build-client.ts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const bundle = readFileSync(join(root, 'lib', 'client.js'), 'utf8')
@@ -23,6 +23,9 @@ const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 const patch = readFileSync(join(root, 'cordis.patch.yml'), 'utf8')
 
 describe('passive observer build exception',()=>{
+  it('refuses unsupported JSON imports instead of embedding local resources',()=>{
+    assert.throws(()=>stripModuleSyntax({file:'client.js',source:"import data from './unavailable.json' with { type: 'json' };\n"}),/unsupported import form/)
+  })
   it('permits XHR only in the fixed observer module and preserves the credential ban',()=>{
     assert.ok(checkBundle(bundle).every(check=>check.ok))
     assert.equal(present(checkBundle(bundle+'\nXMLHttpRequest.prototype.send\n').find(check=>check.name.startsWith('XHR references'))).ok,false)
@@ -222,7 +225,7 @@ describe('package manifest and profile patch', () => {
   })
 
   it('ships every file the Host and Client entry points need', () => {
-    for (const file of ['lib/client.js', 'src/index.ts', 'cordis.patch.yml'] as const) {
+    for (const file of ['lib/client.js', 'lib/host/index.js', 'lib/host/index.d.ts', 'lib/page-programs.d.ts', 'cordis.patch.yml'] as const) {
       assert.ok(manifest.files.some((entry:string) => file.startsWith(entry)), `${file} must be published`)
     }
   })

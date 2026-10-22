@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { it } from 'node:test'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir, homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -23,9 +23,13 @@ it('packs and installs without task data and loads six tools/seven routes under 
   assert.ok(packed.files.some((row:{path:string})=>row.path==='lib/host/index.js'))
   assert.ok(packed.files.some((row:{path:string})=>row.path==='lib/native/win32-x64/browser-flow-graph.exe'))
   assert.ok(packed.files.some((row:{path:string})=>row.path==='native/graph-core/GO-LICENSE'))
-  for(const row of packed.files)assert.ok(!/^(tasks|\.cache|\.evidence)\//.test(row.path)&&!/(^|\/)\.env/.test(row.path),row.path)
+  for(const name of ['lib/page-programs.d.ts','LICENSE','NOTICE','native/graph-core/extraction.json','docs/workflow.md','docs/local-tasks.md','docs/graph-kernel.md','docs/upgrade-v3.md','docs/upgrade-guide/v0.1.0/simplification/guide.md'])assert.ok(packed.files.some((row:{path:string})=>row.path===name),name)
+  for(const row of packed.files)assert.ok(!/^(src|scripts|tests|tasks|\.cache|\.evidence|docs\/qualification)\//.test(row.path)&&row.path!=='docs/testing.md'&&row.path!=='lib/page-programs.json'&&!/(^|\/)\.env/.test(row.path),row.path)
   writeFileSync(join(scratch,'package.json'),'{"private":true,"type":"module"}\n')
   npm(['install','--prefix',scratch,'--omit=dev','--ignore-scripts','--no-audit','--no-fund',join(scratch,packed.filename)])
+  const installed=join(scratch,'node_modules/@negentropy/dsh-browser-flow')
+  for(const name of ['src','tasks','docs/qualification','docs/testing.md'])assert.equal(existsSync(join(installed,name)),false,name)
+  for(const name of ['typescript','tsx'])assert.equal(existsSync(join(scratch,'node_modules',name)),false,name)
   const programs:Record<string,string>=JSON.parse(readFileSync(join(root,'.cache/fixtures/programs.json'),'utf8'))
   const probe=join(scratch,'probe.mjs')
   writeFileSync(probe,`(${programs.qualifyInstalledPackage})();`+'\n')

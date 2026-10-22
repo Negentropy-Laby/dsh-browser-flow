@@ -9,7 +9,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join, posix } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 interface AsarNode {files?:Record<string,AsarNode>;offset?:string;size?:number}
@@ -141,5 +141,4 @@ if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.
   }, undefined, 2)}\n`)
   process.stdout.write(`installed-host: ${String(packages.length)} packages, ${String(written)} files -> ${out}\n`)
   if (missing.length > 0) process.stdout.write(`installed-host: unresolved optional packages: ${missing.join(', ')}\n`)
-  void posix
 }
