@@ -553,18 +553,21 @@ tail: Promise<void>;
     await this.append(access,'edge',{id,from,to,relation,run:access.run})
     return id
   }
-  /** @param {TaskAccess} access - capability. @param {string} id - task-local detail. @param {number} offset - safe character continuation, bounded by configured bytes and any known current derived length. @param {number} budget - character budget. @param projectionId - identity required for graph/digest continuation after offset zero. @returns {Promise<object>} validated detail exposed in bounded text pieces; all canonical detail JSON obeys the configured UTF-8 capacity. */
+  /** @param {TaskAccess} access - capability. @param {string} id - task-local detail. @param {number} offset - safe character continuation, bounded by configured bytes and any known current derived length. @param {number} budget - character budget. @param projectionId - identity required for graph/digest continuation after offset zero. @returns {Promise<object>} validated detail from one run and journal position, exposed in bounded text pieces; all canonical detail JSON obeys the configured UTF-8 capacity. */
   async detail(access: TaskAccess,id: string,offset: number,budget: number,projectionId?:string) : Promise<object> {
     if(!Number.isSafeInteger(budget)||budget<=0)throw new TaskError('invalid_request','task detail budget must be a positive safe integer')
     const data=this.openTask(access)
     if(!Number.isSafeInteger(offset)||offset<0)throw new TaskError('invalid_request','detail offset must be a nonnegative safe integer')
     if(offset>this.graphConfig.graphMaxDetailBytes)throw new TaskError('invalid_request','detail offset exceeds the configured task detail capacity')
+    const position={run:access.run,version:data.events.length,tail:data.events.at(-1)?.hash}
     const row=data.events.findLast(event=>event.type==='asset'&&event.data.id===id)
     const asset=row?{id,taskId:data.manifest.scope.taskId,kind:row.data.kind,source:row.data.source,sourceSeq:row.seq,data:(row.data.data as Record<string, unknown>)}:undefined
     let criterion=taskFacts(data).criteria.find(item=>item.id===id)
     let value,currentProjection:string|undefined,serialized:string|undefined
     if(asset||id==='waiting'||criterion||id==='criteria'||id==='goal'||data.snapshot?.definition.resources.includes(id)){
-      await this.refreshEvidence(access);this.openTask(access);criterion=taskFacts(data).criteria.find(item=>item.id===id)
+      await this.refreshEvidence(access);this.openTask(access)
+      if(data.events.length!==position.version||data.events.at(-1)?.hash!==position.tail)throw new TaskError('task_busy','task history changed during detail verification; read the current task again')
+      criterion=taskFacts(data).criteria.find(item=>item.id===id)
     }
     if(asset)value=asset.kind==='evidence'?{...asset,data:{sha256:asset.data.sha256,bytes:asset.data.bytes,originalAvailable:data.checkedProofs?.has(asset.id)??false}}:asset
     else if(id==='waiting')value={current:data.state==='active'?data.waiting??null:null,history:data.events.filter(event=>['wait_requested','wait_input','wait_resolved'].includes(event.type)).map(event=>({sourceSeq:event.seq,type:event.type,...event.data}))}
@@ -601,7 +604,7 @@ tail: Promise<void>;
       if(Buffer.byteLength(serialized,'utf8')>this.graphConfig.graphMaxDetailBytes)throw new TaskError('task_unavailable','task detail unavailable: detail_capacity')
     }
     if(offset>serialized.length)throw new TaskError('invalid_request','detail offset exceeds its total characters')
-    return {task:access.run,contextVersion:data.events.length,ref:id,...(currentProjection?{projectionId:currentProjection}:{}),offset,totalChars:serialized.length,text:serialized.slice(offset,offset+budget),complete:offset+budget>=serialized.length}
+    return {task:position.run,contextVersion:position.version,ref:id,...(currentProjection?{projectionId:currentProjection}:{}),offset,totalChars:serialized.length,text:serialized.slice(offset,offset+budget),complete:offset+budget>=serialized.length}
   }
   /** @returns {Promise<void>} read immutable ownership plus complete validated journal prefixes; no commands or control are restored. */
   async recover() : Promise<void> {

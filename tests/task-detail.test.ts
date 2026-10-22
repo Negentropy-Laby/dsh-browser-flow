@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import {it} from 'node:test'
-import {writeFile} from 'node:fs/promises'
+import {writeFile,open,type FileHandle} from 'node:fs/promises'
 import {join} from 'node:path'
 import {taskHost} from './helpers/task-host.ts'
 import {navigation} from './helpers/task-navigation.ts'
@@ -76,4 +76,50 @@ it('preserves JavaScript character continuations and exact end for original deta
  const left=expectRecord(await store.detail(access,id,0,offset)),right=expectRecord(await store.detail(access,id,offset,10000))
  assert.equal(expectString(left.text)+expectString(right.text),text)
  const end=expectRecord(await store.detail(access,id,expectNumber(first.totalChars),100));assert.equal(end.text,'');assert.equal(end.complete,true)
+})
+
+function barrier(){let release=()=>{},entered=()=>{};const gate=new Promise<void>(r=>{release=r}),ready=new Promise<void>(r=>{entered=r});return {release,entered,gate,ready}}
+it('rejects a raw detail if an append commits during evidence I/O',async t=>{
+ const env=await navigation(t),store=env.service.tasks,access=present(env.access),id=await store.asset(access,'page',{marker:'original'}),hold=barrier(),read=store.readArtifact.bind(store);let first=true
+ store.readArtifact=async(...args)=>{const bytes=await read(...args);if(first){first=false;hold.entered();await hold.gate}return bytes}
+ const reading=store.detail(access,id,0,8000),rejected=assert.rejects(reading,{code:'task_busy'})
+ try{await hold.ready;await store.asset(access,'page',{marker:'appended'});hold.release();await rejected}finally{hold.release()}
+})
+for(const operation of ['append','revise'] as const)it(`rejects a raw detail when ${operation} commits after the inner evidence guard`,async t=>{
+ const env=await navigation(t),store=env.service.tasks,access=present(env.access),data=store.openTask(access),id=await store.asset(access,'page',{marker:'original'}),version=data.events.length,hold=barrier()
+ const proof=expectRecord(present(data.events.find(event=>event.type==='asset'&&event.data.kind==='evidence')).data.data),sample=await open(join(data.dir,expectString(proof.artifact)),'r')
+ const prototype=Object.getPrototypeOf(sample) as FileHandle;await sample.close()
+ const write=prototype.writeFile,sync=prototype.sync,read=store.readArtifact.bind(store),ownedOpen=store.openTask.bind(store);let writeFd=-2,reads=0;const versions:number[]=[]
+ t.mock.method(prototype,'writeFile',function(this:FileHandle,...args:Parameters<FileHandle['writeFile']>){
+  if(Buffer.isBuffer(args[0])&&args[0].includes(Buffer.from('late-snapshot-append')))writeFd=this.fd
+  return Reflect.apply(write,this,args)
+ })
+ t.mock.method(prototype,'sync',async function(this:FileHandle){
+  await sync.call(this)
+  if(this.fd===writeFd){
+   writeFd=-2;const close=this.close.bind(this)
+   t.mock.method(this,'close',async()=>{await close();hold.entered();await hold.gate})
+  }
+ })
+ const writing=operation==='append'?store.asset(access,'page',{marker:'late-snapshot-append'}):store.revise(access,{goal:'late-snapshot-append'})
+ void writing.catch(()=>{});t.after(async()=>{hold.release();await writing})
+ try{
+  await hold.ready
+  store.openTask=(...args)=>{const value=ownedOpen(...args);if(reads===2)versions.push(value.events.length);return value}
+  store.readArtifact=async(...args)=>{const bytes=await read(...args);if(++reads===2)hold.release();return bytes}
+  const result=await store.detail(access,id,0,8000).then(value=>({value,error:undefined}),error=>({value:undefined,error}))
+  await writing
+  assert.equal(versions[0],version,'the inner guard must see the original journal')
+  assert.equal(data.events.length,version+1,'the actual synchronized append must commit')
+  if(operation==='append')assert.equal(versions.at(-1),version+1,'the outer continuation must observe the race')
+  assert.equal(result.value,undefined)
+  assert.equal(expectRecord(result.error).code,operation==='append'?'task_busy':'task_not_bound')
+ }finally{hold.release();await writing}
+})
+it('returns a consistent old detail when the append happens after the reply',async t=>{
+ const env=await navigation(t),store=env.service.tasks,access=present(env.access),id=await store.asset(access,'page',{marker:'original'}),version=store.openTask(access).events.length
+ const result=expectRecord(await store.detail(access,id,0,8000))
+ await store.asset(access,'page',{marker:'later'})
+ assert.equal(result.contextVersion,version);assert.equal(store.openTask(access).events.length,version+1)
+ assert.equal(expectRecord(expectRecord(JSON.parse(expectString(result.text))).data).marker,'original')
 })

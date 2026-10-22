@@ -23,6 +23,13 @@ canonical Host detail JSON obeys the UTF-8 capacity. `offset === totalChars`
 returns an empty completed piece; valid continuations above two million characters
 remain supported within the configured capacity.
 
+Original details pin their RunScope and journal length/tail before selecting
+content. The outer read checks that position again after evidence verification;
+an intervening append returns `task_busy`, while an invalidated run retains its
+binding error. Successful `contextVersion` identifies the captured journal
+position. Obtain a new read after a concurrent update; no browser action is
+replayed and detail reads do not hold the journal's write queue.
+
 Cancellation and revision report their committed journal result immediately.
 Pending or failed worker retirement appears separately at
 `active_context.graph.cleanup`; termination grace controls escalation, not an
