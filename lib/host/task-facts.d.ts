@@ -1,12 +1,15 @@
-/** @param {import('./task-store.ts').TaskData} task - opened owned task. @returns {{verdict:string,sourceSeq:number|null,proofRef:string|null,criteria:import('./graph/protocol.ts').Criterion[]}} independently verified current facts. */
-export declare function taskFacts(task: import('./task-store.ts').TaskData): {
+export interface TaskFacts {
     verdict: string;
     sourceSeq: number | null;
     proofRef: string | null;
+    /** Diagnostic association only; this reference never proves a condition. */
+    candidateProofRef: string | null;
     criteria: import('./graph/protocol.ts').Criterion[];
-};
+}
+/** Independently verified current facts; callers may reuse them within one read phase. */
+export declare function taskFacts(task: import('./task-store.ts').TaskData): TaskFacts;
 /** Uses only Host facts. Call refreshEvidence before an authoritative tool read. */
-export declare function taskCoverage(task: import('./task-store.ts').TaskData): {
+export declare function taskCoverage(task: import('./task-store.ts').TaskData, facts?: TaskFacts): {
     total: number;
     verified: number;
     unverified: number;

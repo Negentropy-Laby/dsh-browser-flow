@@ -83,7 +83,6 @@ import { createTools, type ToolDefinition } from './tools.ts'
 import { type ControlLease } from './state.ts'
 import { type Result, type PageOperation, type FindQuery, type ActionInput, type WaitInput, isRecord } from './protocol.ts'
 import { GraphWorkers } from './graph/worker.ts'
-import { taskFacts } from './task-facts.ts'
 import { taskView } from './task-projections.ts'
 import { tasksRoot, listDefinitions, definitionSkills, definitionRef } from './task-definitions.ts'
 
@@ -240,7 +239,7 @@ closing: Promise<void> | undefined;
       workflow:workflow ? {id:workflow.id,stopBoundary:workflow.stopBoundary} : null,
       instructions:instructions.map(row=>({...row,text:row.text.slice(0,instructionBudget),complete:row.text.length<=instructionBudget})),resources,
       ...view,
-      businessVerdict:taskFacts(data).verdict,
+      businessVerdict:view.active_context.businessVerdict,
       writeBlocked:!!data.readOnly||data.blocked||data.unhealthy||!this.tasks.writable,logHealthy:!data.unhealthy}
   }
 

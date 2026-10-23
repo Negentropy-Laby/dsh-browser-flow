@@ -187,6 +187,11 @@ trace follows explicit edges in either direction and does not expand from a
 shared goal to unrelated actions. All associations are descriptive; only Host
 validators decide evidence validity.
 
+Ordinary observations carry Host-owned `contextOnly:false` in both their result
+and snapshot. A guest-supplied marker cannot turn them into context snapshots.
+Host-created context-only snapshots remain ineligible for navigation proof;
+historical records keep their original bytes.
+
 Use the existing `browser_observe` with `view:"task"`:
 
 - `ref:"graph"` retains the original combined view.
@@ -219,6 +224,13 @@ and `ratio` never change the business verdict or lifecycle. Empty total returns
 `ratio:null`; two free-text conditions plus one verified condition yield 1/3.
 Task tool reads recheck originals. Panel polling only displays the last Host
 facts and does not start a worker or scan originals.
+
+Verdict, criteria and coverage reuse the same Host facts within each read phase.
+Details still recompute after evidence refresh. `evidence_unavailable` identifies
+an unavailable proof selected by the current condition's last judgment; unrelated
+evidence issues stay listed separately. With no eligible current proof, coverage
+reports `no_valid_current_run_proof`. Diagnostic candidates never establish a
+verified condition or a graph proof edge.
 
 Resource descriptors are cached by immutable journal event and complete run;
 this does not cache evidence judgments or projection freshness. Host identity
