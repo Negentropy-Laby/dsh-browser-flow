@@ -28,10 +28,7 @@ export type Prepared = {
     state: "prepared" | "confirmed" | "consumed";
 };
 import { parseWorkbook } from './import-workbook.ts';
-/** @param {Uint8Array} bytes - owned bytes. @returns {string} complete SHA-256. */
-export declare function digest(bytes: Uint8Array): string;
-/** @param {string} path - owned directory. @returns {Promise<void>} private ACL verified before raw writes. */
-export declare function privateDirectory(path: string): Promise<void>;
+export { digest, privateDirectory } from './file-core.ts';
 /** One instance owns all private grant state; revoked objects are pruned, never restored. */
 export declare class ImportFiles {
     root: string | undefined;

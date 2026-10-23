@@ -1,9 +1,4 @@
-export type XmlNode = {
-    name: string;
-    attrs: Record<string, string>;
-    text: string;
-    children: XmlNode[];
-};
+export type { XmlNode } from './workbook-core.ts';
 /** @param {Uint8Array} bytes - frozen workbook. @returns {{ sheetName: string, firstRow: number, lastRow: number, people: import('./import-rules.ts').Person[] }} complete supported input. */
 export declare function parseWorkbook(bytes: Uint8Array): {
     sheetName: string;

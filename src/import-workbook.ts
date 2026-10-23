@@ -1,43 +1,9 @@
-export type XmlNode = {
-    name: string;
-    attrs: Record<string, string>;
-    text: string;
-    children: XmlNode[];
-};
-
-/** Bounded XLSX parsing adapted from bjrsj-input-snapshot; no filesystem extraction. */
-import AdmZip from 'adm-zip'
-import { SaxesParser } from 'saxes'
-import { posix } from 'node:path'
-import { FILE_LIMIT, personKeys } from './import-rules.ts'
-
-/** @param {string} reason - finite rejection. @returns {never} throws. */
-function reject(reason: string) : never { throw new Error(reason) }
-
-/** @param {Uint8Array} bytes - one admitted XML part. @returns {XmlNode} bounded tree. */
-function xml(bytes: Uint8Array) : XmlNode {
-  const parser = new SaxesParser({ xmlns: true })
-   const stack: XmlNode[] = []
-   let root: XmlNode | undefined
-  let count = 0
-  parser.on('doctype', () => reject('xml-doctype-unsupported'))
-  parser.on('opentag', tag => {
-    if (++count > 250_000 || stack.length > 32) reject('xml-resource-limit')
-     const node: XmlNode = { name: tag.local, attrs: {}, text: '', children: [] }
-    for (const attr of Object.values(tag.attributes)) node.attrs[attr.name] = attr.value
-    if (stack.length) stack[stack.length - 1].children.push(node); else root = node
-    stack.push(node)
-  })
-  parser.on('text', value => { if (stack.length) stack[stack.length - 1].text += value })
-  parser.on('cdata', value => { if (stack.length) stack[stack.length - 1].text += value })
-  parser.on('closetag', () => { stack.pop() })
-  try { parser.write(new TextDecoder('utf-8', { fatal: true }).decode(bytes)).close() } catch { reject('invalid-workbook-xml') }
-  return root ?? reject('empty-workbook-xml')
-}
-/** @param {XmlNode} node - root. @param {string} name - local name. @returns {XmlNode[]} descendants. */
-function descendants(node: XmlNode, name: string) : XmlNode[] { return node.children.flatMap(child => [...(child.name === name ? [child] : []), ...descendants(child, name)]) }
-/** @param {XmlNode} node - root. @param {string} name - direct child name. @returns {XmlNode} unique child. */
-function one(node: XmlNode, name: string) : XmlNode { const found = node.children.filter(child => child.name === name); return found.length === 1 ? found[0] : reject('ambiguous-workbook-structure') }
+export type {XmlNode} from './workbook-core.ts'
+import type {XmlNode} from './workbook-core.ts'
+import {workbookParts,xml,descendants,one} from './workbook-core.ts'
+import {posix} from 'node:path'
+import {personKeys,FILE_LIMIT} from './import-rules.ts'
+function reject(reason:string):never {throw new Error(reason)}
 /** @param {string} value - header. @returns {string} normalized header. */
 const headerText = (value: string) : string => value.normalize('NFKC').trim().replace(/^\*\s*/u, '')
 
@@ -48,25 +14,8 @@ export function parseWorkbook(bytes: Uint8Array) : {
     lastRow: number;
     people: import('./import-rules.ts').Person[];
 } {
-  if (bytes.byteLength === 0 || bytes.byteLength > FILE_LIMIT) reject('file-size-invalid')
-   let entries: import('adm-zip').IZipEntry[]
-  try { entries = new AdmZip(Buffer.from(bytes)).getEntries() } catch { return reject('invalid-workbook-zip') }
-  if (entries.length > 1000) reject('zip-resource-limit')
-  const names = new Set(); let total = 0
-   const files: Map<string, Buffer> = new Map()
-  for (const entry of entries) {
-    const name = entry.entryName
-    if (!name || names.has(name.toLowerCase()) || name.includes('\\') || name.startsWith('/') || name.split('/').some(segment => segment === '..' || segment === '.')) reject('ambiguous-zip-path')
-    names.add(name.toLowerCase())
-    if (entry.isDirectory) continue
-    total += entry.header.size
-    if (entry.header.size <= 0 || entry.header.size > 32 * 1024 * 1024 || total > 64 * 1024 * 1024) reject('zip-resource-limit')
-    if (/vbaProject|externalLinks/iu.test(name)) reject('unsupported-workbook-feature')
-    let data
-    try { data = entry.getData() } catch { return reject('invalid-workbook-zip') }
-    if (data.length !== entry.header.size) reject('zip-size-mismatch')
-    files.set(name, data)
-  }
+  if(bytes.byteLength===0||bytes.byteLength>FILE_LIMIT)reject('file-size-invalid')
+  const files=workbookParts(bytes)
   /** @param {string} name - package part. @returns {XmlNode} parsed part. */
   const part = (name: string) : XmlNode => xml(files.get(name) ?? reject('missing-workbook-part'))
   if (!descendants(part('[Content_Types].xml'), 'Override').some(node => node.attrs.PartName === '/xl/workbook.xml' && node.attrs.ContentType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml')) reject('unsupported-workbook-format')
