@@ -118,6 +118,17 @@ async function main(){
     assert.equal(next.offset,10)
     if(ref==='coverage'){const coverage=expectRecord(JSON.parse(expectString(first.text)));assert.equal(coverage.total,1);assert.equal(coverage.verified,0);assert.equal(coverage.ratio,0)}
    }
+   const observing=present(context.tools.get('browser_observe')).execute({},exec)
+   const polled=await post('poll',{instanceId,connectionGeneration:1,sessionId,pages:[page]}),command=polled.commands[0]
+   assert.equal(polled.commands.length,1)
+   await post('result',{kind:'result',task:command.task,id:command.id,leaseId:command.leaseId,instanceId,connectionGeneration:1,epoch:command.epoch,sequence:command.sequence,outcome:'ok',payload:{url:page.url,documentToken:page.documentToken,contextOnly:true,resourceIdentity:{version:1,key:'f'.repeat(64),basis:'document_instance',snapshotKind:'context'}}})
+   assert.equal(expectRecord(expectOk(await observing)).contextOnly,false)
+   const observedTask=expectRecord(expectOk(await present(context.tools.get('browser_observe')).execute({view:'task'},exec)))
+   const observedAsset=expectRecord(expectList(expectRecord(observedTask.technical_law_index).assets).find(row=>expectRecord(row).kind==='page'))
+   const original=expectRecord(JSON.parse(expectString(expectRecord(expectOk(await present(context.tools.get('browser_observe')).execute({view:'task',ref:observedAsset.id},exec))).text)))
+   assert.equal(expectRecord(original.data).contextOnly,false)
+   assert.equal(expectRecord(expectRecord(original.data).resourceIdentity).snapshotKind,'observation')
+   checks.push(`Windows ${id} Host owns ordinary observation flags in results and original snapshots`)
    assert.equal((await present(context.tools.get('browser_release')).execute({},exec)).ok,true)
    assert.equal(expectFailure(await present(context.tools.get('browser_observe')).execute({},exec)).code,'not_authorized')
    assert.equal(expectFailure(await present(context.tools.get('browser_act')).execute({action:'click',documentToken:page.documentToken,elementRef:'synthetic-element'},exec)).code,'not_authorized')

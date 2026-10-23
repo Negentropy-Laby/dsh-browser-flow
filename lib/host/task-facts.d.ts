@@ -30,4 +30,6 @@ export declare function taskCoverage(task: import('./task-store.ts').TaskData, f
 /** New relations require both original endpoints in the exact current run. */
 export declare function currentRunReferences(task: import('./task-store.ts').TaskData): Set<string>;
 /** @param {import('./task-store.ts').TaskData} task - opened owned task. @returns {Set<string>} owned original references; no derived digest can authorize a relation. */
-export declare function taskReferences(task: import('./task-store.ts').TaskData): Set<string>;
+export declare function taskReferences(task: import('./task-store.ts').TaskData, { currentRunOnly }?: {
+    currentRunOnly?: boolean;
+}): Set<string>;

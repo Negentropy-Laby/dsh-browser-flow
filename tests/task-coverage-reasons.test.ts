@@ -47,7 +47,7 @@ it('uses only the selected judgment when a readable failed proof and a later val
   assert.equal(trustedReason(data),'verified');assert.equal(taskCoverage(data).verified,1)
 })
 
-for(const mismatch of [{validatorVersion:99},{criterionId:'criterion-other'},{source:'model_intent'},{proofRef:'asset-foreign'}])it(`ignores an ineligible candidate ${JSON.stringify(mismatch)}`,async t=>{
+for(const mismatch of [{validatorVersion:99},{criterionId:'criterion-other'},{source:'model_intent'},{proofRef:'asset-foreign'},{proofRef:''}])it(`ignores an ineligible candidate ${JSON.stringify(mismatch)}`,async t=>{
   const env=await navigation(t),store=env.service.tasks,access=present(env.access),data=store.openTask(access),row=selected(data)
   await unlink(artifact(data,expectString(row.proofRef)))
   await store.append(access,'business_verdict',{...row,...mismatch});await store.refreshEvidence(access)
