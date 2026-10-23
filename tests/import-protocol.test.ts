@@ -9,9 +9,9 @@ import { createTools } from '../src/tools.ts'
 import { resolveConfig } from '../src/config.ts'
 import { resolve } from 'node:path'
 
-const command=(op:Record<string,unknown>)=>({kind:'command',protocolVersion:3,task:TASK,id:'c',leaseId:'l',connectionGeneration:1,epoch:0,sequence:0,deadlineAt:1000,op})
+const command=(op:Record<string,unknown>)=>({kind:'command',protocolVersion:4,task:TASK,id:'c',leaseId:'l',connectionGeneration:1,epoch:0,sequence:0,deadlineAt:1000,op})
 describe('authorized import wire and model interface',()=>{
-  it('requires matching v3 peers',()=>assert.equal(PROTOCOL_VERSION,3))
+  it('requires matching v4 peers',()=>assert.equal(PROTOCOL_VERSION,4))
   it('refuses an unresolved or remote private root at load',()=>{
     assert.throws(()=>resolveConfig({importEvidenceDir:'relative/private'}),/local absolute/)
     assert.throws(()=>resolveConfig({importEvidenceDir:'//server/share'}),/local absolute/)

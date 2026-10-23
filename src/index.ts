@@ -1,4 +1,4 @@
-import { pageIdentity, fileIdentity } from './task-resources.ts'
+import { pageIdentity, fileIdentity, eventResourceDescriptor } from './task-resources.ts'
 
 export type LiveAgent = {
     id: string;
@@ -74,6 +74,9 @@ import { randomUUID } from 'node:crypto'
 import { Config, resolveConfig } from './config.ts'
 import { PROTOCOL_VERSION, ROUTE_PREFIX, failure, success, validateHello, validateResult } from './protocol.ts'
 import { join } from 'node:path'
+import {EXPLORATION_GUIDE} from './exploration-instructions.ts'
+import { GenericFiles } from './generic-files.ts'
+import {isExploration,explorationOverview} from './task-exploration.ts'
 import { ImportFiles } from './import-files.ts'
 import { importScope, extractIdentity, judgeIdentity, judgeImport } from './import-rules.ts'
 import { decodeImportEvidence } from './import-evidence.ts'
@@ -116,6 +119,7 @@ ctx: HostContext;
 config: import("./config.ts").BrowserFlowConfig;
 tasks: TaskStore;
 importFiles: ImportFiles;
+genericFiles: GenericFiles;
 instanceTokens: WeakMap<object, string>;
 now: typeof monotonicNow;
 state: ControlStore;
@@ -138,6 +142,7 @@ closing: Promise<void> | undefined;
     const profile=ctx.get ? ctx.get('profileContext',false) : ctx.profileContext
     this.tasks=new TaskStore(tasksRoot(config.localTasksDir,profile),profile,config.commandBudgetMs,graph,config)
     this.importFiles = new ImportFiles(undefined)
+    this.genericFiles=new GenericFiles()
      this.instanceTokens=new WeakMap()
     this.now=monotonicNow
     this.state =  createControlState({now:()=>this.now()})
@@ -230,13 +235,16 @@ closing: Promise<void> | undefined;
     data.liveDocumentToken=this.tasks.controlDocument?.(access)
     const budget=Math.max(1800,Math.floor(this.config.observeMaxChars*3/4))
     const view=withGraph?await this.tasks.view(access,budget,signal):taskView(data,budget,undefined,'not_requested',this.tasks.writable,undefined,this.graph.cleanup(access.scope.taskId))
+    const exploration=isExploration(data.manifest)?explorationOverview(data):undefined
     const workflow=data.snapshot?.definition.workflows.find(row=>row.id===data.manifest.workflowRef)
     const resources=workflow ? [...workflow.instructions,...workflow.resources].map(definitionRef) : []
     const instructions=(workflow?.instructions ?? []).map(name=>({name,ref:definitionRef(name),text:data.snapshot?.files[name] ?? ''}))
+    if(isExploration(data.manifest))instructions.push({name:'exploration',ref:'exploration:guide',text:EXPLORATION_GUIDE})
     const instructionBudget=Math.floor(this.config.observeMaxChars/2/Math.max(1,instructions.length))
     return {task:access.run,state:data.readOnly?'read_only':data.blocked?'write_blocked':data.waiting&&data.state==='active'?'awaiting_user':data.state,contextVersion:data.events.length,goal:data.manifest.goal,origins:data.manifest.origins,adapter:data.manifest.adapter,
       definition:data.manifest.definitionId ? {id:data.manifest.definitionId,version:data.manifest.definitionVersion,digest:data.manifest.definitionDigest} : null,
       workflow:workflow ? {id:workflow.id,stopBoundary:workflow.stopBoundary} : null,
+      ...(exploration?{exploration,assetCoverage:exploration.assetCoverage,usage:'Read graph_overview; add_intent; claim_intent; observe/act; check_evidence; record_fact; finish_intent; prove_goal. Intent is an exploration direction, not a click. Business interpretation is Agent-authored.'}:{}),
       instructions:instructions.map(row=>({...row,text:row.text.slice(0,instructionBudget),complete:row.text.length<=instructionBudget})),resources,
       ...view,
       businessVerdict:view.active_context.businessVerdict,
@@ -301,8 +309,10 @@ closing: Promise<void> | undefined;
       }
     }
     const lease = this.leaseOf(caller)
+    const generic=lease.ok?this.genericFiles.current(lease.value):undefined
     const file = lease.ok ? this.importFiles.current(lease.value) : undefined
     return success({ sessionId: caller.sessionId, pages: [...byLease.values()], authorization: 'explicit',
+      ...(generic?{fileGrant:{state:generic.state,kind:'generic',format:generic.format,sha256:generic.sha256,...(generic.assetRef?{assetRef:generic.assetRef}:{}),...(generic.state==='confirmed'?{fileGrantId:generic.id}:{})}}:{}),
       ...(file ? {fileGrant:{state:file.state,kind:file.scope.kind,sha256:file.sha256,rows:file.input.people.length,boundary:'import_confirmed',...(file.state==='confirmed'?{fileGrantId:file.id}:{})}} : {}) })
   }
 
@@ -348,8 +358,12 @@ closing: Promise<void> | undefined;
       const redacted=this.redactResult(outcome.value ?? {})
       if(op.kind==='observe'){
         redacted.contextOnly=false
+        redacted.documentToken=lease.value.documentToken
         try{
           const pageRef=await this.tasks.asset(access,'page',{...redacted,documentToken:lease.value.documentToken,resourceIdentity:pageIdentity(access.run,lease.value,'observation')})
+          redacted.assetRef=pageRef
+          const event=this.tasks.openTask(access).events.find(e=>e.data.id===pageRef)!
+          redacted.resourceRef=eventResourceDescriptor(event,access.run).id
           const judged=navigationVerdict(this.tasks.openTask(access).manifest,redacted)
           if(judged.verdict==='entry_reached'&&!this.tasks.openTask(access).blocked){const proofRef=await this.tasks.proof(access,{schemaVersion:1,kind:'navigation',run:access.run,pageRef});await this.tasks.relate(access,proofRef,pageRef,'observed_on');const verified=await this.tasks.verdict(access,judged,proofRef);redacted.navigation=verified===judged.verdict?judged:{verdict:'unverified',reason:'task-evidence-unverified'}}
         }catch(error){return success({...redacted,recording:'failed',writeBlocked:true})}
@@ -371,6 +385,7 @@ closing: Promise<void> | undefined;
     const copy = { ...value }
     delete copy.privateImport
     delete copy.file
+    for(const key of ['assetRef','resourceRef','resourceIdentity','original'])delete copy[key]
     if (typeof copy.url === 'string') copy.url = redactUrl(copy.url)
     for (const key of ['matches', 'nodes']) {
       if (!Array.isArray(copy[key])) continue
@@ -389,15 +404,16 @@ closing: Promise<void> | undefined;
    */
   observe(caller: ResolvedCaller,signal: AbortSignal,view?: string,detail?: {
     ref: string;
-    offset: number;projectionId?:string;
+    offset: number;projectionId?:string;query?:unknown;documentToken?:string;elementRef?:string;
 }) {return this.own(()=>this.observeOwned(caller,signal,view,detail))}
   /** @param {ResolvedCaller} caller - actual caller. @param {AbortSignal} signal - cancellation. @param {string} [view] - fixed view. @param {{ref:string,offset:number,projectionId?:string}} [detail] - task-local continuation. @returns  owned observation. */
   async observeOwned(caller: ResolvedCaller, signal: AbortSignal, view?: string, detail?: {
     ref: string;
-    offset: number;projectionId?:string;
+    offset: number;projectionId?:string;query?:unknown;documentToken?:string;elementRef?:string;
 }) {
+    if(view==='file'){try{const access=await this.tasks.forSession(caller.sessionId);if(!detail?.ref)throw new TaskError('invalid_request','file snapshot ref required');return success(await this.tasks.fileView(access,detail.ref,detail.offset,this.config.observeMaxChars,detail.projectionId))}catch(error){return this.taskFailure(error)}}
     if(view==='task'){
-      try{const access=await this.tasks.forSession(caller.sessionId);return success(detail ? await this.tasks.detail(access,detail.ref,detail.offset,this.config.observeMaxChars,detail.projectionId) : await this.taskSummary(access,true,signal))}catch(error){return this.taskFailure(error)}
+      try{const access=await this.tasks.forSession(caller.sessionId);return success(detail?.query ? await this.tasks.queryExploration(access,detail.query,this.config.observeMaxChars) : detail?.ref ? await this.tasks.detail(access,detail.ref,detail.offset,this.config.observeMaxChars,detail.projectionId) : await this.taskSummary(access,true,signal))}catch(error){return this.taskFailure(error)}
     }
     try{this.taskOf(caller)}catch(error){return this.taskFailure(error)}
     if (view === 'bjrsj_import') {
@@ -407,7 +423,7 @@ closing: Promise<void> | undefined;
       return this.dispatch(caller,{kind:'observe',maxChars:this.config.observeMaxChars,maxNodes:this.config.observeMaxNodes,view,...this.importMetadata(held.value)},signal)
     }
     return this.dispatch(caller, {
-      kind: 'observe', maxChars: this.config.observeMaxChars, maxNodes: this.config.observeMaxNodes,
+      kind: 'observe', maxChars: this.config.observeMaxChars, maxNodes: this.config.observeMaxNodes,...(view==='table'||view==='region'?{view,...(detail?.elementRef?{target:{documentToken:detail.documentToken,elementRef:detail.elementRef}}:{})}:{}),
     }, signal)
   }
 
@@ -453,6 +469,13 @@ closing: Promise<void> | undefined;
     const startedAt=this.now()
     let access
     try{access=this.taskOf(caller,true)}catch(error){return this.taskFailure(error)}
+    if(input.action==='explore'){
+      if(signal?.aborted)return failure('deadline_exceeded','exploration command was cancelled')
+      try{return success(await this.tasks.explore(access,input.explore,input.requestId,input.expectedVersion,(completed)=>{
+        if(this.ctx.agents?.get(caller.sessionId)!==caller.agent)throw new TaskError('agent_mismatch','Agent changed while preparing the exploration command')
+        if(completed){this.state.revoke({sessionId:caller.sessionId},'all task goals proved');this.importFiles.prune();this.genericFiles.prune()}
+      }))}catch(error){return this.taskFailure(error)}
+    }
     if(input.action==='await_user'){
       if(signal?.aborted)return failure('deadline_exceeded','the task declaration was cancelled')
       try{const waiting=await this.tasks.declareWait(access,input.wait);if(this.ctx.agents?.get(caller.sessionId)!==caller.agent)return failure('agent_mismatch','the Agent was replaced while recording this declaration');return success({wait:waiting})}catch(error){return this.taskFailure(error)}
@@ -474,10 +497,12 @@ closing: Promise<void> | undefined;
       if(this.now()-startedAt>=this.config.commandBudgetMs||signal?.aborted)throw new TaskError('deadline_exceeded','the command expired during durable preparation; no page command was delivered')
       const entry=this.importFiles.current(lease)
       let file
+      const generic=isExploration(this.tasks.openTask(access).manifest)?this.genericFiles.current(lease):undefined
       if(input.action==='set_file'){
-        if(!entry?.identityVerified||entry.id!==input.fileGrantId)throw new TaskError('not_authorized','a confirmed file and both current identity anchors are required')
-        try{file=await this.importFiles.dispatch(lease,input.fileGrantId)}catch{throw new TaskError('not_authorized','file authorization, source or snapshot changed; do not retry implicitly')}
-        if(entry.assetRef)await this.tasks.relate(access,attempt,entry.assetRef,'selected_from')
+        if(!generic&&(!entry?.identityVerified||entry.id!==input.fileGrantId))throw new TaskError('not_authorized','a confirmed file and both current identity anchors are required')
+        try{file=generic?await this.genericFiles.dispatch(lease,String(input.fileGrantId)):await this.importFiles.dispatch(lease,String(input.fileGrantId))}catch{throw new TaskError('not_authorized','file authorization, source or snapshot changed; do not retry implicitly')}
+        if(generic?.assetRef)await this.tasks.relate(access,attempt,generic.assetRef,'selected_from')
+        if(entry?.assetRef)await this.tasks.relate(access,attempt,entry.assetRef,'selected_from')
         this.assertCurrent(caller,access,lease,stamp)
       }
       dispatchEntered=true
@@ -529,7 +554,8 @@ closing: Promise<void> | undefined;
       if(!lease.task||!sameRunScope(access.run,lease.task))throw new TaskError('revoked','import task/run changed')
       const resultRef=await this.tasks.asset(access,'import_result',{...result},'code_verified')
       await this.tasks.relate(access,resultRef,await this.tasks.pageContext(access,lease),'observed_on')
-      if(entry.assetRef)await this.tasks.relate(access,resultRef,entry.assetRef,'validated_by')
+
+        if(entry?.assetRef)await this.tasks.relate(access,resultRef,entry.assetRef,'validated_by')
       if(result.qualified){
         const proofRef=await this.tasks.proof(access,{schemaVersion:1,kind:'import',run:access.run,scope:entry.scope,documentToken:lease.documentToken,fileRef:entry.assetRef,resultRef,fileGrantId:entry.id,attemptId:entry.selectionAttemptId,evidence,files:[await this.tasks.artifact(access,entry.snapshot,'snapshot'),await this.tasks.artifact(access,join(entry.runDir,'dispatch.json'),'dispatch')]})
         if(entry.selectionAttemptId)await this.tasks.relate(access,entry.selectionAttemptId,resultRef,'yields')
@@ -572,7 +598,7 @@ closing: Promise<void> | undefined;
     const lease = this.state.leaseFor(caller.agent, caller.agentInstanceToken, caller.sessionId)
     if (lease === undefined) return failure('not_authorized', 'no page is authorized for this Agent')
     const revoked = this.state.revoke({ controlLeaseId: lease.id }, 'released by the Agent')
-    this.importFiles.prune()
+    this.importFiles.prune();this.genericFiles.prune()
     if (!revoked.ok) return revoked
     return success({ released: revoked.value.revoked, pageRetained: true })
   }
@@ -664,7 +690,7 @@ closing: Promise<void> | undefined;
     const hello = validateHello(await this.bodyOf(request))
     if (!hello.ok) return Response.json(failure('protocol_violation', hello.reason), { status: 400 })
     const registered = this.state.registerConnection(hello.hello)
-    this.importFiles.prune()
+    this.importFiles.prune();this.genericFiles.prune()
     if (!registered.ok) return Response.json(registered, { status: 409 })
     return Response.json(success({
       protocolVersion: PROTOCOL_VERSION,
@@ -689,7 +715,7 @@ closing: Promise<void> | undefined;
     }
 
     const body = raw as Record<string, unknown>
-    if(body.protocolVersion!==PROTOCOL_VERSION)return Response.json(failure('protocol_violation','Host and Client must both reload with protocol v3'),{status:400})
+    if(body.protocolVersion!==PROTOCOL_VERSION)return Response.json(failure('protocol_violation','Host and Client must both reload with protocol v4'),{status:400})
     const { instanceId, connectionGeneration, sessionId, pages } = body
     if (typeof instanceId !== 'string' || typeof sessionId !== 'string' || !(typeof connectionGeneration === 'number' && Number.isSafeInteger(connectionGeneration))) {
       return Response.json(failure('protocol_violation', 'poll requires instanceId, sessionId and connectionGeneration'), { status: 400 })
@@ -710,7 +736,7 @@ closing: Promise<void> | undefined;
     const agent = live === undefined || live === null
       ? null
       : { id: sessionId, instance: instanceDigest(this.tokenOf(live)) }
-    this.importFiles.prune()
+    this.importFiles.prune();this.genericFiles.prune()
     const listed=this.state.listPages(instanceId,connectionGeneration)
     const controls=listed.ok?listed.value.pages.filter(( page: { authorized: boolean; controlLeaseId?: string })=>page.authorized).map(( page: { authorized: boolean; controlLeaseId?: string })=>page.controlLeaseId):[]
     const task=this.tasks.current(sessionId)
@@ -752,7 +778,7 @@ closing: Promise<void> | undefined;
       return Response.json(failure('protocol_violation', 'documentToken must be a string when present'), { status: 400 })
     }
     const applied = this.state.reportInvalidation(instanceId, connectionGeneration, lease, event, documentToken)
-    this.importFiles.prune()
+    this.importFiles.prune();this.genericFiles.prune()
     return Response.json(applied, { status: applied.ok ? 200 : 409 })
   }
 
@@ -778,19 +804,19 @@ closing: Promise<void> | undefined;
 
     const body = raw as Record<string, unknown>
     const { instanceId, connectionGeneration, sessionId, lease, partition, documentToken, tabId } = body
-    if(body.protocolVersion!==PROTOCOL_VERSION)return Response.json(failure('protocol_violation','reload Host and Client together with protocol v3'),{status:400})
+    if(body.protocolVersion!==PROTOCOL_VERSION)return Response.json(failure('protocol_violation','reload Host and Client together with protocol v4'),{status:400})
     if(body.taskOperation!==undefined){
       if(body.fileOperation!==undefined || body.lease!==undefined || typeof sessionId!=='string' || typeof instanceId!=='string' || !(typeof connectionGeneration === 'number' && Number.isSafeInteger(connectionGeneration)))return Response.json(failure('invalid_request','task and page/file authorization are distinct operations'),{status:400})
       const connected=this.state.connectionsFor(sessionId).some(( connection: import('./state.ts').PanelConnection)=>connection.instanceId===instanceId&&connection.generation===connectionGeneration)
       if(!connected)return Response.json(failure('connection_stale','task operation requires the current authenticated panel connection'),{status:409})
       // Permission withdrawal precedes disk access, including when the task scope is stale.
-      if(typeof body.taskOperation==='string'&&['revise','cancel','finish'].includes(body.taskOperation)){this.state.revoke({sessionId},'task scope or lifecycle changed');this.importFiles.prune()}
+      if(typeof body.taskOperation==='string'&&['revise','cancel','finish'].includes(body.taskOperation)){this.state.revoke({sessionId},'task scope or lifecycle changed');this.importFiles.prune();this.genericFiles.prune()}
       try {
         const access=body.taskOperation==='create' ? await this.tasks.create(sessionId,body.spec) : await this.tasks.forSession(sessionId,body.task)
         let current=access
         if(body.taskOperation==='revise')current=await this.tasks.revise(access,body.spec)
         else if(body.taskOperation==='cancel'||body.taskOperation==='finish'){await this.tasks.end(access,body.taskOperation==='cancel'?'cancelled':'handed_off');if(this.tasks.openTask(access).readOnly)return Response.json(success({...await this.taskSummary(access),handoff:'read_only',historicalLifecycleUnchanged:true}))}
-        else if(body.taskOperation==='resume')await this.tasks.resumeWait(access,body.waitId,body.userInput,(kind,inputRef)=>{const agent=this.ctx.agents?.get(sessionId);if(!agent)return false;const held=this.state.leaseFor(agent,this.tokenOf(agent),sessionId);if(!held||held.state!=='active'||!held.task||!sameRunScope(held.task,access.run))return false;if(kind==='page_authorization')return this.leaseStamp(held)===inputRef;const entry=this.importFiles.current(held);return !!entry&&entry.id===inputRef&&(kind!=='file_confirmation'||entry.state==='confirmed')})
+        else if(body.taskOperation==='resume')await this.tasks.resumeWait(access,body.waitId,body.userInput,(kind,inputRef)=>{const agent=this.ctx.agents?.get(sessionId);if(!agent)return false;const held=this.state.leaseFor(agent,this.tokenOf(agent),sessionId);if(!held||held.state!=='active'||!held.task||!sameRunScope(held.task,access.run))return false;if(kind==='page_authorization')return this.leaseStamp(held)===inputRef;const entry=this.genericFiles.current(held)??this.importFiles.current(held);return !!entry&&entry.id===inputRef&&(kind!=='file_confirmation'||entry.state==='confirmed')})
         else if(typeof body.taskOperation!=='string'||!['create','open'].includes(body.taskOperation))throw new TaskError('invalid_request','unsupported task operation')
         return Response.json(success(await this.taskSummary(current)))
       }catch(error){return Response.json(this.taskFailure(error),{status:409})}
@@ -809,6 +835,31 @@ closing: Promise<void> | undefined;
     if(body.fileOperation!==undefined){
       const held=this.state.leaseFor(agent,this.tokenOf(agent),sessionId)
       if(!held||held.connectionInstanceId!==instanceId||held.connectionGeneration!==connectionGeneration||held.lease!==lease||held.partition!==partition||held.documentToken!==documentToken)return Response.json(failure('not_authorized','the current page must be explicitly authorized first'),{status:409})
+      if(!held.task||!sameRunScope(held.task,access.run))return Response.json(failure('task_scope_mismatch','file preparation requires this task/run'),{status:409})
+      if(isExploration(this.tasks.openTask(access).manifest)){
+        try{
+          const stamp=this.leaseStamp(held),caller={agent,sessionId,agentInstanceToken:this.tokenOf(agent)}
+          const attempt=await this.tasks.beginAttempt(access,body.fileOperation==='prepare'?'prepare_file':'confirm_file')
+          let preview
+          try{
+            this.assertCurrent(caller,access,held,stamp)
+            if(body.fileOperation==='prepare'){
+              if(body.scope!==undefined)throw new TaskError('invalid_request','generic file preparation takes no business scope')
+              preview=await this.genericFiles.prepare(held,body.path)
+              const entry=this.genericFiles.current(held)!
+              this.assertCurrent(caller,access,held,stamp)
+              entry.assetRef=await this.tasks.asset(access,'file',{sha256:entry.sha256,bytes:entry.bytes,format:entry.format,original:await this.tasks.artifact(access,entry.snapshot,'original'),resourceIdentity:fileIdentity(access.run,entry.path)})
+              await this.tasks.relate(access,attempt,entry.assetRef,'yields');await this.tasks.noteWaitInput(access,'file_input',entry.id)
+              preview={...preview,assetRef:entry.assetRef}
+            }else if(body.fileOperation==='confirm'&&typeof body.fileGrantId==='string'){
+              this.genericFiles.confirm(held,body.fileGrantId);await this.tasks.noteWaitInput(access,'file_confirmation',body.fileGrantId)
+              preview={confirmed:true,fileGrantId:body.fileGrantId,boundary:'selected_file_only'}
+            }else throw new TaskError('invalid_request','unsupported file operation')
+            this.assertCurrent(caller,access,held,stamp)
+          }finally{await this.tasks.receipt(access,attempt,'not_dispatched')}
+          return Response.json(success(preview))
+        }catch(error){if(error instanceof TaskError)return Response.json(this.taskFailure(error),{status:409});return Response.json(failure('invalid_request',error instanceof Error&&/^[a-z-]+$/.test(error.message)?error.message:'file-preparation-failed'),{status:409})}
+      }
       if(!held.task||!sameRunScope(held.task,access.run)||(this.tasks.openTask(access).manifest.adapter!=='bjrsj'||this.tasks.openTask(access).manifest.workflowRef!=='import'))return Response.json(failure('task_scope_mismatch','file preparation requires the current Beijing task/run'),{status:409})
       try {
         if(body.fileOperation==='prepare'){
@@ -819,7 +870,7 @@ closing: Promise<void> | undefined;
           let preview
           try{this.assertCurrent({agent,sessionId,agentInstanceToken:this.tokenOf(agent)},access,held,stamp);preview=await this.importFiles.prepare(held,body.path,scope);this.assertCurrent({agent,sessionId,agentInstanceToken:this.tokenOf(agent)},access,held,stamp)}finally{await this.tasks.receipt(access,attempt,'not_dispatched')}
           this.assertCurrent({agent,sessionId,agentInstanceToken:this.tokenOf(agent)},access,held,stamp)
-          if(this.ctx.agents?.get(sessionId)!==agent){this.state.retireLeasesOfReplacedAgents(sessionId,this.ctx.agents?.get(sessionId)??{});this.importFiles.prune();throw new Error('agent-replaced')}
+          if(this.ctx.agents?.get(sessionId)!==agent){this.state.retireLeasesOfReplacedAgents(sessionId,this.ctx.agents?.get(sessionId)??{});this.importFiles.prune();this.genericFiles.prune();throw new Error('agent-replaced')}
           const entry=this.importFiles.current(held)
           if(entry){entry.assetRef=await this.tasks.asset(access,'file',{sha256:entry.sha256,bytes:entry.bytes.length,rows:entry.input.people.length,kind:entry.scope.kind,resourceIdentity:fileIdentity(access.run,entry.path)},'code_verified');await this.tasks.relate(access,attempt,entry.assetRef,'yields');await this.tasks.noteWaitInput(access,'file_input',entry.id)}
           this.assertCurrent({agent,sessionId,agentInstanceToken:this.tokenOf(agent)},access,held,stamp)
@@ -857,7 +908,7 @@ closing: Promise<void> | undefined;
       documentToken,
       ...(typeof tabId === 'string' ? { tabId } : {}),
     })
-    this.importFiles.prune()
+    this.importFiles.prune();this.genericFiles.prune()
     if(authorized.ok){const selected=this.state.leaseFor(agent,this.tokenOf(agent),sessionId);if(selected){delete selected.importKind;selected.evidenceRoot=join(this.tasks.openTask(access).dir,'evidence',access.run.runId);await this.tasks.noteWaitInput(access,'page_authorization',this.leaseStamp(selected))}}
     return Response.json(authorized.ok ? success({...authorized.value,task:access.run,origins:taskData.manifest.origins,...(pagePolicy(taskData.manifest)?{pagePolicy:pagePolicy(taskData.manifest)}:{})}) : authorized, { status: authorized.ok ? 200 : 409 })
   }
@@ -883,7 +934,7 @@ closing: Promise<void> | undefined;
       { ...(controlLeaseId === undefined ? {} : { controlLeaseId }), ...(sessionId === undefined ? {} : { sessionId }) },
       'revoked by the user',
     )
-    this.importFiles.prune()
+    this.importFiles.prune();this.genericFiles.prune()
     return Response.json(revoked, { status: revoked.ok ? 200 : 409 })
   }
 
@@ -918,7 +969,7 @@ closing: Promise<void> | undefined;
     const timer = setInterval(() => {
       if (this.closed) return
       this.state.expireIdleConnections(this.config.connectionIdleMs)
-      this.importFiles.prune()
+      this.importFiles.prune();this.genericFiles.prune()
     }, interval)
     timer.unref?.()
     this.idleTimer = () => {
@@ -937,7 +988,7 @@ closing: Promise<void> | undefined;
     this.closing = (async () => {
       this.state.close()
       const graphClosed=this.graph.close().then(()=>true,()=>false)
-      const filesClosed=this.importFiles.close()
+      const filesClosed=Promise.all([this.importFiles.close(),this.genericFiles.close()])
       await Promise.allSettled([...this.pending])
       await filesClosed
       await this.tasks.close()

@@ -66,12 +66,12 @@ async function authorize(host: ReturnType<typeof makeHost>) : Promise<void> {
   await bindTestTask(host.service,'session-1',[new URL(PAGE.url).origin])
   const post = async (route:string, body:unknown) => {
     const response = await present(host.routes.get('POST /api/browser-flow/' + route)).fetch(new Request('http://host.test/', {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body && typeof body === 'object' && !Array.isArray(body) ? { protocolVersion: 3, ...body } : body),
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body && typeof body === 'object' && !Array.isArray(body) ? { protocolVersion: 4, ...body } : body),
     }))
     return response.json()
   }
   const hello = await post('hello', {
-    kind: 'hello', protocolVersion: 3, connectionGeneration: 1, sessionId: 'session-1',
+    kind: 'hello', protocolVersion: 4, connectionGeneration: 1, sessionId: 'session-1',
     panel: { instanceId: 'panel-1', pages: [PAGE] },
   })
   assert.equal(hello.ok, true, JSON.stringify(hello))

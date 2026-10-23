@@ -63,7 +63,7 @@ async function poll(host: ReturnType<typeof makeHost>, sessionId: string = 'sess
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      protocolVersion: 3,
+      protocolVersion: 4,
       instanceId: 'panel-1', connectionGeneration: 1, sessionId, pages: [],
     }),
   }))

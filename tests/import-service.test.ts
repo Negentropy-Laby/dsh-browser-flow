@@ -11,7 +11,7 @@ import { graphRuntime,graphBinary } from './helpers/graph-process.ts'
 import { resolveConfig } from '../src/config.ts'
 import { people,scope,workbook,facts } from './import-fixture.ts'
 
-const json=(body:object)=>new Request('http://localhost/api/browser-flow/authorize',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({protocolVersion:3,...body})})
+const json=(body:object)=>new Request('http://localhost/api/browser-flow/authorize',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({protocolVersion:4,...body})})
 async function setup(t:import('node:test').TestContext){
   const root=await mkdtemp(join(tmpdir(),'bf-service-'));const path=join(root,'private-input.xlsx');await writeFile(path,workbook())
   const agent={id:'session-1'};const agents=new Map([[agent.id,agent]])

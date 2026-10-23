@@ -36,7 +36,7 @@ const agent = { id: 'session-1' }
  */
 function connect(state: ReturnType<typeof createControlState>, { instanceId, generation = 1, sessionId = 'session-1', pages = [page] }:{instanceId:string;generation?:number;sessionId?:string;pages?:import('../src/state.ts').PanelPage[]}) : void {
   const registered = state.registerConnection({
-    kind: 'hello', protocolVersion: 3, connectionGeneration: generation,
+    kind: 'hello', protocolVersion: 4, connectionGeneration: generation,
     sessionId, panel: { instanceId, pages },
   })
   assert.equal(registered.ok, true, 'connect failed: ' + JSON.stringify(registered))

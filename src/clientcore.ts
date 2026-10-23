@@ -23,7 +23,7 @@ export type PageOperation = {
 };
 export type PagePrograms = {
     identity: string;
-    observe: (maxChars: number, maxNodes: number) => string;
+    observe: (maxChars: number, maxNodes: number, options?:{view?:string;documentToken?:string;elementRef?:string}) => string;
     find: (query: object, limit: number) => string;
     act: (input: object) => string;
     wait: (input: object) => string;
@@ -62,11 +62,11 @@ export const WEBVIEW_SELECTOR = 'webview[data-sidebar-browser-frame="webview"]'
  * @throws {Error} for an operation this build does not implement.
  */
 export function programFor(pageCode: PagePrograms, op: PageOperation) : string {
-  if (op.view === 'bjrsj_import' || (op.kind === 'act' && op.action === 'set_file')) {
+  if (op.view === 'bjrsj_import' || (op.kind === 'act' && op.action === 'set_file' && (op.importScope!==undefined||(op.pagePolicy && 'adapter' in op.pagePolicy && op.pagePolicy.adapter==='bjrsj')))) {
     if (!pageCode.import) throw new Error('the scoped import program is unavailable')
     return pageCode.import({mode:op.action === 'set_file' ? 'set_file' : 'observe',owner:op.importOwner,scope:op.importScope,windowMs:op.windowMs,target:op.target,file:op.file})
   }
-  if (op.kind === 'observe') return pageCode.observe(((op.maxChars) as number), ((op.maxNodes) as number))
+  if (op.kind === 'observe') return pageCode.observe(((op.maxChars) as number), ((op.maxNodes) as number),{view:op.view,documentToken:op.target?.documentToken,elementRef:op.target?.elementRef})
   if (op.kind === 'find') return pageCode.find(((op.query) as object), ((op.limit) as number))
   if (op.kind === 'act') {
     const target = ((op.target) as {
@@ -79,6 +79,7 @@ export function programFor(pageCode: PagePrograms, op: PageOperation) : string {
       action: op.action,
       ...(op.pagePolicy === undefined ? {} : {pagePolicy:op.pagePolicy}),
       ...(op.importScope === undefined ? {} : {importScope:op.importScope}),
+      ...(op.file===undefined?{}:{file:op.file}),
       ...(op.value === undefined ? {} : { value: op.value }),
       ...(op.checked === undefined ? {} : { checked: op.checked }),
     })

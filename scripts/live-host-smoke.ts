@@ -98,7 +98,7 @@ async function post(base:string, cookie:string, path:string, body:unknown) {
   const response = await fetch(base + path, {
     method: 'POST',
     headers: { cookie, 'content-type': 'application/json', origin: base },
-    body: JSON.stringify(body && typeof body === 'object' && !Array.isArray(body) ? { protocolVersion: 3, ...body } : body),
+    body: JSON.stringify(body && typeof body === 'object' && !Array.isArray(body) ? { protocolVersion: 4, ...body } : body),
   })
   const data:unknown=await response.json()
   return {status:response.status,body:data}
@@ -161,7 +161,7 @@ async function main() {
 
     // 4. The panel channel answers with the six tools and explicit capabilities.
     const hello = await post(base, cookie, '/api/browser-flow/hello', {
-      kind: 'hello', protocolVersion: 3, connectionGeneration: 1, sessionId: 'smoke-session',
+      kind: 'hello', protocolVersion: 4, connectionGeneration: 1, sessionId: 'smoke-session',
       panel: {
         instanceId: 'smoke-panel',
         pages: [{ lease: 'g1', partition: 'p1', url: 'https://example.test/a?token=leak', documentToken: 'd1' }],

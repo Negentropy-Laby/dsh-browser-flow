@@ -5,7 +5,7 @@ import { taskHost } from './helpers/task-host.ts'
 
 it('rebuilds all five modules, relates intents and receipts, and separates user criteria from verified facts',async t=>{
   const env=await taskHost(t)
-  await env.task('a',{goal:'Goal A',origins:['https://a.example'],criteria:['Read a known document']})
+  await env.task('a',{workflowRef:'generic',goal:'Goal A',origins:['https://a.example'],criteria:['Read a known document']})
   const store=env.service.tasks,a=store.current('session-a')
   const page=await store.asset(present(a),'page',{marker:'PRIVATE_A',documentToken:'doc-a'})
   const evidence=await store.asset(present(a),'evidence',{ref:'opaque-evidence'},'code_verified')
@@ -68,7 +68,7 @@ it('does not promote model assertions, incomplete judgments or a prior run into 
   assert.equal((await store.view(next,8000)).active_context.businessVerdict,'unverified')
 })
 it('retains the original goal revision for an earlier action when the user revises the goal',async t=>{
-  const env=await taskHost(t);await env.task('a',{goal:'Original goal',origins:['https://a.example']})
+  const env=await taskHost(t);await env.task('a',{workflowRef:'generic',goal:'Original goal',origins:['https://a.example']})
   const store=env.service.tasks,a=store.current('session-a')
   const attempt=await store.beginAttempt(present(a),'click');await store.receipt(present(a),attempt,'executed')
   const next=await store.revise(present(a),{goal:'Revised goal'})

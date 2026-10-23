@@ -15,7 +15,7 @@ import {
 /** A valid command envelope for mutation in tests. */
 function command(overrides: Record<string, unknown> = {}) {
   return {
-    kind: 'command', protocolVersion:3, task:TASK,
+    kind: 'command', protocolVersion:4, task:TASK,
     id: 'cmd-1',
     leaseId: 'lease-1',
     connectionGeneration: 1,
@@ -45,7 +45,7 @@ function hello(overrides: Record<string, unknown> = {}) {
 /** A valid result envelope for mutation in tests. */
 function result(overrides: Record<string, unknown> = {}) {
   return {
-    kind: 'result', protocolVersion:3, task:TASK,
+    kind: 'result', protocolVersion:4, task:TASK,
     instanceId: 'panel-1',
     id: 'cmd-1',
     leaseId: 'lease-1',

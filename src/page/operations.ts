@@ -16,7 +16,7 @@ const {safeUrl,documentToken}=runtime;
 
 }
 /** Fixed page operation; parameters are serialized as JSON by the Host/Client builder. */
-export function observe(runtime: PageRuntime, MAX_CHARS: number, MAX_NODES: number) {
+export function observe(runtime: PageRuntime, MAX_CHARS: number, MAX_NODES: number, options?:{view?:string;documentToken?:string;elementRef?:string}) {
 const {registry,mintRef,visible,textOf,describe,safeUrl,documentToken}=runtime;
 
 
@@ -26,9 +26,43 @@ const {registry,mintRef,visible,textOf,describe,safeUrl,documentToken}=runtime;
     // old el-0 reference to whatever element happens to sort first this time, and the
     // document token is unchanged within a document, so that lookup would
     // succeed and act on the wrong element.
+    let root:Element=document.body||document.documentElement;
+    if(options?.elementRef){
+      if(options.documentToken!==documentToken())return {ok:false,error:{code:'stale_observation',message:'observe the current document again'}};
+      const found=runtime.elementOf(options.elementRef);
+      if(!found||!visible(found))return {ok:false,error:{code:'stale_observation',message:'the observation region is no longer visible'}};
+      root=found;
+    }
     const state = registry();
     state.refs.clear();
-    const roots = [document.body || document.documentElement];
+    if(options?.view==='table'||options?.view==='region'){
+      let used=0,count=0,truncated=false;
+      const take=(element:Element)=>{const text=textOf(element).slice(0,MAX_CHARS);if(count>=MAX_NODES||used+text.length+60>MAX_CHARS){truncated=true;return undefined};count++;used+=text.length+60;return {elementRef:mintRef(element),text}};
+      const tableSelector='table,[role="table"],[role="grid"]';
+      const tables:Record<string,unknown>[]=[];
+      const candidates=[...(root.matches(tableSelector)?[root]:[]),...root.querySelectorAll(tableSelector)].filter(visible);
+      for(const table of candidates){
+        const header:Record<string,unknown>[]=[],rows:Record<string,unknown>[]=[];
+        if(count>=MAX_NODES||used+60>MAX_CHARS){truncated=true;break};count++;used+=60;const tableRef={elementRef:mintRef(table)};
+        const allRows=Array.from(table.querySelectorAll('tr,[role="row"]')).filter(row=>row.closest(tableSelector)===table&&visible(row));
+        for(const row of allRows){
+          const cells:Record<string,unknown>[]=[];
+          const sourceCells=Array.from(row.children).filter(c=>c.matches('th,td,[role="cell"],[role="gridcell"],[role="columnheader"],[role="rowheader"]')&&visible(c));
+          for(let column=0;column<sourceCells.length;column++){
+            const cell=sourceCells[column],value=take(cell);if(!value)break;
+            const entry={column,...value};cells.push(entry);
+            if(!rows.length&&(cell.matches('th,[role="columnheader"]')))header.push(entry);
+          }
+          if(cells.length)rows.push({index:rows.length,cells});
+          if(truncated)break;
+        }
+        tables.push({elementRef:tableRef.elementRef,columns:header,rows,domComplete:!truncated,datasetComplete:false});
+        if(truncated)break;
+      }
+      const region=options.view==='region'?take(root):undefined;
+      return {ok:true,value:{documentToken:documentToken(),url:safeUrl(location.href),title:(document.title||'').slice(0,300),view:options.view,tables,...(region?{region}:{}),truncated,domComplete:!truncated,datasetComplete:false}};
+    }
+    const roots = [root];
     const candidates = [];
     const interactive = 'a[href],button,input,select,textarea,[role],[contenteditable=""],[contenteditable="true"],[tabindex]';
     for (const root of roots) {
@@ -138,6 +172,21 @@ const {elementOf,visible,operable,isPasswordField,documentToken}=runtime;
       return { ok: false, error: { code: 'not_operable', message: 'the referenced element is not visible' } };
     }
     const refused=policy(runtime,input.pagePolicy??input.importScope,element,input.action);if(refused)return refused;
+    if(input.action==='set_file'){
+      if(!(element instanceof HTMLInputElement)||element.type!=='file'||!operable(element))return {ok:false,error:{code:'not_operable',message:'target must be a visible enabled file input'}};
+      return (async()=>{
+        const file=input.file,raw=atob(file.base64),bytes=Uint8Array.from(raw,c=>c.charCodeAt(0));
+        if(bytes.length!==file.bytes)return {ok:false,error:{code:'invalid_request',message:'file size mismatch'}};
+        if(!globalThis.crypto?.subtle)return {ok:false,error:{code:'unsupported',message:'secure file digest is unavailable in this document'}};
+        const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(b=>b.toString(16).padStart(2,'0')).join('');
+        if(hash!==file.sha256)return {ok:false,error:{code:'invalid_request',message:'file digest mismatch'}};
+        if(documentToken()!==input.documentToken||elementOf(input.elementRef)!==element||!visible(element)||!operable(element))return {ok:false,error:{code:'stale_observation',message:'file target changed before dispatch'}};
+        const transfer=new DataTransfer();transfer.items.add(new File([bytes],file.name,{type:'application/octet-stream'}));
+        element.files=transfer.files;
+        element.dispatchEvent(new Event('input',{bubbles:true,composed:true}));element.dispatchEvent(new Event('change',{bubbles:true}));
+        return {ok:true,value:{action:'set_file',fileGrantId:file.fileGrantId,dispatched:true,elementRef:input.elementRef}};
+      })();
+    }
     if (input.action === 'click') {
       if (!operable(element)) {
         return { ok: false, error: { code: 'not_operable', message: 'the referenced element is disabled or inert' } };

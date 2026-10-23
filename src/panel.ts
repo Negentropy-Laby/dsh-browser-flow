@@ -13,14 +13,7 @@ export interface ReactLike {
  useCallback<T extends (...args:never[])=>unknown>(callback:T,deps?:readonly unknown[]):T
  useEffect(callback:()=>void|(()=>void),deps?:readonly unknown[]):void
 }
-export type PagePrograms = {
-    identity: string;
-    observe: (maxChars: number, maxNodes: number) => string;
-    find: (query: object, limit: number) => string;
-    act: (input: object) => string;
-    wait: (input: object) => string;
-    import?: ((input: object) => string) | undefined;
-};
+export type PagePrograms = import('./clientcore.ts').PagePrograms;
 export type ClientHelpers = typeof CORE;
 export type DiscoveredPage = {
     lease: string;
@@ -84,7 +77,7 @@ export const POLL_INTERVAL_MS = 700
 export const PAGE_CODE: PagePrograms = Object.freeze({
   identity: identityProgram(),
   import: input => importProgram(((input) as import('./page/input.ts').ImportInput)),
-  observe: (maxChars, maxNodes) => observeProgram(maxChars, maxNodes),
+  observe: (maxChars, maxNodes, options) => observeProgram(maxChars, maxNodes, options),
   find: (query, limit) => findProgram(((query) as {
     by: 'text' | 'attr' | 'role';
     value: string;
@@ -112,7 +105,7 @@ export const COPY: {
     en: Record<string, string>;
 } = Object.freeze({
   zh: {
-    "stateActive":"进行中","stateReadOnly":"只读记录","stateBlocked":"写操作已阻断","stateCancelled":"已取消","stateHandedOff":"已交接","stateUnknown":"无法识别的状态","stateUnbound":"未绑定","notAuthorized":"未授权","reauthorize":"重新授权","pagesTitle":"控制页面","authorizationTarget":"授权对象详情","pageAddress":"完整地址","agentUnavailable":"暂无 Agent","taskActions":"任务操作","editTask":"编辑目标与范围","cancelEdit":"取消编辑","reloadDraft":"重新加载当前任务","draftChanged":"任务范围已变化。请重新加载当前任务后编辑。","operationFailed":"操作未完成。请查看下方诊断详情，并核对当前连接和权限。","unknownStateHint":"无法识别任务状态，请配套重载 Host 和 Client。当前仅允许安全读取、撤销和交接。","working":"处理中…","fileReview":"请确认文件摘要","fileSize":"文件大小","fileRows":"解析数据行数","fileDigest":"SHA-256","detailsTitle":"详情与诊断","taskId":"任务标识","taskScope":"范围版本","goalRequired":"请填写任务目标。","originsRequired":"请填写完整的 HTTP(S) 源站，以逗号分隔；不包含路径。","definitionRequired":"此本地定义不可用，请重新选择。","workflowRequired":"请为所选定义选择有效的操作说明。",
+    "stateActive":"进行中","stateReadOnly":"只读记录","stateBlocked":"写操作已阻断","stateCancelled":"已取消","stateCompleted":"目标已达成（Agent 判断）","stateHandedOff":"已交接","stateUnknown":"无法识别的状态","stateUnbound":"未绑定","notAuthorized":"未授权","reauthorize":"重新授权","pagesTitle":"控制页面","authorizationTarget":"授权对象详情","pageAddress":"完整地址","agentUnavailable":"暂无 Agent","taskActions":"任务操作","editTask":"编辑目标与范围","cancelEdit":"取消编辑","reloadDraft":"重新加载当前任务","draftChanged":"任务范围已变化。请重新加载当前任务后编辑。","operationFailed":"操作未完成。请查看下方诊断详情，并核对当前连接和权限。","unknownStateHint":"无法识别任务状态，请配套重载 Host 和 Client。当前仅允许安全读取、撤销和交接。","working":"处理中…","fileReview":"请确认文件摘要","fileSize":"文件大小","fileRows":"解析数据行数","fileDigest":"SHA-256","detailsTitle":"详情与诊断","taskId":"任务标识","taskScope":"范围版本","goalRequired":"请填写任务目标。","originsRequired":"请填写完整的 HTTP(S) 源站，以逗号分隔；不包含路径。","definitionRequired":"此本地定义不可用，请重新选择。","workflowRequired":"请为所选定义选择有效的操作说明。",
     resumeTask:'核对新输入并继续', userInput:'新提供的人工输入', waitingUser:'等待用户', taskReadOnly:'旧任务记录只读；请使用新会话开始新任务。',
     taskTitle:'当前任务', taskGoal:'目标', taskOrigins:'允许的源站（以逗号分隔）', taskDefinition:'本地任务定义', taskGeneric:'通用任务', taskWorkflow:'操作说明', createTask:'创建并绑定任务', openTask:'打开本会话任务', reviseTask:'修订目标与范围', cancelTask:'取消任务并撤销', finishTask:'结束并人工交接', invalidReply: 'Host 响应无效，请配套重载 Host 和 Client',
     taskMissing:'先创建或打开当前会话的任务，再授权页面。', taskBlocked:'此任务的写结果未知或日志不可用：仅允许读取、撤销及人工交接。',
@@ -129,6 +122,7 @@ export const COPY: {
     unsupportedHost: '该宿主不支持同页控制：Web 端的 Browser 是跨域 iframe，无法执行页面程序。',
     revokeHint: '撤销只解除控制，页面与登录状态保留。',
     guideDescription: '授权并控制右侧 Browser 中已打开的页面',
+    genericFileTitle:'任务文件',genericFileHint:'选择并确认本任务使用的文件。Agent 根据实际页面理解字段和步骤；确认不表示业务已完成。',genericFilePath:'本地文件完整路径',genericFileBoundary:'仅授权一次选择此文件。上传后的操作仍受任务目标、页面授权和证据检查约束。',
     importTitle: '北京社保授权导入',
     importHint: '指定本地文件后核对摘要；确认只允许一次选文件及站点校验，最终提交仍由你完成。',
     file_path: '本地 XLSX 完整路径', file_unitId: '预期单位编号', file_legalIdentity: '统一社会信用代码', file_firstRow: '数据起始行', file_lastRow: '数据结束行', file_kind: '业务类型',
@@ -141,7 +135,7 @@ export const COPY: {
     agentInstance: 'Agent 实例',
   },
   en: {
-    "stateActive":"In progress","stateReadOnly":"Read-only history","stateBlocked":"Writes blocked","stateCancelled":"Cancelled","stateHandedOff":"Handed off","stateUnknown":"Unrecognized state","stateUnbound":"Not bound","notAuthorized":"Not authorized","reauthorize":"Authorize again","pagesTitle":"Controlled pages","authorizationTarget":"Authorization target details","pageAddress":"Full address","agentUnavailable":"No Agent","taskActions":"Task actions","editTask":"Edit goal and scope","cancelEdit":"Cancel editing","reloadDraft":"Reload current task","draftChanged":"The task scope changed. Reload the current task before editing.","operationFailed":"The operation did not complete. Review the diagnostics below and check the connection and permissions.","unknownStateHint":"Unrecognized task state. Reload the paired Host and Client. Only safe reads, revocation and handoff remain available.","working":"Working\u2026","fileReview":"Confirm the file summary","fileSize":"File size","fileRows":"Parsed data rows","fileDigest":"SHA-256","detailsTitle":"Details and diagnostics","taskId":"Task ID","taskScope":"Scope revision","goalRequired":"Enter a task goal.","originsRequired":"Enter full HTTP(S) origins separated by commas, without paths.","definitionRequired":"This local definition is unavailable. Select it again.","workflowRequired":"Select valid instructions for this definition.",
+    "stateActive":"In progress","stateReadOnly":"Read-only history","stateBlocked":"Writes blocked","stateCancelled":"Cancelled","stateCompleted":"Goals met (Agent assessment)","stateHandedOff":"Handed off","stateUnknown":"Unrecognized state","stateUnbound":"Not bound","notAuthorized":"Not authorized","reauthorize":"Authorize again","pagesTitle":"Controlled pages","authorizationTarget":"Authorization target details","pageAddress":"Full address","agentUnavailable":"No Agent","taskActions":"Task actions","editTask":"Edit goal and scope","cancelEdit":"Cancel editing","reloadDraft":"Reload current task","draftChanged":"The task scope changed. Reload the current task before editing.","operationFailed":"The operation did not complete. Review the diagnostics below and check the connection and permissions.","unknownStateHint":"Unrecognized task state. Reload the paired Host and Client. Only safe reads, revocation and handoff remain available.","working":"Working\u2026","fileReview":"Confirm the file summary","fileSize":"File size","fileRows":"Parsed data rows","fileDigest":"SHA-256","detailsTitle":"Details and diagnostics","taskId":"Task ID","taskScope":"Scope revision","goalRequired":"Enter a task goal.","originsRequired":"Enter full HTTP(S) origins separated by commas, without paths.","definitionRequired":"This local definition is unavailable. Select it again.","workflowRequired":"Select valid instructions for this definition.",
     resumeTask:'Check new input and resume', userInput:'New user input', waitingUser:'Awaiting user', taskReadOnly:'Legacy history is read-only; start new work in a new Session.',
     taskTitle:'Current task', taskGoal:'Goal', taskOrigins:'Allowed origins (comma separated)', taskDefinition:'Local definition', taskGeneric:'Generic task', taskWorkflow:'Instructions', createTask:'Create and bind task', openTask:'Open this session’s task', reviseTask:'Revise goal and scope', cancelTask:'Cancel task and revoke', finishTask:'End and hand off', invalidReply:'Host response is invalid; reload the paired Host and Client', taskMissing:'Create or open this session’s task before authorizing a page.', taskBlocked:'Unknown write or unavailable log: only read, revoke and hand off.',
     title: 'Browser Flow', connected:'Connected',
@@ -160,6 +154,7 @@ export const COPY: {
     pageAlias: 'Page id',
     session: 'Session',
     agentInstance: 'Agent instance',
+    genericFileTitle:'Task file',genericFileHint:'Select and confirm this task’s file. The Agent discovers fields and steps from observations; confirmation does not prove business completion.',genericFilePath:'Full local file path',genericFileBoundary:'Authorizes selecting this file once. Later operations still depend on the task goal, page authorization and evidence checks.',
     importTitle: 'Beijing authorized import',
     importHint: 'Review the local file summary. Confirmation permits one file selection and site validation; final submission remains yours.',
     file_path: 'Full local XLSX path', file_unitId: 'Expected unit number', file_legalIdentity: 'Unified social credit code', file_firstRow: 'First data row', file_lastRow: 'Last data row', file_kind: 'Business type',
@@ -669,7 +664,7 @@ export function createPanel({ React, t, ui, core = CORE, pageCode = PAGE_CODE }:
         const answer=await post(ROUTES.authorize,{
           instanceId,connectionGeneration:generation.current,sessionId,task:binding.task,lease:binding.lease,partition:binding.partition,tabId:binding.tabId,documentToken:binding.documentToken,
           fileOperation:operation,
-          ...(operation==='prepare'?{path:fileForm.path,scope:{kind:fileForm.kind,unitId:fileForm.unitId,legalIdentity:fileForm.legalIdentity,firstRow:Number(fileForm.firstRow),lastRow:Number(fileForm.lastRow)}}:{fileGrantId:filePreview?.fileGrantId}),
+          ...(operation==='prepare'?{path:fileForm.path,...(binding.task.workflowRef==='exploration'?{}:{scope:{kind:fileForm.kind,unitId:fileForm.unitId,legalIdentity:fileForm.legalIdentity,firstRow:Number(fileForm.firstRow),lastRow:Number(fileForm.lastRow)}})}:{fileGrantId:filePreview?.fileGrantId}),
         })
         if(!alive.current||uiGeneration.current!==owner||bound.current!==binding||version!==authorizationVersion.current)return
         if(answer?.ok!==true){setOperationError(answer?.error);return}

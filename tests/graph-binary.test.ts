@@ -11,7 +11,7 @@ it('hashes successful artifacts once per plugin and detects replacement before a
  const dir=join(root,'lib/native/win32-x64');mkdirSync(dir,{recursive:true})
  const binary=join(dir,'browser-flow-graph.exe'),manifest=join(root,'lib/native/manifest.json'),bytes=Buffer.from('synthetic executable')
  writeFileSync(binary,bytes)
- const metadata={protocolVersion:2,kernelVersion:'4',rulesVersion:'structural-v1',sha256:createHash('sha256').update(bytes).digest('hex')}
+ const metadata={protocolVersion:2,kernelVersion:'5',rulesVersion:'structural-v1',sha256:createHash('sha256').update(bytes).digest('hex')}
  writeFileSync(manifest,JSON.stringify(metadata))
  let reads=0;const verifier=new BinaryVerifier(root,path=>{reads++;return readFileSync(path)})
  verifier.resolve();verifier.resolve();verifier.resolve();assert.equal(reads,2)

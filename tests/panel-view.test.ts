@@ -61,6 +61,15 @@ it('refuses an old revision draft while leaving explicit reload and cancel avail
  assert.equal(action(rows,'reloadDraft').props.disabled,false)
  assert.equal(action(rows,'cancelEdit').props.disabled,false)
 })
+it('shows generic file confirmation without legacy business fields or a fixed stop boundary',()=>{
+ const filePreview={fileGrantId:'file-generic',path:'<local-file>.json',kind:'generic',bytes:128,rows:0,sha256:'b'.repeat(64)}
+ const task={...TASK_VIEW,adapter:'generic',task:runScope({...TASK,adapter:'generic',workflowRef:'exploration'})}
+ const rows=render({task,authorized:'guest-a',filePreview}),text=rows.flatMap(row=>row.children.filter(child=>typeof child==='string')).join('\n')
+ assert.ok(text.includes(COPY.en.genericFilePath));assert.ok(text.includes(COPY.en.genericFileBoundary))
+ assert.equal(text.includes(COPY.en.stopBoundary),false);assert.equal(text.includes('file_generic'),false)
+ for(const key of ['kind','unitId','legalIdentity','firstRow','lastRow'])assert.equal(rows.some(row=>row.props['data-browser-flow-input']===key),false)
+ action(rows,'confirm-file')
+})
 it('keeps raw failure codes in expanded diagnostics and exposes safe connection states',()=>{
  const error={code:'synthetic_internal_code',message:'Private technical details'}
  assert.equal(render({error}).some(row=>row.children.includes(error.code)),false)

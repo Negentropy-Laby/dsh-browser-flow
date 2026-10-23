@@ -25,6 +25,7 @@ export interface GraphEvent {
   seq: number; hash: string; type: string; run: RunScope
   id?: string; kind?: string; source?: string; action?: string; outcome?: string
   from?: string; to?: string; relation?: string; goal?: string; documentToken?: string
+  intentId?:string; semantic?:{nodes:{id:string;kind:string;source:string;data:JsonRecord}[];edges:{id:string;from:string;to:string;relation:string}[];updates:{id:string;state:string}[];round:boolean;completed:boolean}
   resource?: import('../task-resources.ts').ResourceDescriptor
 }
 /** Code-owned display criterion. It never becomes authority by crossing IPC. */
@@ -33,7 +34,7 @@ export interface Criterion {
 }
 /** A complete replay snapshot, scoped before projection. */
 export interface GraphInput {
-  scope: RunScope; version: number; tailHash: string; goal: string; constraints: string[]
+  exploration?:boolean; scope: RunScope; version: number; tailHash: string; goal: string; constraints: string[]
   criteria: Criterion[]; events: GraphEvent[]; protected: string[]; proofRef: string; proofSeq: number
   coldRounds: number; minGroup: number; liveDocumentToken: string
 }

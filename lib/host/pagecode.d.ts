@@ -4,7 +4,11 @@ export declare function prelude(): string;
 /** @returns Identity program for the current document. */
 export declare function identityProgram(): string;
 /** @param maxChars - text budget. @param maxNodes - node budget. @returns Bounded observation program. */
-export declare function observeProgram(maxChars: number, maxNodes: number): string;
+export declare function observeProgram(maxChars: number, maxNodes: number, options?: {
+    view?: string;
+    documentToken?: string;
+    elementRef?: string;
+}): string;
 /** @param query - validated locator. @param limit - maximum returned matches. @returns Fixed locator program. */
 export declare function findProgram(query: {
     by: string;

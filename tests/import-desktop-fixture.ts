@@ -44,7 +44,7 @@ try {
       service.state.registerConnection({connectionGeneration:1,sessionId:agent.id,panel:{instanceId:'panel',pages:[panelPage]}})
       await service.tasks.create(agent.id,{definitionId:'synthetic',workflowRef:'import',goal:'Synthetic native case '+kind+' '+transport+' '+mode})
       const binding={instanceId:'panel',connectionGeneration:1,sessionId:agent.id,...panelPage}
-      const post=async (body:object)=>(await service.handleAuthorize(new Request('http://localhost/api/browser-flow/authorize',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({protocolVersion:3,...binding,...body})}))).json()
+      const post=async (body:object)=>(await service.handleAuthorize(new Request('http://localhost/api/browser-flow/authorize',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({protocolVersion:4,...binding,...body})}))).json()
       assert.equal((await post({})).ok,true)
       const preview=await post({fileOperation:'prepare',path:file,scope:{...scope,kind}});assert.equal(preview.ok,true,JSON.stringify(preview))
       assert.equal((await post({fileOperation:'confirm',fileGrantId:preview.value.fileGrantId})).ok,true)

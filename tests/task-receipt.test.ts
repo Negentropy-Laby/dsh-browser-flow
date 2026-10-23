@@ -10,7 +10,7 @@ async function fixture(t: TestContext) {
   const profile={name:'test',home:join(root,'home')}
   const store=new TaskStore(root,profile,100)
   t.after(async()=>{await store.close();await rm(root,{recursive:true,force:true})})
-  const access=await store.create('owner',{goal:'Synthetic receipt',origins:['https://one.example']})
+  const access=await store.create('owner',{workflowRef:'generic',goal:'Synthetic receipt',origins:['https://one.example']})
   return {store,access,root,profile}
 }
 

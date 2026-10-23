@@ -31,6 +31,7 @@ export type ToolDefinition = ReturnType<typeof createTools>[number]
  * @module @negentropy/dsh-browser-flow/tools
  */
 
+import {validateExplorationCommand} from './task-exploration.ts'
 import { validUserWait, USER_WAIT_KINDS } from './task-wait.ts'
 import { failure, success } from './protocol.ts'
 
@@ -109,26 +110,31 @@ function tabsTool(service: ToolService) {
 /** @param {ToolService} service - Host service. @param {import('./config.ts').BrowserFlowConfig} config - config. @returns {object} `browser_observe`. */
 function observeTool(service: ToolService, config: import('./config.ts').BrowserFlowConfig) {
   return {
-    name: 'browser_observe',
-    description: 'Read a bounded text view of the authorized page: redacted address, title, visible text, and a list of '
-      + 'operable elements with element references. The result carries a documentToken; element references from an '
-      + 'earlier observation are rejected as stale. Normal page operations require a bound task and an authorized page. view=task reads this Session’s task snapshot and instructions without page authorization; it never grants control. '
-      + `Character and node budgets are ${String(config.observeMaxChars)} and ${String(config.observeMaxNodes)}. `
-      + 'Password fields and storage values are never returned. view=bjrsj_import reads the private verifier\'s safe '
-      + 'identity and import judgment after the user prepared a scoped file in the panel; it is not a general network reader. '
-      + LOG_NOTICE,
-    parameters: { type: 'object', properties: { view: { type: 'string', enum: ['page','bjrsj_import','task'], description: 'Default page, scoped Beijing import verifier, or the current task.' }, ref:{type:'string',description:'Task detail: graph, graph:assets, graph:exploration, coverage, definition:<path> for a listed snapshot resource, or an opaque resource/asset/node reference returned by this task.'},projectionId:{type:'string',description:'Identity returned by the first derived detail (including coverage); required for every nonzero derived continuation offset. Restart at zero when it changes.'},offset:{type:'integer',minimum:0,maximum:config.graphMaxDetailBytes,description:'Task detail continuation character offset; every reference is bounded by graphMaxDetailBytes and its actual totalChars.'} }, required: [], additionalProperties: false },
-    output: outputOf('browser_observe'),
-    async execute( args: Record<string, unknown>,  exec: ToolExec) {
-      if (args.view !== undefined && args.view !== 'page' && args.view !== 'bjrsj_import' && args.view !== 'task') return failure('invalid_request', 'view must be page, bjrsj_import or task')
-      if((args.ref!==undefined&&(args.view!=='task'||typeof args.ref!=='string'||!args.ref||args.ref.length>240)) || (args.offset!==undefined&&(args.ref===undefined||typeof args.offset!=='number'||!Number.isSafeInteger(args.offset)||args.offset<0)))return failure('invalid_request','task detail requires a bounded reference and nonnegative offset')
-      if(args.projectionId!==undefined&&(args.view!=='task'||args.ref===undefined||typeof args.projectionId!=='string'||!/^[a-f0-9]{64}$/.test(args.projectionId)))return failure('invalid_request','projectionId must identify a task detail projection')
-      if(typeof args.offset==='number'&&args.offset>config.graphMaxDetailBytes)return failure('invalid_request','detail offset exceeds the configured task detail capacity')
-      const resolved = service.resolveCaller(exec)
-      if (!resolved.ok) return resolved
-      const observed = await service.observe(resolved.value, exec.signal,  ((args.view) as string | undefined),args.ref===undefined ? undefined : {ref:((args.ref) as string),offset:((args.offset ?? 0) as number),...(typeof args.projectionId==='string'?{projectionId:args.projectionId}:{})})
-      return observed
-    },
+    name:'browser_observe',
+    description:'Read an authorized page, region or structured table with current document element references. No passwords or storage are read. '
+      +'Start with view=task and no query/ref to read the current task, workflow guide and knowledge overview without granting page control. For subsequent task queries set view=task explicitly: query supports graph_overview, list_goals, list_facts, node_detail, list_assets and asset_neighbors; assets and exploration nodes have distinct IDs. '
+      +'With view=task, ref reads bounded details including exploration:guide, graph:assets, graph:exploration, coverage and definition:<path>. Do not combine query with ref. Nonzero continuation requires projectionId. '
+      +'view=file with a file asset ref reads the user-selected original as neutral sheets/cells or supported text; no business field mapping is built in. '
+      +'view=table/region optionally scopes to documentToken and elementRef. Truncation and DOM completeness never establish dataset completeness. '
+      +'The legacy scoped verifier view remains available for old definition tasks. '+LOG_NOTICE,
+    parameters:{type:'object',properties:{
+      view:{type:'string',enum:['page','table','region','task','file','bjrsj_import']},ref:{type:'string'},
+      query:{type:'object',properties:{op:{type:'string',enum:['graph_overview','list_goals','list_facts','node_detail','list_assets','asset_neighbors']},id:{type:'string'},q:{type:'string'},before:{type:'string'},projectionId:{type:'string'},limit:{type:'integer',minimum:1,maximum:100}},required:['op'],additionalProperties:false},
+      documentToken:{type:'string'},elementRef:{type:'string'},projectionId:{type:'string'},offset:{type:'integer',minimum:0,maximum:config.graphMaxDetailBytes}
+    },required:[],additionalProperties:false},output:outputOf('browser_observe'),
+    async execute(args:Record<string,unknown>,exec:ToolExec){
+      const view=args.view??'page'
+      if(!['page','table','region','task','file','bjrsj_import'].includes(String(view))||Object.keys(args).some(k=>!['view','ref','query','documentToken','elementRef','projectionId','offset'].includes(k)))return failure('invalid_request','unsupported observation arguments')
+      if(args.query!==undefined&&(view!=='task'||args.ref!==undefined||args.offset!==undefined||args.projectionId!==undefined||!args.query||typeof args.query!=='object'||Array.isArray(args.query)||JSON.stringify(args.query).length>3000))return failure('invalid_request','task query cannot be combined with a detail reference')
+      if(args.ref!==undefined&&(!['task','file'].includes(String(view))||typeof args.ref!=='string'||!args.ref||args.ref.length>240))return failure('invalid_request','provide a bounded task or file reference')
+      if(view==='file'&&args.ref===undefined)return failure('invalid_request','file snapshot reference required')
+      if(args.offset!==undefined&&(args.ref===undefined||!Number.isSafeInteger(args.offset)||Number(args.offset)<0||Number(args.offset)>config.graphMaxDetailBytes))return failure('invalid_request','invalid detail offset')
+      if(args.projectionId!==undefined&&(args.ref===undefined||typeof args.projectionId!=='string'||!/^[a-f0-9]{64}$/.test(args.projectionId)))return failure('invalid_request','invalid detail projection identity')
+      if((args.documentToken!==undefined||args.elementRef!==undefined)&&(!['table','region'].includes(String(view))||typeof args.documentToken!=='string'||!args.documentToken||typeof args.elementRef!=='string'||!args.elementRef))return failure('invalid_request','region target requires current documentToken and elementRef')
+      const caller=service.resolveCaller(exec);if(!caller.ok)return caller
+      const detail=args.ref!==undefined||args.query!==undefined||args.elementRef!==undefined?{ref:typeof args.ref==='string'?args.ref:'',offset:Number(args.offset??0),...(typeof args.projectionId==='string'?{projectionId:args.projectionId}:{}),...(args.query!==undefined?{query:args.query}:{}),...(typeof args.elementRef==='string'?{elementRef:args.elementRef,documentToken:String(args.documentToken)}:{})}:undefined
+      return service.observe(caller.value,exec.signal,String(view),detail)
+    }
   }
 }
 
@@ -178,19 +184,33 @@ function actTool(service: ToolService) {
     name: 'browser_act',
     description: 'Operate one element of the authorized page. Actions: click; type (replaces the whole value of an input, '
       + 'textarea or contenteditable, never appends); select (sets an explicit option); check (sets an explicit checked '
-      + 'state); set_file (one confirmed Beijing file grant, targeting its visible upload control). set_file accepts only '
+      + 'state); set_file (one user-confirmed file grant targeting its visible upload control). set_file accepts only '
       + 'fileGrantId, never a path or bytes; selection can immediately send the site\'s validation request and never means '
       + 'import_confirmed. Every page action re-validates the documentToken, the element reference, visibility and operability first, and '
       + 'fails with stale_observation rather than choosing another element. Actions are never retried automatically: '
       + 'page events and saves can have side effects, so confirm the result with browser_observe. Password fields are refused. '
       + 'await_user records a bounded human dependency in the current task without page authorization or dispatch. It takes only action and wait; the user must supply the condition and resume in the panel. It cannot grant control or prove success. '
+      + 'explore records ARTEX-style semantic operations without entering the page: set_goals, add_hint, add_intent, claim_intent, finish_intent, record_fact, check_evidence and prove_goal. It requires requestId and expectedVersion. Claim one intent before page mutations, write observed/inferred facts, finish it, then prove goals using observed facts with passing original-backed checks. Business interpretation remains Agent-authored. '
       + LOG_NOTICE,
     parameters: {
       type: 'object',
       properties: {
+        explore:{type:'object',properties:{
+          op:{type:'string',enum:['set_goals','add_hint','add_intent','claim_intent','finish_intent','record_fact','check_evidence','prove_goal']},
+          text:{type:'string',description:'New goal or planning hint.'},goals:{type:'array',maxItems:32,items:{type:'object',properties:{text:{type:'string'}},required:['text'],additionalProperties:false}},
+          summary:{type:'string',description:'Intent direction or integrated fact conclusion.'},detail:{type:'string'},evidence:{type:'string'},
+          confidence:{type:'string',enum:['observed','inferred']},intent_id:{type:'string',description:'Current semantic intent, not a browser attempt.'},
+          asset_ids:{type:'array',items:{type:'string'},maxItems:32,description:'Current resource-* IDs.'},parent_ids:{type:'array',items:{type:'string'},maxItems:32,description:'Existing fact IDs; empty uses origin.'},priority:{type:'integer',minimum:0,maximum:10},
+          evidence_refs:{type:'array',items:{type:'string'},maxItems:32,description:'Exact original page/file asset-* snapshots.'},check_refs:{type:'array',items:{type:'string'},maxItems:32,description:'Passing check_evidence references for the same snapshots.'},
+          intents:{type:'array',maxItems:4,items:{type:'object',properties:{summary:{type:'string'},asset_ids:{type:'array',items:{type:'string'}},parent_ids:{type:'array',items:{type:'string'}},priority:{type:'integer',minimum:0,maximum:10}},required:['summary'],additionalProperties:false}},
+          facts:{type:'array',maxItems:32,items:{type:'object',properties:{summary:{type:'string'},detail:{type:'string'},evidence:{type:'string'},confidence:{type:'string',enum:['observed','inferred']},intent_id:{type:'string'},asset_ids:{type:'array',items:{type:'string'}},evidence_refs:{type:'array',items:{type:'string'}},check_refs:{type:'array',items:{type:'string'}}},required:['summary','confidence'],additionalProperties:false}},
+          state:{type:'string',enum:['done','blocked','exhausted','stopped']},reason:{type:'string'},goal_id:{type:'string'},evidence_id:{type:'string'},
+          assertion:{type:'object',description:'Source-backed atom {op,left:{ref,path},right:{value} or {ref,path}}; op exists, equals, contains, count or setEquals. exists omits right. Or {op:all|any,checks:[atoms]}, maximum 32 atoms; paths are arrays of keys/indices. No scripts or nested composition.',additionalProperties:true}
+        },required:['op'],additionalProperties:false},
+        requestId:{type:'string',description:'Unique semantic request ID; reuse only for an identical acknowledgement retry.'},expectedVersion:{type:'integer',minimum:1,description:'Latest contextVersion returned by the current task.'},
         documentToken: { type: 'string', description: 'documentToken from the observation that produced elementRef.' },
         elementRef: { type: 'string', description: 'Element reference from browser_observe or browser_find.' },
-        action: { type: 'string', enum: ['click', 'type', 'select', 'check','set_file','await_user'], description: 'Page action, or await_user to record a task-local human dependency without entering a page. Only the user can resume.' },
+        action: { type: 'string', enum: ['click', 'type', 'select', 'check','set_file','await_user','explore'], description: 'Page action, or await_user to record a task-local human dependency without entering a page. Only the user can resume.' },
         fileGrantId: { type: 'string', description: 'One confirmed file grant from browser_tabs, required only for set_file.' },
         value: { type: 'string', description: 'Replacement text for type, or option value/text for select.' },
         checked: { type: 'boolean', description: 'Explicit checked state for check.' },
@@ -201,6 +221,12 @@ function actTool(service: ToolService) {
     },
     output: outputOf('browser_act'),
     async execute( args: Record<string, unknown>,  exec: ToolExec) {
+      if(args.action==='explore'){
+        if(Object.keys(args).some(k=>!['action','explore','requestId','expectedVersion'].includes(k)))return failure('invalid_request','explore takes only its command, requestId and expectedVersion')
+        try{validateExplorationCommand(args.explore)}catch{return failure('invalid_request','invalid exploration command')}
+        const caller=service.resolveCaller(exec)
+        return caller.ok?service.act(caller.value,{action:'explore',explore:args.explore,requestId:args.requestId,expectedVersion:args.expectedVersion},exec.signal):caller
+      }
       if(args.action==='await_user'){
         if(Object.keys(args).some(key=>!['action','wait'].includes(key))||!validUserWait(args.wait))return failure('invalid_request','await_user takes only a user dependency, reason and resumeCondition')
         const caller=service.resolveCaller(exec)

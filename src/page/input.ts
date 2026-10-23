@@ -5,7 +5,7 @@ export interface PagePolicy {adapter?:string; workflow?:string; kind?:BatchKind}
 interface ActionTarget {documentToken:string;elementRef:string;pagePolicy?:PagePolicy;importScope?:PagePolicy}
 /** Action-specific fields are validated before a fixed program is selected. */
 export type PageActionInput = ActionTarget & (
-  {action:'click'} | {action:'type'|'select';value:string} | {action:'check';checked:boolean}
+  {action:'set_file';file:{fileGrantId:string;name:string;base64:string;bytes:number;sha256:string}} | {action:'click'} | {action:'type'|'select';value:string} | {action:'check';checked:boolean}
 )
 export interface PageWaitInput {target:{documentToken:string;elementRef:string};condition:string;text?:string;timeoutMs:number}
 export interface ImportFile {fileGrantId:string;name:string;base64:string;bytes:number;kind:BatchKind;expectedIdentity:{unitId:string;legalIdentity:string}}

@@ -35,7 +35,7 @@ export function isTaskSummary(value:unknown):value is TaskSummary {
 }
 /** @param value - private panel preview. @returns Whether all displayed file fields are present. */
 export function isFilePreview(value:unknown):value is FilePreview {
-  return isRecord(value)&&['fileGrantId','path'].every(key=>typeof value[key]==='string'&&value[key].length>0)&&typeof value.sha256==='string'&&/^[a-f0-9]{64}$/.test(value.sha256)&&typeof value.kind==='string'&&['add','modify','reduce'].includes(value.kind)&&typeof value.bytes==='number'&&Number.isSafeInteger(value.bytes)&&value.bytes>0&&typeof value.rows==='number'&&Number.isSafeInteger(value.rows)&&value.rows>0&&(value.confirmed===undefined||typeof value.confirmed==='boolean')
+  return isRecord(value)&&['fileGrantId','path'].every(key=>typeof value[key]==='string'&&value[key].length>0)&&typeof value.sha256==='string'&&/^[a-f0-9]{64}$/.test(value.sha256)&&typeof value.kind==='string'&&['add','modify','reduce','generic'].includes(value.kind)&&typeof value.bytes==='number'&&Number.isSafeInteger(value.bytes)&&value.bytes>0&&typeof value.rows==='number'&&Number.isSafeInteger(value.rows)&&value.rows>=0&&(value.confirmed===undefined||typeof value.confirmed==='boolean')
 }
 /** @param raw - untrusted response JSON. @returns A decoded reply or a visible protocol refusal. */
 export function decodePanelReply(raw:unknown):PanelReply {

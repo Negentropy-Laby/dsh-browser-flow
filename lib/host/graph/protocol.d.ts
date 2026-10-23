@@ -54,6 +54,27 @@ export interface GraphEvent {
     relation?: string;
     goal?: string;
     documentToken?: string;
+    intentId?: string;
+    semantic?: {
+        nodes: {
+            id: string;
+            kind: string;
+            source: string;
+            data: JsonRecord;
+        }[];
+        edges: {
+            id: string;
+            from: string;
+            to: string;
+            relation: string;
+        }[];
+        updates: {
+            id: string;
+            state: string;
+        }[];
+        round: boolean;
+        completed: boolean;
+    };
     resource?: import('../task-resources.ts').ResourceDescriptor;
 }
 /** Code-owned display criterion. It never becomes authority by crossing IPC. */
@@ -67,6 +88,7 @@ export interface Criterion {
 }
 /** A complete replay snapshot, scoped before projection. */
 export interface GraphInput {
+    exploration?: boolean;
     scope: RunScope;
     version: number;
     tailHash: string;

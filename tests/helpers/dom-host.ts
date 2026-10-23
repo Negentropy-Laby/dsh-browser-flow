@@ -65,7 +65,7 @@ export async function call(route: FetchRoute, body: unknown) {
   const response = await route.fetch(new Request(`http://127.0.0.1:62231${route.path}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body && typeof body === 'object' && !Array.isArray(body) ? { protocolVersion: 3, ...body } : body),
+    body: JSON.stringify(body && typeof body === 'object' && !Array.isArray(body) ? { protocolVersion: 4, ...body } : body),
   }))
   const value: unknown = await response.json()
   return { status: response.status, body: value }

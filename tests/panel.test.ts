@@ -160,9 +160,9 @@ describe('panel command loop', () => {
         [ROUTES.poll]: {
           ok: true,
           value: {
-            protocolVersion: 3, task:TASK_VIEW,
+            protocolVersion: 4, task:TASK_VIEW,
             commands: [{
-              id: 'cmd-1', protocolVersion:3,task:TASK, leaseId: 'lease-1', connectionGeneration: 3, epoch: 2, sequence: 7,
+              id: 'cmd-1', protocolVersion:4,task:TASK, leaseId: 'lease-1', connectionGeneration: 3, epoch: 2, sequence: 7,
               deadlineAt: Date.now() + 10_000,
               op: { kind: 'observe', maxChars: 100, maxNodes: 5 },
             }],
@@ -204,7 +204,7 @@ describe('panel command loop', () => {
     const browser = fakeBrowser({
       desktop: { protocolVersion: 1 },
       elements: [guest()],
-      responses: { [ROUTES.poll]: { ok: true, value: { protocolVersion: 3, task:TASK_VIEW, commands: [], dropped: [] } } },
+      responses: { [ROUTES.poll]: { ok: true, value: { protocolVersion: 4, task:TASK_VIEW, commands: [], dropped: [] } } },
     })
     try {
       const harness = createReactHarness()
@@ -254,7 +254,7 @@ describe('panel command loop', () => {
 
 
 it('keeps an edit draft across polls, cancels locally, and rejects a revised scope before sending',async()=>{
- const browser=fakeBrowser({desktop:{protocolVersion:1},responses:{[ROUTES.poll]:{ok:true,value:{protocolVersion:3,task:TASK_VIEW,commands:[],agent:{id:'session-1',instance:'agent-a'}}}}})
+ const browser=fakeBrowser({desktop:{protocolVersion:1},responses:{[ROUTES.poll]:{ok:true,value:{protocolVersion:4,task:TASK_VIEW,commands:[],agent:{id:'session-1',instance:'agent-a'}}}}})
  try{
   const harness=createReactHarness(),Panel=createPanel({React:harness.React,t,ui:fixturePanelUi(harness.React)}),props={sessionId:'session-1'}
   harness.render(Panel,props);const cleanups=harness.runEffects();await new Promise<void>(resolve=>setImmediate(resolve))
@@ -266,7 +266,7 @@ it('keeps an edit draft across polls, cancels locally, and rejects a revised sco
   assert.equal(find(harness.render(Panel,props),row=>row.props['data-browser-flow-input']==='task-goal')?.props.value,'Unsaved draft')
   assert.equal(harness.runEffects().length,0,'presentation edits must not restart the polling effect')
   const requests=browser.calls.length;click('cancelEdit');assert.equal(browser.calls.length,requests)
-  click('editTask');browser.responses.set(ROUTES.poll,{ok:true,value:{protocolVersion:3,task:{...TASK_VIEW,task:{...TASK,scopeRevision:2}},commands:[]}});browser.ticks[0]();await new Promise<void>(resolve=>setImmediate(resolve))
+  click('editTask');browser.responses.set(ROUTES.poll,{ok:true,value:{protocolVersion:4,task:{...TASK_VIEW,task:{...TASK,scopeRevision:2}},commands:[]}});browser.ticks[0]();await new Promise<void>(resolve=>setImmediate(resolve))
   const beforeRevision=browser.calls.length
   click('task-revise');assert.equal(browser.calls.length,beforeRevision,'stale revision must not revoke or send a request')
   assert.equal(find(harness.render(Panel,props),row=>row.props['data-browser-flow-action']==='task-revise')?.props.disabled,true)
@@ -274,7 +274,7 @@ it('keeps an edit draft across polls, cancels locally, and rejects a revised sco
  }finally{browser.restore()}
 })
 it('displays no live Agent for an explicit null Agent response',async()=>{
- const browser=fakeBrowser({desktop:{protocolVersion:1},elements:[guest()],responses:{[ROUTES.poll]:{ok:true,value:{protocolVersion:3,task:TASK_VIEW,agent:null,commands:[]}}}})
+ const browser=fakeBrowser({desktop:{protocolVersion:1},elements:[guest()],responses:{[ROUTES.poll]:{ok:true,value:{protocolVersion:4,task:TASK_VIEW,agent:null,commands:[]}}}})
  try{
   const harness=createReactHarness(),Panel=createPanel({React:harness.React,t,ui:fixturePanelUi(harness.React)});harness.render(Panel,{sessionId:'session-1'});const cleanups=harness.runEffects();await new Promise<void>(resolve=>setImmediate(resolve))
   const tree=harness.render(Panel,{sessionId:'session-1'});assert.ok(find(tree,row=>row.children.includes('noAgent')));assert.equal(find(tree,row=>row.props['data-browser-flow-action']==='authorize')?.props.disabled,true)

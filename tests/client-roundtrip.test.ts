@@ -81,7 +81,7 @@ describe('panel round trip in a real DOM', { skip: ready ? false : `missing DOM 
       if (route === '/api/browser-flow/poll') {
         const answer = {
           ok: true,
-          value: { protocolVersion: 3, task:TASK_VIEW, commands: pendingCommands, dropped: [], agent: { id: 'session-1', instance: 'a1b2c3d4' } },
+          value: { protocolVersion: 4, task:TASK_VIEW, commands: pendingCommands, dropped: [], agent: { id: 'session-1', instance: 'a1b2c3d4' } },
         }
         pendingCommands = []
         return { json: async () => answer }
@@ -216,7 +216,7 @@ describe('panel round trip in a real DOM', { skip: ready ? false : `missing DOM 
       // The Host dispatches one observation. The panel must execute it and answer.
       executed.length = 0
       pendingCommands = [{
-        id: 'cmd-1', protocolVersion:3,task:TASK, leaseId: 'lease-1', connectionGeneration: 1,
+        id: 'cmd-1', protocolVersion:4,task:TASK, leaseId: 'lease-1', connectionGeneration: 1,
         epoch: 0, sequence: 0, budgetMs: 10000, deadlineAt: 0,
         op: { kind: 'observe', maxChars: 1000, maxNodes: 50 },
       }]
@@ -238,7 +238,7 @@ describe('panel round trip in a real DOM', { skip: ready ? false : `missing DOM 
       // A command for another lease must never be executed by this panel.
       executed.length = 0
       pendingCommands = [{
-        id: 'cmd-2', protocolVersion:3,task:TASK, leaseId: 'lease-9', connectionGeneration: 1,
+        id: 'cmd-2', protocolVersion:4,task:TASK, leaseId: 'lease-9', connectionGeneration: 1,
         epoch: 0, sequence: 1, budgetMs: 10000, deadlineAt: 0,
         op: { kind: 'observe', maxChars: 1000, maxNodes: 50 },
       }]
@@ -281,7 +281,7 @@ describe('panel round trip in a real DOM', { skip: ready ? false : `missing DOM 
       assert.equal(container.querySelector('[data-browser-flow-action="revoke"]') !== null, true, 'the panel still offers control')
 
       pendingCommands = [{
-        id: 'cmd-3', protocolVersion:3,task:TASK, leaseId: 'lease-1', connectionGeneration: 1,
+        id: 'cmd-3', protocolVersion:4,task:TASK, leaseId: 'lease-1', connectionGeneration: 1,
         // The re-authorization restarted the panel's sequence counter, and the
         // same-origin invalidation advanced the epoch it must present.
         epoch: 1, sequence: 0, budgetMs: 10000, deadlineAt: 0,
@@ -300,7 +300,7 @@ describe('panel round trip in a real DOM', { skip: ready ? false : `missing DOM 
       for (const tick of [...ticks] as const) await tick()
       await settle()
       pendingCommands = [{
-        id: 'cmd-4', protocolVersion:3,task:TASK, leaseId: 'lease-1', connectionGeneration: 1,
+        id: 'cmd-4', protocolVersion:4,task:TASK, leaseId: 'lease-1', connectionGeneration: 1,
         epoch: 1, sequence: 0, budgetMs: 10000, deadlineAt: 0,
         op: { kind: 'observe', maxChars: 1000, maxNodes: 50 },
       }]

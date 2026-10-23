@@ -25,7 +25,7 @@ function ready(pages: import('../src/state.ts').PanelPage[], instanceId: string 
   const state = createControlState()
   const limits = resolveConfig({})
   const registered = state.registerConnection({
-    kind: 'hello', protocolVersion: 3, connectionGeneration: 1, sessionId: 'session-1',
+    kind: 'hello', protocolVersion: 4, connectionGeneration: 1, sessionId: 'session-1',
     panel: { instanceId, pages },
   })
   assert.equal(registered.ok, true)

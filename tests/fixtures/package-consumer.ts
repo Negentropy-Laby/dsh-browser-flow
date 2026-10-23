@@ -6,7 +6,7 @@ import {actProgram,findProgram,identityProgram,prelude} from '@negentropy/dsh-br
 const ctx:HostContext={agents:{get:id=>({id})},tools:{register:definition=>{const name:string=definition.name;const meta=definition.output.presentationMeta({},{});void [name,meta];return()=>{}}}}
 const start:typeof apply=apply
 void ctx
-const revision:3=PROTOCOL_VERSION
+const revision:4=PROTOCOL_VERSION
 const command=validateCommand({})
 if(command.ok){const sequence:number=command.command.sequence;void sequence}
 const code:string=actProgram({documentToken:'synthetic',elementRef:'el-1',action:'type',value:'synthetic'})

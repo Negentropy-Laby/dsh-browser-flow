@@ -16,12 +16,12 @@ export async function taskHost(t:import('node:test').TestContext) {
   const service=new BrowserFlowService(ctx,config,new GraphWorkers(config,graphBinary))
   service.start()
   const post=async (path:string,body:object)=>{
-    const response=await routes.get('/api/browser-flow/'+path)!.fetch(new Request('http://host.test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({protocolVersion:3,...body})}))
+    const response=await routes.get('/api/browser-flow/'+path)!.fetch(new Request('http://host.test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({protocolVersion:4,...body})}))
     return {status:response.status,body:await response.json()}
   }
   const page=(id:string)=>({lease:'guest-'+id,partition:'part-'+id,documentToken:'doc-'+id,url:'https://'+id+'.example/task'})
   const hello=async (id:string)=>post('hello',{kind:'hello',connectionGeneration:1,sessionId:'session-'+id,panel:{instanceId:'panel-'+id,pages:[page(id)]}})
-  const task=async (id:string,spec:Record<string,unknown>={goal:'Private task '+id,origins:['https://'+id+'.example']})=>{
+  const task=async (id:string,spec:Record<string,unknown>={workflowRef:'generic',goal:'Private task '+id,origins:['https://'+id+'.example']})=>{
     await hello(id)
     return post('authorize',{instanceId:'panel-'+id,connectionGeneration:1,sessionId:'session-'+id,taskOperation:'create',spec})
   }
