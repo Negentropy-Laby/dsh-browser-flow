@@ -1,12 +1,14 @@
 # Graph kernel
 
+Current runtime: Browser Flow v4, RPC v2, kernel v5; generation 1 is preserved and new exploration uses generation 2.
+
 Host task journals, ownership, evidence validation, waits and unknown-write
 blocking remain authoritative. A derived graph cannot grant control, validate a
 business result or authorize a relation to an inaccessible reference.
 
 The graph implementation extracts the pinned ARTEX algorithms identified in
 `native/graph-core/extraction.json`. Database services, shared task assets and
-model-declared goal completion are excluded. Apache-2.0 reuse authorization has
+Go-owned goal completion are excluded. Generation-2 task completion belongs to the Host, using Agent interpretation and original-backed checks. Apache-2.0 reuse authorization has
 been confirmed; the authorization original remains private.
 
 Graph projections are disposable. Loss of a projection does not change task
@@ -19,8 +21,7 @@ The Go module is standard-library-only. It replays sanitized journal events and
 retains opaque public IDs. Compression alone reverses `attempts` and `records`
 into parent-to-child adjacency; public edges keep their original direction.
 
-A finalized click, type, select, check or file-selection receipt advances one
-round. Reads do not advance rounds. Defaults require six continuously cold
+For generation 1, a finalized click, type, select, check or file-selection receipt advances one round. Generation 2 advances on each planner-to-worker claim instead; a semantic intent can have several browser attempts. The graph includes goal/intent/fact/hint nodes, separate attempts and source-sequenced ARTEX relations. Reads do not advance rounds. Defaults require six continuously cold
 rounds and two members. Unfinished or unknown actions, current proof references,
 goals, criteria and technical assets are not folded. Blocks never cross runs.
 
@@ -177,11 +178,11 @@ source sequence, event run and both endpoint runs. Existing historical relations
 are displayed as history; new relations reject either endpoint outside the
 current run. A historical `proves` edge does not establish current coverage.
 
-An action's `intent -> page` `observed_on` edge is durable before dispatch. With
+An action's `attempt -> page` `observed_on` edge (named `intent` in generation 1) is durable before dispatch. With
 no observation of that guest/document, Host records a `contextOnly` page
 snapshot. It is not a page observation and cannot pass the navigation validator.
-File preparation binds `intent -> file` with `yields`; selection binds
-`intent -> file` with `selected_from`. Trusted import verification preserves its
+File preparation binds `attempt -> file` with `yields`; selection binds
+`attempt -> file` with `selected_from`. Trusted import verification preserves its
 exact result/proof references. No adjacent event is treated as causal. Reverse
 trace follows explicit edges in either direction and does not expand from a
 shared goal to unrelated actions. All associations are descriptive; only Host
@@ -238,9 +239,13 @@ bytes remain stable. Metadata-free direct IPC uses its separate Go JSON fallback
 encoding, including short `\b` and `\f` escapes.
 
 Upgrade the Host, generated runtime and native helper as one paired package:
-kernel version 4 is required by the manifest, handshake and validation. Browser
-Flow protocol 3, framed RPC 2 and `structural-v1` cold rules are unchanged.
-Kernel-3 workers and continuation identities are refused. No journal migration
-is required: generation 1 gains only optional asset metadata and existing edge
-types. Unversioned/damaged histories keep their read-only behavior and do not
-start derived workers; healthy older records keep their existing capabilities.
+kernel version 5 and Browser Flow protocol 4 are required by the manifest,
+handshake and validation. Framed RPC 2 and `structural-v1` cold rules remain
+unchanged. Older workers and continuation identities are refused. Generation 1
+keeps its original journal bytes and operation-based semantics; new exploration
+tasks use generation 2, semantic goals/intents/facts/hints and planning rounds.
+Unversioned/damaged histories keep their read-only behavior and do not start
+derived workers; healthy generation-1 records retain their capabilities.
+See [the v4 upgrade guide](upgrade-v4.md) for the paired rollout and compatibility
+rules. The earlier task-local dual-graph delivery used kernel 4 and protocol 3;
+those versions describe that historical candidate, not the current runtime.

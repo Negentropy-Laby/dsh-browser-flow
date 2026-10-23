@@ -43,8 +43,8 @@ dsh plugin --profile <profile> add "link:<absolute-plugin-directory>"
 Start Desktop through that profile. The package's [profile patch](cordis.patch.yml)
 registers the Host and Browser Flow panel without modifying Harness source.
 A linked installation uses the checkout; rebuild after changes and reload both
-Host and Client together. Browser Flow uses protocol v3; mismatched peers are
-rejected. See the [upgrade guide](docs/upgrade-v3.md).
+Host and Client together. Browser Flow uses protocol v4; mismatched peers are
+rejected. See the [upgrade guide](docs/upgrade-v4.md).
 
 The panel uses the Host's shared controls and theme, with revocation above the
 scrollable content. See the [panel guide](docs/upgrade-guide/v0.1.0/panel-ui/guide.md)
@@ -64,9 +64,7 @@ task lifecycle and graph availability do not establish business acceptance.
    observations and current element references.
 5. Revoke control in the panel or call `browser_release`. The page remains open.
 
-Use **fixed instructions + model step-by-step orchestration + code validation**.
-Instructions define allowed work and completion criteria; the model chooses the
-next step; Host and Client validate permission, identity, references and results.
+New generic tasks use **ARTEX-style goals, intents, facts and goal proofs**. One Agent alternates planner and worker phases, discovers site behavior from current observations and persists task-local knowledge. Host and Client validate authority, originals and source-backed assertions; business interpretation remains Agent-authored. All mandatory goals proved automatically completes the task and withdraws control. Old definition tasks keep their original workflows.
 See the [workflow standard](docs/workflow.md) and [local task guide](docs/local-tasks.md).
 
 Task definitions, business instructions, input files, local configuration and
@@ -80,9 +78,9 @@ the plugin and its six tools from loading.
 | Tool | Purpose |
 |---|---|
 | `browser_tabs` | List this Session's eligible pages, redacted addresses and authorization state |
-| `browser_observe` | Read a bounded page view, the current task, or an adapter-supported structured view |
+| `browser_observe` | Read pages, regions, tables, selected files, task knowledge or scoped legacy views |
 | `browser_find` | Locate by visible text, explicit attribute or ARIA role; refuse ambiguity |
-| `browser_act` | Click, replace text, select an option or set a checkbox; supported adapters can permit one confirmed file selection |
+| `browser_act` | Record semantic exploration operations; click, type, select, check or upload one user-confirmed file |
 | `browser_wait` | Wait for a bounded, cancellable DOM condition |
 | `browser_release` | Withdraw control while retaining the page |
 
@@ -190,7 +188,8 @@ local tasks and recorded runs remain private. See the
 - Actions need the live visible Desktop guest. Web hosts cannot execute these
   programs through their cross-origin Sidebar iframe.
 - The user handles login, page permission, file confirmation and business consent.
-- No arbitrary script execution, automatic business submission or write replay.
+- The Agent selects page writes within the user-authorized task. The plugin
+  supplies no built-in site workflow, arbitrary script execution or write replay.
 - Task completion and a user ending a task are separate facts. Unsupported or
   missing business evidence remains unverified.
 
