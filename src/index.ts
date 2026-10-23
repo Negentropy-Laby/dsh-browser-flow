@@ -348,6 +348,7 @@ closing: Promise<void> | undefined;
       }
       const redacted=this.redactResult(outcome.value ?? {})
       if(op.kind==='observe'){
+        redacted.contextOnly=false
         try{
           const pageRef=await this.tasks.asset(access,'page',{...redacted,documentToken:lease.value.documentToken,resourceIdentity:pageIdentity(access.run,lease.value,'observation')})
           const judged=navigationVerdict(this.tasks.openTask(access).manifest,redacted)
