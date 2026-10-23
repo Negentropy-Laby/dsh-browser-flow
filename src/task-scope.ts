@@ -18,6 +18,16 @@ export type RunScope = TaskScope & {
     workflowRef: string;
 };
 
+/** Stable Host identity bytes; changing this field order changes existing IDs. */
+export function runIdentity(run: RunScope): readonly [ProfileId, TaskId, string, number, RunId, string] {
+  return [run.profileId,run.taskId,run.ownerSessionId,run.scopeRevision,run.runId,run.workflowRef]
+}
+/** Go's Scope struct field order for the separate direct-IPC fallback encoding. */
+export function orderedRunScope(run: RunScope): RunScope {
+  const [profileId,taskId,ownerSessionId,scopeRevision,runId,workflowRef]=runIdentity(run)
+  return {profileId,taskId,ownerSessionId,scopeRevision,runId,workflowRef}
+}
+
 /** Browser Flow v3 task and run identifiers, shared by Host and Client. */
 
 /** @param {unknown} value - JSON value. @returns {value is Record<string, unknown>} object. */

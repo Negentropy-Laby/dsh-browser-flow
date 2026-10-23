@@ -25,6 +25,7 @@ export interface GraphEvent {
   seq: number; hash: string; type: string; run: RunScope
   id?: string; kind?: string; source?: string; action?: string; outcome?: string
   from?: string; to?: string; relation?: string; goal?: string; documentToken?: string
+  resource?: import('../task-resources.ts').ResourceDescriptor
 }
 /** Code-owned display criterion. It never becomes authority by crossing IPC. */
 export interface Criterion {

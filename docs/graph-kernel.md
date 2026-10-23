@@ -106,7 +106,7 @@ validated detail for the current input.
 
 The outer tool keeps character-based `offset`, `text`, `totalChars` and `complete`.
 Graph and digest details return `projectionId`; nonzero offsets must provide that
-same identity. The identity hashes the tuple `["task-graph", "3", inputHash]`; a changed kernel or input requires reading again from offset zero.
+same identity. Kernel v4 hashes the tuple `["task-graph", "4", inputHash]`; a changed kernel or input requires reading again from offset zero.
 Offsets are nonnegative safe integers and cannot exceed the actual text length.
 
 Page asset summaries include their safe `documentToken`. Only the Host adds
@@ -124,3 +124,123 @@ bytes. Replacing either artifact requires a paired plugin reload; failed initial
 verification is not cached. No file watcher or runtime downloader is installed.
 
 Kernel v3 gives each current code-proof edge a criterion-specific ID. Host validation simulates replay-order endpoint creation, including skipped forward references, and checks complete edge identities. A recorded `proves` relation alone does not establish a code-verified criterion.
+
+## Kernel v4: task-local resource and exploration views
+
+The delivery boundary is M1–M5: resource identity, operation provenance, two
+queryable views, current-criteria coverage, local/package checks and Windows
+Host/Desktop checks. Cross-task sharing, a graph UI (M6, P2), layout and helper
+optimizations (M7, P3) are outside this stage. No new database, tool, route or
+website automation engine is introduced. ARTEX and Harness source are read-only.
+
+| Work | Priority | Failure if omitted | Minimum acceptance |
+| --- | --- | --- | --- |
+| M1 identity, provenance and compatibility contract | P0 | Grouping could be mistaken for authority or proof | Reject foreign runs, logical-resource proof substitution and invented causality |
+| M2 immutable snapshots and resource identity | P1 | Repeated observations cannot be grouped without losing evidence identity | Document replacement, changed file bytes, different sources and old references remain distinguishable |
+| M3 operation associations | P1 | Nodes lack a trustworthy operation context | Durable context links precede dispatch; failed recording cannot replay a write |
+| M4 queries and coverage | P1 | The Agent cannot use either graph or inspect unverified conditions | Both views, reverse trace, bounded continuation and Host-only coverage |
+| M5a local/package validation | P1 throughout | Correct source may ship unusable or break older data | Required regressions, build, types and task-free installed-package load |
+| M5b Windows Host/Desktop validation | P1 | A test process provider cannot establish production wiring | Managed Windows helper and two independent normal Agent Sessions on one candidate |
+
+M1 precedes M2/M3, then M4 and final M5. Missing validation blocks only its
+dependent acceptance; optional tooling does not block independent work. A local
+pass is not a Windows/Desktop pass or website business acceptance.
+
+### Identity and authority
+
+`asset-…` remains an immutable observation/snapshot ID. Optional
+`asset.data.resourceIdentity` version 1 contains only an opaque key, identity
+basis and snapshot kind. A Host-validated physical guest identity (guest lease
+and partition) plus `documentToken` groups page observations. Panel remounts,
+transport generations, control-grant IDs, URL and redacted URL are not grouping keys.
+Reload/navigation to a new document token creates a distinct resource. A file
+uses the normalized source path already checked by file preparation. Its key
+is scoped to the complete RunScope and type; the original path is not sent to
+Go. Each preparation keeps its own snapshot and content digest. Identical
+content at different sources remains distinct.
+
+The derived `resource-…` identity includes every RunScope field and asset kind.
+Unit checks, results and evidence remain independent records. A page/file with
+missing or unsupported identity metadata has an independent resource with
+`reliable_identity_unavailable`; no historical file is rewritten to guess an
+identity. Old asset references continue to read the same recorded bytes.
+Resource IDs cannot authorize control, become journal edge endpoints or replace
+the exact asset IDs required by a validator.
+
+### Relations and reads
+
+Both views replay the same generation-1 journal. The asset view contains
+resources, snapshots and asset-to-asset relations. The exploration view contains
+goals, current criteria, intents, receipts and cold digests. Both carry identical
+cross-plane anchors with the original edge ID, direction, endpoints, relation,
+source sequence, event run and both endpoint runs. Existing historical relations
+are displayed as history; new relations reject either endpoint outside the
+current run. A historical `proves` edge does not establish current coverage.
+
+An action's `intent -> page` `observed_on` edge is durable before dispatch. With
+no observation of that guest/document, Host records a `contextOnly` page
+snapshot. It is not a page observation and cannot pass the navigation validator.
+File preparation binds `intent -> file` with `yields`; selection binds
+`intent -> file` with `selected_from`. Trusted import verification preserves its
+exact result/proof references. No adjacent event is treated as causal. Reverse
+trace follows explicit edges in either direction and does not expand from a
+shared goal to unrelated actions. All associations are descriptive; only Host
+validators decide evidence validity.
+
+Ordinary observations carry Host-owned `contextOnly:false` in both their result
+and snapshot. A guest-supplied marker cannot turn them into context snapshots.
+Host-created context-only snapshots remain ineligible for navigation proof;
+historical records keep their original bytes.
+
+Use the existing `browser_observe` with `view:"task"`:
+
+- `ref:"graph"` retains the original combined view.
+- `ref:"graph:assets"` returns resources, snapshots, relations and anchors.
+- `ref:"graph:exploration"` returns exploration nodes, relations, digests and anchors.
+- `ref:"resource-…"` returns snapshots, connected relations/anchors,
+  exploration references and evidence references. A criterion detail supplies
+  its currently validated `proofRefs` and the exploration view entrypoint.
+- `ref:"coverage"` returns Host-verified coverage and reasons per condition.
+- `ref:"definition:<path>"` reads an exact whitelisted definition snapshot file,
+  including files named `coverage` or `graph`. Summaries advertise this reference
+  in instruction `ref` fields and the `resources` array. Nonconflicting old bare
+  paths remain aliases; system names and generated-reference prefixes retain
+  their system meaning. No snapshot or journal migration is required.
+
+Summaries provide counts and detail references. All derived continuations
+require the returned `projectionId` at nonzero offset; changed input/kernel
+requires restarting at zero. Coverage has a Host-only identity over the journal
+position and refreshed coverage facts, so it works without Go and expires when
+evidence validity changes. Large details use the existing UTF-8 chunk transfer,
+character continuation and capacity limits.
+
+### Coverage and upgrade
+
+Coverage includes every current declared condition and every existing trusted
+adapter condition, distinguished by condition ID. Only a current-run criterion
+whose original evidence passes the existing Host validator contributes to
+`verified`. Free text reports `no_validator`. `total`, `verified`, `unverified`
+and `ratio` never change the business verdict or lifecycle. Empty total returns
+`ratio:null`; two free-text conditions plus one verified condition yield 1/3.
+Task tool reads recheck originals. Panel polling only displays the last Host
+facts and does not start a worker or scan originals.
+
+Verdict, criteria and coverage reuse the same Host facts within each read phase.
+Details still recompute after evidence refresh. `evidence_unavailable` identifies
+an unavailable proof selected by the current condition's last judgment; unrelated
+evidence issues stay listed separately. With no eligible current proof, coverage
+reports `no_valid_current_run_proof`. Diagnostic candidates never establish a
+verified condition or a graph proof edge.
+
+Resource descriptors are cached by immutable journal event and complete run;
+this does not cache evidence judgments or projection freshness. Host identity
+bytes remain stable. Metadata-free direct IPC uses its separate Go JSON fallback
+encoding, including short `\b` and `\f` escapes.
+
+Upgrade the Host, generated runtime and native helper as one paired package:
+kernel version 4 is required by the manifest, handshake and validation. Browser
+Flow protocol 3, framed RPC 2 and `structural-v1` cold rules are unchanged.
+Kernel-3 workers and continuation identities are refused. No journal migration
+is required: generation 1 gains only optional asset metadata and existing edge
+types. Unversioned/damaged histories keep their read-only behavior and do not
+start derived workers; healthy older records keep their existing capabilities.

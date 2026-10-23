@@ -21,6 +21,10 @@ export type DefinitionSnapshot = {
     files: Record<string, string>;
     digest: string;
 };
+/** Unambiguous task-detail reference; the path itself stays unchanged on disk. */
+export declare function definitionRef(path: string): string;
+/** Resolve only the bound snapshot whitelist, retaining nonconflicting old aliases. */
+export declare function definitionResource(snapshot: DefinitionSnapshot | undefined, ref: string): string | undefined;
 export type LocalSkill = {
     name: string;
     description: string;

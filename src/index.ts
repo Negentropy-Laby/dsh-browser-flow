@@ -1,3 +1,5 @@
+import { pageIdentity, fileIdentity } from './task-resources.ts'
+
 export type LiveAgent = {
     id: string;
     session?: { id?:string; vars?: Record<string, unknown> };
@@ -81,9 +83,8 @@ import { createTools, type ToolDefinition } from './tools.ts'
 import { type ControlLease } from './state.ts'
 import { type Result, type PageOperation, type FindQuery, type ActionInput, type WaitInput, isRecord } from './protocol.ts'
 import { GraphWorkers } from './graph/worker.ts'
-import { taskFacts } from './task-facts.ts'
 import { taskView } from './task-projections.ts'
-import { tasksRoot, listDefinitions, definitionSkills } from './task-definitions.ts'
+import { tasksRoot, listDefinitions, definitionSkills, definitionRef } from './task-definitions.ts'
 
 export { Config }
 export const name = 'browser-flow'
@@ -230,15 +231,15 @@ closing: Promise<void> | undefined;
     const budget=Math.max(1800,Math.floor(this.config.observeMaxChars*3/4))
     const view=withGraph?await this.tasks.view(access,budget,signal):taskView(data,budget,undefined,'not_requested',this.tasks.writable,undefined,this.graph.cleanup(access.scope.taskId))
     const workflow=data.snapshot?.definition.workflows.find(row=>row.id===data.manifest.workflowRef)
-    const resources=workflow ? [...workflow.instructions,...workflow.resources] : []
-    const instructions=(workflow?.instructions ?? []).map(name=>({name,text:data.snapshot?.files[name] ?? ''}))
+    const resources=workflow ? [...workflow.instructions,...workflow.resources].map(definitionRef) : []
+    const instructions=(workflow?.instructions ?? []).map(name=>({name,ref:definitionRef(name),text:data.snapshot?.files[name] ?? ''}))
     const instructionBudget=Math.floor(this.config.observeMaxChars/2/Math.max(1,instructions.length))
     return {task:access.run,state:data.readOnly?'read_only':data.blocked?'write_blocked':data.waiting&&data.state==='active'?'awaiting_user':data.state,contextVersion:data.events.length,goal:data.manifest.goal,origins:data.manifest.origins,adapter:data.manifest.adapter,
       definition:data.manifest.definitionId ? {id:data.manifest.definitionId,version:data.manifest.definitionVersion,digest:data.manifest.definitionDigest} : null,
       workflow:workflow ? {id:workflow.id,stopBoundary:workflow.stopBoundary} : null,
       instructions:instructions.map(row=>({...row,text:row.text.slice(0,instructionBudget),complete:row.text.length<=instructionBudget})),resources,
       ...view,
-      businessVerdict:taskFacts(data).verdict,
+      businessVerdict:view.active_context.businessVerdict,
       writeBlocked:!!data.readOnly||data.blocked||data.unhealthy||!this.tasks.writable,logHealthy:!data.unhealthy}
   }
 
@@ -346,8 +347,9 @@ closing: Promise<void> | undefined;
       }
       const redacted=this.redactResult(outcome.value ?? {})
       if(op.kind==='observe'){
+        redacted.contextOnly=false
         try{
-          const pageRef=await this.tasks.asset(access,'page',{documentToken:lease.value.documentToken,...redacted})
+          const pageRef=await this.tasks.asset(access,'page',{...redacted,documentToken:lease.value.documentToken,resourceIdentity:pageIdentity(access.run,lease.value,'observation')})
           const judged=navigationVerdict(this.tasks.openTask(access).manifest,redacted)
           if(judged.verdict==='entry_reached'&&!this.tasks.openTask(access).blocked){const proofRef=await this.tasks.proof(access,{schemaVersion:1,kind:'navigation',run:access.run,pageRef});await this.tasks.relate(access,proofRef,pageRef,'observed_on');const verified=await this.tasks.verdict(access,judged,proofRef);redacted.navigation=verified===judged.verdict?judged:{verdict:'unverified',reason:'task-evidence-unverified'}}
         }catch(error){return success({...redacted,recording:'failed',writeBlocked:true})}
@@ -466,6 +468,8 @@ closing: Promise<void> | undefined;
     try{
       this.assertCurrent(caller,access,lease,stamp)
       attempt=await this.tasks.beginAttempt(access,input.action)
+      const contextRef=await this.tasks.pageContext(access,lease)
+      await this.tasks.relate(access,attempt,contextRef,'observed_on')
       this.assertCurrent(caller,access,lease,stamp)
       if(this.now()-startedAt>=this.config.commandBudgetMs||signal?.aborted)throw new TaskError('deadline_exceeded','the command expired during durable preparation; no page command was delivered')
       const entry=this.importFiles.current(lease)
@@ -473,6 +477,7 @@ closing: Promise<void> | undefined;
       if(input.action==='set_file'){
         if(!entry?.identityVerified||entry.id!==input.fileGrantId)throw new TaskError('not_authorized','a confirmed file and both current identity anchors are required')
         try{file=await this.importFiles.dispatch(lease,input.fileGrantId)}catch{throw new TaskError('not_authorized','file authorization, source or snapshot changed; do not retry implicitly')}
+        if(entry.assetRef)await this.tasks.relate(access,attempt,entry.assetRef,'selected_from')
         this.assertCurrent(caller,access,lease,stamp)
       }
       dispatchEntered=true
@@ -523,6 +528,7 @@ closing: Promise<void> | undefined;
       const access=this.taskOf(caller)
       if(!lease.task||!sameRunScope(access.run,lease.task))throw new TaskError('revoked','import task/run changed')
       const resultRef=await this.tasks.asset(access,'import_result',{...result},'code_verified')
+      await this.tasks.relate(access,resultRef,await this.tasks.pageContext(access,lease),'observed_on')
       if(entry.assetRef)await this.tasks.relate(access,resultRef,entry.assetRef,'validated_by')
       if(result.qualified){
         const proofRef=await this.tasks.proof(access,{schemaVersion:1,kind:'import',run:access.run,scope:entry.scope,documentToken:lease.documentToken,fileRef:entry.assetRef,resultRef,fileGrantId:entry.id,attemptId:entry.selectionAttemptId,evidence,files:[await this.tasks.artifact(access,entry.snapshot,'snapshot'),await this.tasks.artifact(access,join(entry.runDir,'dispatch.json'),'dispatch')]})
@@ -815,7 +821,7 @@ closing: Promise<void> | undefined;
           this.assertCurrent({agent,sessionId,agentInstanceToken:this.tokenOf(agent)},access,held,stamp)
           if(this.ctx.agents?.get(sessionId)!==agent){this.state.retireLeasesOfReplacedAgents(sessionId,this.ctx.agents?.get(sessionId)??{});this.importFiles.prune();throw new Error('agent-replaced')}
           const entry=this.importFiles.current(held)
-          if(entry){entry.assetRef=await this.tasks.asset(access,'file',{sha256:entry.sha256,bytes:entry.bytes.length,rows:entry.input.people.length,kind:entry.scope.kind},'code_verified');await this.tasks.noteWaitInput(access,'file_input',entry.id)}
+          if(entry){entry.assetRef=await this.tasks.asset(access,'file',{sha256:entry.sha256,bytes:entry.bytes.length,rows:entry.input.people.length,kind:entry.scope.kind,resourceIdentity:fileIdentity(access.run,entry.path)},'code_verified');await this.tasks.relate(access,attempt,entry.assetRef,'yields');await this.tasks.noteWaitInput(access,'file_input',entry.id)}
           this.assertCurrent({agent,sessionId,agentInstanceToken:this.tokenOf(agent)},access,held,stamp)
           return Response.json(success(preview))
         }

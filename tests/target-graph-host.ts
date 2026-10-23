@@ -107,9 +107,28 @@ async function main(){
    await post('authorize',{instanceId,connectionGeneration:1,sessionId,...page})
    const result=await present(context.tools.get('browser_observe')).execute({view:'task'},{agent:agents.get(sessionId),signal:new AbortController().signal})
    assert.equal(result.ok,true);assert.equal(expectRecord(expectRecord(expectRecord(result.value).active_context).graph).status,'ready',JSON.stringify(result))
-   assert.equal(expectRecord(expectRecord(expectRecord(result.value).active_context).graph).kernelVersion,'3')
+   assert.equal(expectRecord(expectRecord(expectRecord(result.value).active_context).graph).kernelVersion,'4')
    assert.equal(expectRecord(result.value).businessVerdict,'unverified');outputs[id]=result
    const exec={agent:agents.get(sessionId),signal:new AbortController().signal}
+   for(const ref of ['graph:assets','graph:exploration','coverage']){
+    const first=expectRecord(expectOk(await present(context.tools.get('browser_observe')).execute({view:'task',ref,offset:0},exec)))
+    assert.equal(typeof first.projectionId,'string')
+    assert.equal(expectFailure(await present(context.tools.get('browser_observe')).execute({view:'task',ref,offset:10},exec)).code,'task_not_bound')
+    const next=expectRecord(expectOk(await present(context.tools.get('browser_observe')).execute({view:'task',ref,offset:10,projectionId:first.projectionId},exec)))
+    assert.equal(next.offset,10)
+    if(ref==='coverage'){const coverage=expectRecord(JSON.parse(expectString(first.text)));assert.equal(coverage.total,1);assert.equal(coverage.verified,0);assert.equal(coverage.ratio,0)}
+   }
+   const observing=present(context.tools.get('browser_observe')).execute({},exec)
+   const polled=await post('poll',{instanceId,connectionGeneration:1,sessionId,pages:[page]}),command=polled.commands[0]
+   assert.equal(polled.commands.length,1)
+   await post('result',{kind:'result',task:command.task,id:command.id,leaseId:command.leaseId,instanceId,connectionGeneration:1,epoch:command.epoch,sequence:command.sequence,outcome:'ok',payload:{url:page.url,documentToken:page.documentToken,contextOnly:true,resourceIdentity:{version:1,key:'f'.repeat(64),basis:'document_instance',snapshotKind:'context'}}})
+   assert.equal(expectRecord(expectOk(await observing)).contextOnly,false)
+   const observedTask=expectRecord(expectOk(await present(context.tools.get('browser_observe')).execute({view:'task'},exec)))
+   const observedAsset=expectRecord(expectList(expectRecord(observedTask.technical_law_index).assets).find(row=>expectRecord(row).kind==='page'))
+   const original=expectRecord(JSON.parse(expectString(expectRecord(expectOk(await present(context.tools.get('browser_observe')).execute({view:'task',ref:observedAsset.id},exec))).text)))
+   assert.equal(expectRecord(original.data).contextOnly,false)
+   assert.equal(expectRecord(expectRecord(original.data).resourceIdentity).snapshotKind,'observation')
+   checks.push(`Windows ${id} Host owns ordinary observation flags in results and original snapshots`)
    assert.equal((await present(context.tools.get('browser_release')).execute({},exec)).ok,true)
    assert.equal(expectFailure(await present(context.tools.get('browser_observe')).execute({},exec)).code,'not_authorized')
    assert.equal(expectFailure(await present(context.tools.get('browser_act')).execute({action:'click',documentToken:page.documentToken,elementRef:'synthetic-element'},exec)).code,'not_authorized')
@@ -119,6 +138,7 @@ async function main(){
    assert.equal(expectRecord(expectRecord(expectRecord(expectOk(view)).active_context).waiting).reason,'Synthetic wait '+id)
   }
   assert.ok(!JSON.stringify(outputs.b).includes(firstScope.taskId));checks.push('actual Windows managed Go workers','task isolation','Host criteria remain unverified','Agent tool waits','release independent of graph','released synthetic binding rejects reads and writes')
+  checks.push('both dual views and Host coverage through mounted Windows tools','new detail continuations require projection identity')
   const readA=()=>present(context.tools.get('browser_observe')).execute({view:'task'},{agent:agents.get('graph-a'),signal:new AbortController().signal})
   const before=await readA(),count=owned.length
   owned[0].terminate();assert.equal(await owned[0].waitForExit(),true);await owned[0].done
@@ -173,10 +193,22 @@ async function main(){
   await writeFile(join(definition.dir,'definition.json'),JSON.stringify({...definition.definition,adapter:'bjrsj',origins:['https://fuwu.rsj.beijing.gov.cn'],workflows:definition.definition.workflows.map(w=>({...w,id:'navigation',stopBoundary:'before_file_selection'}))}))
   const evidenceGraph=new GraphWorkers(resolveConfig({})),detachEvidence=evidenceGraph.attach(runtime),store=new TaskStore(root,{name:'evidence',home:scratch},100,evidenceGraph)
   try{
-   const access=await store.create('synthetic-evidence',{definitionId:'synthetic',workflowRef:'navigation',goal:'Synthetic evidence invalidation'})
-   const pageRef=await store.asset(access,'page',{url:'https://fuwu.rsj.beijing.gov.cn/zhrs/yltc/information-third-new/imp',documentToken:'synthetic-document',nodes:['模板下载','上传申报信息','批量增员','批量修改','批量减员'].map(text=>({text}))})
+   const access=await store.create('synthetic-evidence',{definitionId:'synthetic',workflowRef:'navigation',goal:'Synthetic evidence invalidation',criteria:['Free text A','Free text B']})
+   const {pageIdentity}=await import('../lib/host/task-resources.js')
+   const guest={connectionInstanceId:'synthetic-panel',connectionGeneration:1,lease:'synthetic-guest',partition:'synthetic-partition',documentToken:'synthetic-document'}
+   const pageRef=await store.asset(access,'page',{url:'https://fuwu.rsj.beijing.gov.cn/zhrs/yltc/information-third-new/imp',documentToken:guest.documentToken,resourceIdentity:pageIdentity(access.run,guest,'observation'),nodes:['模板下载','上传申报信息','批量增员','批量修改','批量减员'].map(text=>({text}))})
+   const repeated=await store.asset(access,'page',{documentToken:guest.documentToken,resourceIdentity:pageIdentity(access.run,guest,'observation')})
    const proofRef=await store.proof(access,{schemaVersion:1,kind:'navigation',run:access.run,pageRef})
+   await store.relate(access,proofRef,pageRef,'observed_on')
    assert.equal(await store.verdict(access,{verdict:'entry_reached'},proofRef),'entry_reached')
+   const readDetail=async(ref:string)=>expectRecord(JSON.parse(expectString(expectRecord(await store.detail(access,ref,0,100000)).text)))
+   const assetGraph=await readDetail('graph:assets'),explorationGraph=await readDetail('graph:exploration')
+   assert.deepEqual(assetGraph.anchors,explorationGraph.anchors)
+   const resource=expectRecord(expectList(assetGraph.resources).find(r=>expectList(expectRecord(r).snapshots).includes(pageRef)))
+   assert.deepEqual(resource.snapshots,[pageRef,repeated])
+   assert.deepEqual((await readDetail(expectString(resource.id))).evidenceRefs,[proofRef])
+   const coverage=await readDetail('coverage');assert.equal(coverage.total,3);assert.equal(coverage.verified,1);assert.equal(coverage.ratio,1/3)
+   checks.push('Windows document-instance grouping preserves exact snapshots','Windows cross-plane anchors and reverse proof trace','Windows trusted coverage is 1/3 with two unverified free-text criteria')
    const before=await store.view(access,8000);assert.equal(before.active_context.businessVerdict,'entry_reached')
    const artifact=expectRecord(present(store.openTask(access).events.find(e=>e.type==='asset'&&e.data.id===proofRef)).data.data)
    const first=expectRecord(await store.detail(access,'graph',0,100)),projectionId=expectString(first.projectionId),totalChars=Number(first.totalChars)
@@ -208,6 +240,7 @@ async function main(){
    store.artifactState=async(owner,item)=>item.path===ref.path?fixed:state(owner,item)
    store.readArtifact=async(...args)=>{reads++;const bytes=await read(...args);if(reads===1)await writeFile(join(data.dir,ref.path),Buffer.alloc(bytes.length,32));return bytes}
    const after=await store.view(access,8000);assert.equal(after.active_context.businessVerdict,'unverified');assert.equal(after.active_context.graph.reason,'stale_projection')
+   assert.equal(after.active_context.coverage.verified,0)
    assert.equal(reads,2);assert.equal(data.checkedProofs?.has(proofRef),false)
    store.artifactState=state;store.readArtifact=read
    const details=expectRecord(await store.detail(access,'criteria',0,8000))

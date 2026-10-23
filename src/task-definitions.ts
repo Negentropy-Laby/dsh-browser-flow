@@ -21,6 +21,16 @@ export type DefinitionSnapshot = {
     files: Record<string, string>;
     digest: string;
 };
+
+/** Unambiguous task-detail reference; the path itself stays unchanged on disk. */
+export function definitionRef(path: string): string { return 'definition:' + path }
+
+const systemRef = /^(?:graph$|coverage$|goal$|criteria$|waiting$|graph:|digest-|resource-|asset-|attempt-|receipt-|criterion-|goal-)/
+/** Resolve only the bound snapshot whitelist, retaining nonconflicting old aliases. */
+export function definitionResource(snapshot: DefinitionSnapshot | undefined, ref: string): string | undefined {
+  const name = ref.startsWith('definition:') ? ref.slice('definition:'.length) : systemRef.test(ref) ? undefined : ref
+  return name !== undefined && snapshot?.definition.resources.includes(name) ? name : undefined
+}
 export type LocalSkill = {
     name: string;
     description: string;

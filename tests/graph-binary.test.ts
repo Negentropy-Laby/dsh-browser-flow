@@ -11,7 +11,7 @@ it('hashes successful artifacts once per plugin and detects replacement before a
  const dir=join(root,'lib/native/win32-x64');mkdirSync(dir,{recursive:true})
  const binary=join(dir,'browser-flow-graph.exe'),manifest=join(root,'lib/native/manifest.json'),bytes=Buffer.from('synthetic executable')
  writeFileSync(binary,bytes)
- const metadata={protocolVersion:2,kernelVersion:'3',rulesVersion:'structural-v1',sha256:createHash('sha256').update(bytes).digest('hex')}
+ const metadata={protocolVersion:2,kernelVersion:'4',rulesVersion:'structural-v1',sha256:createHash('sha256').update(bytes).digest('hex')}
  writeFileSync(manifest,JSON.stringify(metadata))
  let reads=0;const verifier=new BinaryVerifier(root,path=>{reads++;return readFileSync(path)})
  verifier.resolve();verifier.resolve();verifier.resolve();assert.equal(reads,2)
@@ -22,4 +22,6 @@ it('hashes successful artifacts once per plugin and detects replacement before a
  writeFileSync(manifest,'broken')
  const retry=new BinaryVerifier(root);assert.throws(()=>retry.resolve(),/binary_unavailable/)
  writeFileSync(manifest,JSON.stringify(metadata));assert.doesNotThrow(()=>retry.resolve())
+ writeFileSync(manifest,JSON.stringify({...metadata,kernelVersion:'3'}))
+ assert.throws(()=>new BinaryVerifier(root).resolve(),/binary_mismatch/)
 })

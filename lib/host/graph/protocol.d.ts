@@ -54,6 +54,7 @@ export interface GraphEvent {
     relation?: string;
     goal?: string;
     documentToken?: string;
+    resource?: import('../task-resources.ts').ResourceDescriptor;
 }
 /** Code-owned display criterion. It never becomes authority by crossing IPC. */
 export interface Criterion {

@@ -1,5 +1,6 @@
 /** Host safety facts plus optional Go projections. This module contains no graph algorithm. */
-import { taskFacts } from './task-facts.ts'
+import { taskFacts, taskCoverage } from './task-facts.ts'
+import { eventResourceDescriptor } from './task-resources.ts'
 import {record} from './graph/protocol.ts'
 import { validRunScope } from './task-scope.ts'
 
@@ -11,7 +12,7 @@ export function graphInput(task: import('./task-store.ts').TaskData,config: impo
     const scope=declared?{...declared.scope,runId:declared.runId,workflowRef:declared.workflowRef}:validRunScope(row.run)?row.run:run
      const safe: import('./graph/protocol.ts').GraphEvent={seq:event.seq,hash:event.hash,type:event.type,run:scope}
     if(declared)safe.goal=declared.goal.slice(0,4000)
-    if(event.type==='asset'){safe.id=String(row.id);safe.kind=String(row.kind);safe.source=String(row.source);if(row.kind==='page'&&row.data&&typeof row.data==='object'&&'documentToken' in row.data&&typeof row.data.documentToken==='string')safe.documentToken=row.data.documentToken.slice(0,200)}
+    if(event.type==='asset'){safe.id=String(row.id);safe.kind=String(row.kind);safe.source=String(row.source);safe.resource=eventResourceDescriptor(event,scope);if(row.kind==='page'&&row.data&&typeof row.data==='object'&&'documentToken' in row.data&&typeof row.data.documentToken==='string')safe.documentToken=row.data.documentToken.slice(0,200)}
     if(event.type==='attempt'){safe.id=String(row.attemptId);safe.action=String(row.action)}
     if(event.type==='receipt'){safe.id=String(row.attemptId);safe.outcome=String(row.outcome)}
     if(event.type==='edge'){safe.id=String(row.id);safe.from=String(row.from);safe.to=String(row.to);safe.relation=String(row.relation)}
@@ -30,8 +31,8 @@ export function taskView(task: import('./task-store.ts').TaskData,budget: number
   const waiting=task.state==='active'&&task.waiting?{id:task.waiting.id,kind:task.waiting.kind,owner:'user',source:'model_declared',reason:task.waiting.reason,resumeCondition:task.waiting.resumeCondition}:null
   const unknown=task.events.filter(event=>event.type==='receipt'&&event.data.outcome==='unknown_outcome').map(event=>event.data.attemptId)
   const active={pageControl:task.liveDocumentToken?'authorized':'unavailable',waiting,waitingRef:waiting?'waiting':null,taskId:scope.taskId,contextVersion:task.events.length,state,goal:task.manifest.goal.slice(0,1000),writeBlocked:!!task.readOnly||task.blocked||task.unhealthy||!writable,logHealthy:!task.unhealthy,businessVerdict:facts.verdict,sourceSeq:facts.sourceSeq,
-    storage:{schemaVersion:task.manifest.schemaVersion??null,readOnly:!!task.readOnly,issue:task.storageIssue??null},evidenceIssues:task.evidenceIssues??[],unmetCriteria:facts.criteria.filter(row=>row.status!=='passed').map(row=>row.id),criteriaRef:'criteria',currentRun:task.manifest.runId,pendingAttempts:task.pendingWrite?[task.pendingWrite]:[],unknownOutcomes:unknown,sources,
-    graph:{status:derived?'ready':'unavailable',reason,...(projectionId?{projectionId}:{}),...(cleanup?{cleanup}:{}),kernelVersion:'3'},complete:false}
+    storage:{schemaVersion:task.manifest.schemaVersion??null,readOnly:!!task.readOnly,issue:task.storageIssue??null},evidenceIssues:task.evidenceIssues??[],unmetCriteria:facts.criteria.filter(row=>row.status!=='passed').map(row=>row.id),criteriaRef:'criteria',coverageRef:'coverage',coverage:((c)=>({total:c.total,verified:c.verified,unverified:c.unverified,ratio:c.ratio}))(taskCoverage(task,facts)),currentRun:task.manifest.runId,pendingAttempts:task.pendingWrite?[task.pendingWrite]:[],unknownOutcomes:unknown,sources,
+    graph:{status:derived?'ready':'unavailable',reason,...(projectionId?{projectionId}:{}),...(cleanup?{cleanup}:{}),kernelVersion:'4'},complete:false}
   const procedural=((derived?.procedural_law_index??{}) as Record<string, unknown>),technical={...((derived?.technical_law_index??{}) as Record<string, unknown>)},graph=((derived?.knowledge_graph??{}) as Record<string, unknown>),selection={...((derived?.active_context??{}) as Record<string, unknown>)}
   const pageAssets=(value:unknown)=>Array.isArray(value)?value.map(row=>record(row)&&row.kind==='page'?{...row,validity:task.liveDocumentToken&&row.documentToken===task.liveDocumentToken?'current_authorized_document':'historical'}:row):value
   if(technical.assets!==undefined)technical.assets=pageAssets(technical.assets)
@@ -39,5 +40,5 @@ export function taskView(task: import('./task-store.ts').TaskData,budget: number
   const history=task.events.filter(event=>['waiting','wait_requested','wait_resolved'].includes(event.type)).slice(-4).map(event=>({sourceSeq:event.seq,type:event.type}))
   const value={basic_law_index:{events:task.events.length,healthy:!task.unhealthy,recent:sources},procedural_law_index:{...procedural,goal:{text:task.manifest.goal,source:'user_declared'},constraints:task.manifest.constraints,criteria:facts.criteria,waiting:waiting?[waiting]:[],historicalWaiting:history},technical_law_index:technical,knowledge_graph:graph,active_context:{...selection,...active,complete:!!derived&&selection.complete===true}}
   if(JSON.stringify(value).length<=budget)return value
-  return {basic_law_index:{events:task.events.length,healthy:!task.unhealthy},procedural_law_index:{details:'goal',criteriaRef:'criteria'},technical_law_index:{details:'graph'},knowledge_graph:{details:'graph',digestCount:graph.digestCount??0},active_context:{...active,goal:active.goal.slice(0,40),waiting:waiting?{...waiting,reason:waiting.reason.slice(0,80),resumeCondition:waiting.resumeCondition.slice(0,80)}:null,sources:[],unmetCriteria:active.unmetCriteria.slice(0,2),unmetCount:active.unmetCriteria.length,unknownOutcomes:unknown.slice(0,2),unknownCount:unknown.length,evidenceIssues:active.evidenceIssues.slice(0,2),evidenceIssueCount:active.evidenceIssues.length,truncated:true,complete:false}}
+  return {basic_law_index:{events:task.events.length,healthy:!task.unhealthy},procedural_law_index:{details:'goal',criteriaRef:'criteria'},technical_law_index:{details:'graph'},knowledge_graph:{details:'graph',views:graph.views,digestCount:graph.digestCount??0},active_context:{...active,goal:active.goal.slice(0,40),waiting:waiting?{...waiting,reason:waiting.reason.slice(0,80),resumeCondition:waiting.resumeCondition.slice(0,80)}:null,sources:[],unmetCriteria:active.unmetCriteria.slice(0,2),unmetCount:active.unmetCriteria.length,unknownOutcomes:unknown.slice(0,2),unknownCount:unknown.length,evidenceIssues:active.evidenceIssues.slice(0,2),evidenceIssueCount:active.evidenceIssues.length,truncated:true,complete:false}}
 }
