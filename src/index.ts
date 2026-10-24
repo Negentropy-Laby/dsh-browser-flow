@@ -468,7 +468,8 @@ closing: Promise<void> | undefined;
   async actOwned(caller: ResolvedCaller,input: ActionInput,signal: AbortSignal): Promise<Result<Record<string, unknown>>> {
     const startedAt=this.now()
     let access
-    try{access=this.taskOf(caller,true)}catch(error){return this.taskFailure(error)}
+    // Semantic acknowledgement replay is a read. Store gates only new requests.
+    try{access=this.taskOf(caller,input.action!=='explore')}catch(error){return this.taskFailure(error)}
     if(input.action==='explore'){
       if(signal?.aborted)return failure('deadline_exceeded','exploration command was cancelled')
       try{return success(await this.tasks.explore(access,input.explore,input.requestId,input.expectedVersion,(completed)=>{

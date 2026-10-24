@@ -228,3 +228,32 @@ test('recovery retains a terminal prefix and diagnoses a hash-valid resurrection
  assert.equal(recovered.state,'cancelled');assert.equal(recovered.unhealthy,true)
  assert.match(recovered.storageIssue!,new RegExp(`seq=${last.seq+1}$`));assert.deepEqual(await readFile(path),bytes)
 })
+test('normal tools replay a lost completion acknowledgement without reacquiring control or writing',async t=>{
+ const {taskHost}=await import('./helpers/task-host.ts'),h=await taskHost(t)
+ await h.task('a',{goal:'Synthetic requested result',origins:['https://a.example']});await h.authorize('a')
+ const store=h.service.tasks,access=await store.forSession('session-a'),data=store.openTask(access)
+ let request=0
+ const run=async(explore:Record<string,unknown>)=>{
+  const result=await h.tool('a','browser_act',{action:'explore',explore,requestId:'request-'+(++request),expectedVersion:data.events.length}) as any
+  assert.equal(result.ok,true,JSON.stringify(result));return result.value
+ }
+ await run({op:'add_intent',summary:'Inspect result'});await run({op:'claim_intent'})
+ const ref=await store.asset(access,'page',{contextOnly:false,result:'ok'})
+ const check=await run({op:'check_evidence',assertion:{op:'equals',left:{ref,path:['result']},right:{value:'ok'}}})
+ const fact=await run({op:'record_fact',summary:'Observed result',confidence:'observed',evidence_refs:[ref],check_refs:[check.check_ref]})
+ await run({op:'finish_intent'})
+ const goal=[...explorationState(data).nodes.values()].find(n=>n.kind==='goal')!
+ const args={action:'explore',explore:{op:'prove_goal',goal_id:goal.id,evidence_id:fact.ids[0],reason:'Observed result'},requestId:'completion',expectedVersion:data.events.length}
+ assert.equal((await h.tool('a','browser_act',args) as any).value.state,'completed')
+ const count=data.events.length
+ for(let retry=0;retry<2;retry++)assert.equal((await h.tool('a','browser_act',args) as any).value.replayed,true)
+ assert.equal(data.events.length,count);assert.equal(h.service.state.leaseCountForSession('session-a'),0)
+ assert.equal((await h.tool('a','browser_act',{...args,expectedVersion:args.expectedVersion+1}) as any).error.code,'invalid_request')
+ assert.equal((await h.tool('a','browser_act',{...args,requestId:'new'}) as any).error.code,'task_write_blocked')
+ assert.equal((await h.tool('b','browser_act',args) as any).ok,false)
+ const binding={instanceId:'panel-a',connectionGeneration:1,sessionId:'session-a'}
+ assert.equal((await h.post('authorize',{...binding,taskOperation:'revise',spec:{goal:'New'}})).body.error.code,'task_write_blocked')
+ assert.equal((await h.post('authorize',{...binding,taskOperation:'cancel'})).body.value.state,'completed')
+ assert.equal((await h.authorize('a')).body.error.code,'task_write_blocked')
+ assert.equal(data.events.length,count)
+})
