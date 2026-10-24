@@ -1,4 +1,4 @@
-import { isRecord as isRecord } from './object.ts';
+import { isRecord } from './object.ts';
 export type ErrorCode = (typeof ERROR_CODES)[number];
 /** Canonical success/failure union used inside the Host. */
 export type Result<T> = {

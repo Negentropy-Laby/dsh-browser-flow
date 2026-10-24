@@ -103,6 +103,9 @@ export function stripModuleSyntax({ file, source }: ModuleSource) {
   }
   visit(parsed)
   let body = source.replace(/[\t ]+$/gm, (spaces: string, offset: number) => literals.some(range => offset >= range.start && offset < range.end) ? spaces : '')
+  for (const match of body.matchAll(LOCAL_IMPORT)) {
+    if (match[1] && /\bas\b/.test(match[1])) throw new Error(`${file}: unsupported import alias`)
+  }
   body = body.replace(LOCAL_IMPORT, '')
   body = body.replace(/^export\s+default\s+[^;\n]+;?$/gm, '')
   body = body.replace(/^export\s+\{[^}]*\}\s*(?:from\s+'[^']+')?\s*;?$/gm, '')

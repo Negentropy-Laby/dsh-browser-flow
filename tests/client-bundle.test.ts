@@ -25,6 +25,7 @@ const patch = readFileSync(join(root, 'cordis.patch.yml'), 'utf8')
 describe('passive observer build exception',()=>{
   it('refuses unsupported JSON imports instead of embedding local resources',()=>{
     assert.throws(()=>stripModuleSyntax({file:'client.js',source:"import data from './unavailable.json' with { type: 'json' };\n"}),/unsupported import form/)
+    assert.throws(()=>stripModuleSyntax({file:'client.js',source:"import { isRecord as renamed } from './object.js';\nrenamed({});\n"}),/unsupported import alias/)
   })
   it('permits XHR only in the fixed observer module and preserves the credential ban',()=>{
     assert.ok(checkBundle(bundle).every(check=>check.ok))

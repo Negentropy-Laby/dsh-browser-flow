@@ -3,7 +3,7 @@ import {deferred} from './helpers/deferred.ts'
 import type {BundleRegistration} from './helpers/client-ports.ts'
 import { TASK as BASE_TASK, TASK_VIEW as BASE_VIEW,runScope } from './helpers/task-scope.ts'
 import {fixturePrimitives} from './helpers/panel-ui.ts'
-const TASK=runScope({...BASE_TASK,workflowRef:'import'}),TASK_VIEW={...BASE_VIEW,task:TASK}
+const TASK=runScope({...BASE_TASK,workflowRef:'import'}),TASK_VIEW={...BASE_VIEW,task:TASK,fileMode:'legacy_import' as const}
 /** Revocation barriers exercised against the shipped bundle and real React/DOM. */
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'

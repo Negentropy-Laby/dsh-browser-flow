@@ -1,4 +1,4 @@
-import {isRecord as scopeRecord} from './object.ts'
+import {isRecord} from './object.ts'
 export type TaskId = string & {
     readonly __browserTaskId: "TaskId";
 };
@@ -34,7 +34,7 @@ export function orderedRunScope(run: RunScope): RunScope {
 /** @param {unknown} value - JSON value. @returns {value is Record<string, unknown>} object. */
 /** @param {unknown} value - scope from disk/wire. @returns {value is TaskScope} validated public identifiers. */
 export function validTaskScope(value: unknown) : value is TaskScope {
-  return scopeRecord(value) && typeof value.profileId === 'string' && /^profile-[a-f0-9]{32}$/.test(value.profileId)
+  return isRecord(value) && typeof value.profileId === 'string' && /^profile-[a-f0-9]{32}$/.test(value.profileId)
     && typeof value.taskId === 'string' && /^task-[a-f0-9-]{36}$/.test(value.taskId)
     && typeof value.ownerSessionId === 'string' && value.ownerSessionId.length > 0 && value.ownerSessionId.length <= 200
     && Number.isSafeInteger(value.scopeRevision) && Number(value.scopeRevision) >= 1
