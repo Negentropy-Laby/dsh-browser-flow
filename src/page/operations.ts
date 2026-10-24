@@ -36,32 +36,67 @@ const {registry,mintRef,visible,textOf,describe,safeUrl,documentToken}=runtime;
     const state = registry();
     state.refs.clear();
     if(options?.view==='table'||options?.view==='region'){
-      let used=0,count=0,truncated=false;
-      const take=(element:Element)=>{const text=textOf(element).slice(0,MAX_CHARS);if(count>=MAX_NODES||used+text.length+60>MAX_CHARS){truncated=true;return undefined};count++;used+=text.length+60;return {elementRef:mintRef(element),text}};
-      const tableSelector='table,[role="table"],[role="grid"]';
+      let used=0,count=0,truncated=false,exhausted=false;
+      const reserve=()=>{if(count>=MAX_NODES||MAX_CHARS-used<60){truncated=true;exhausted=true;return false}count++;used+=60;return true};
+      const take=(element:Element)=>{
+        if(!reserve())return undefined;
+        const raw=textOf(element),remaining=MAX_CHARS-used;
+        let text=raw.slice(0,remaining);
+        // A text boundary must not split a UTF-16 surrogate pair.
+        if(text.length<raw.length&&/[\uD800-\uDBFF]$/.test(text))text=text.slice(0,-1);
+        used+=text.length;const clipped=text.length<raw.length;
+        if(clipped)truncated=true;
+        return {elementRef:mintRef(element),text,truncated:clipped};
+      };
+      // Region text is the requested primary observation; structure uses the remainder.
+      const region=options.view==='region'?take(root):undefined;
+      const tableSelector='table,[role="table"],[role="grid"]',rowSelector='tr,[role="row"]';
+      const cellSelector='th,td,[role="cell"],[role="gridcell"],[role="columnheader"],[role="rowheader"]';
       const tables:Record<string,unknown>[]=[];
       const candidates=[...(root.matches(tableSelector)?[root]:[]),...root.querySelectorAll(tableSelector)].filter(visible);
       for(const table of candidates){
-        const header:Record<string,unknown>[]=[],rows:Record<string,unknown>[]=[];
-        if(count>=MAX_NODES||used+60>MAX_CHARS){truncated=true;break};count++;used+=60;const tableRef={elementRef:mintRef(table)};
-        const allRows=Array.from(table.querySelectorAll('tr,[role="row"]')).filter(row=>row.closest(tableSelector)===table&&visible(row));
-        for(const row of allRows){
-          const cells:Record<string,unknown>[]=[];
-          const sourceCells=Array.from(row.children).filter(c=>c.matches('th,td,[role="cell"],[role="gridcell"],[role="columnheader"],[role="rowheader"]')&&visible(c));
-          for(let column=0;column<sourceCells.length;column++){
-            const cell=sourceCells[column],value=take(cell);if(!value)break;
-            const entry={column,...value};cells.push(entry);
-            if(!rows.length&&(cell.matches('th,[role="columnheader"]')))header.push(entry);
+        if(!reserve())break;
+        const tableRef=mintRef(table),columns:Record<string,unknown>[]=[],rows:Record<string,unknown>[]=[],diagnostics:string[]=[];
+        const allRows=Array.from(table.querySelectorAll(rowSelector)).filter(row=>row.closest(tableSelector)===table);
+        const occupied=new Map<number,number>();let previousRow=-1,tableTruncated=false;
+        const number=(element:Element,name:string,fallback:number,zero=false)=>{
+          const raw=element.getAttribute(name);if(raw===null)return fallback;
+          if(!/^\d+$/.test(raw)||!Number.isSafeInteger(Number(raw))||Number(raw)<(zero?0:1)||Number(raw)>10000){diagnostics.push('invalid '+name);return null}
+          return Number(raw);
+        };
+        for(let ordinal=0;ordinal<allRows.length;ordinal++){
+          const row=allRows[ordinal],native=table.tagName==='TABLE',declared=native?ordinal+1:number(row,'aria-rowindex',previousRow+2);
+          if(declared===null||declared-1<=previousRow){diagnostics.push('ambiguous row index');continue}
+          const rowIndex=declared-1;previousRow=rowIndex;let nextColumn=0;
+          const cells:Record<string,unknown>[]=[],sourceCells=Array.from(row.querySelectorAll(cellSelector)).filter(c=>c.closest(rowSelector)===row&&c.closest(tableSelector)===table);
+          for(const cell of sourceCells){
+            const rowSpanValue=number(cell,native?'rowspan':'aria-rowspan',1,native),colSpan=number(cell,native?'colspan':'aria-colspan',1);
+            if(rowSpanValue===null||colSpan===null){diagnostics.push('ambiguous cell span');continue}
+            const groupEnd=native?allRows.findIndex((r,i)=>i>ordinal&&r.parentElement!==row.parentElement):-1;
+            const remainingGroup=(groupEnd<0?allRows.length:groupEnd)-ordinal;
+            const rowSpan=native?Math.min(rowSpanValue===0?remainingGroup:rowSpanValue,remainingGroup):rowSpanValue;
+            while((occupied.get(nextColumn)??-1)>=rowIndex)nextColumn++;
+            const explicit=native?nextColumn+1:number(cell,'aria-colindex',nextColumn+1);
+            let column=explicit===null?null:explicit-1;
+            if(column!==null&&(column<nextColumn||Array.from({length:colSpan},(_,i)=>column!+i).some(c=>(occupied.get(c)??-1)>=rowIndex))){diagnostics.push('overlapping cell coordinates');column=null}
+            if(column!==null){for(let c=column;c<column+colSpan;c++)occupied.set(c,rowIndex+rowSpan-1);nextColumn=column+colSpan}
+            if(!visible(row)||!visible(cell))continue;
+            const value=take(cell);if(!value){tableTruncated=true;break}
+            tableTruncated ||= value.truncated;
+            const entry={row:rowIndex,column,rowSpan,colSpan,...value};cells.push(entry);
+            if(cell.matches('th,[role="columnheader"]'))columns.push(entry);
           }
-          if(cells.length)rows.push({index:rows.length,cells});
-          if(truncated)break;
+          if(cells.length)rows.push({index:rowIndex,cells});
+          if(exhausted)break;
         }
-        tables.push({elementRef:tableRef.elementRef,columns:header,rows,domComplete:!truncated,datasetComplete:false});
-        if(truncated)break;
+        const layoutComplete=diagnostics.length===0;
+        tables.push({elementRef:tableRef,columns,rows,layoutComplete,diagnostics:[...new Set(diagnostics)],truncated:tableTruncated,domComplete:!tableTruncated&&!exhausted&&layoutComplete,datasetComplete:false});
+        if(exhausted)break;
       }
-      const region=options.view==='region'?take(root):undefined;
-      return {ok:true,value:{documentToken:documentToken(),url:safeUrl(location.href),title:(document.title||'').slice(0,300),view:options.view,tables,...(region?{region}:{}),truncated,domComplete:!truncated,datasetComplete:false}};
+      const layoutComplete=tables.every(table=>table.layoutComplete===true);
+      return {ok:true,value:{documentToken:documentToken(),url:safeUrl(location.href),title:(document.title||'').slice(0,300),view:options.view,tables,...(region?{region}:{}),truncated,layoutComplete,domComplete:!truncated&&layoutComplete,datasetComplete:false}};
     }
+
     const roots = [root];
     const candidates = [];
     const interactive = 'a[href],button,input,select,textarea,[role],[contenteditable=""],[contenteditable="true"],[tabindex]';
