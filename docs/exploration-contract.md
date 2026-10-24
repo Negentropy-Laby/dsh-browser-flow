@@ -49,3 +49,14 @@ is too large, its summary and relation counts remain visible, and `continuation`
 contains the exact `ref`, `offset` and `projectionId` for the task detail channel.
 Page originals are persisted only when the Host observation call explicitly
 requests it; a context snapshot does not carry an observation original.
+
+Host caches contain derived indices, parsed source values, serialized file views
+and assertion calculations. The journal index advances by run, sequence and tail
+hash. The Store's derived-value LRU has at most 32 entries and a total payload
+budget of `graphMaxDetailBytes`; oversized values remain readable without caching.
+Revise clears that task's entries; closing the Store clears all entries.
+A cache hit never establishes that an original is still available: authoritative
+reads continue checking full bytes. A new structured check reads each source at
+initial evaluation, immediately before persistence and before publication, and
+reads back the written proof. File continuation reuses parsing and serialization
+while rechecking source contents on every request.

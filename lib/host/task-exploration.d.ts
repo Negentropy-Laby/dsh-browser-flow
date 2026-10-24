@@ -1,4 +1,4 @@
-import type { Manifest, TaskData } from './task-store.ts';
+import type { Manifest, TaskData, TaskEvent } from './task-store.ts';
 export type ExplorationKind = 'goal' | 'intent' | 'fact' | 'hint';
 export interface ExplorationNode {
     id: string;
@@ -26,8 +26,8 @@ export interface ExplorationChange {
     completed: boolean;
 }
 export interface ExplorationState {
-    nodes: Map<string, ExplorationNode>;
-    edges: ExplorationEdge[];
+    nodes: ReadonlyMap<string, ExplorationNode>;
+    edges: readonly ExplorationEdge[];
     phase: 'planner' | 'worker';
     currentIntent: ExplorationNode | undefined;
     round: number;
@@ -49,8 +49,30 @@ export declare const explorationRun: (task: TaskData) => {
 export declare function canonical(value: unknown): string;
 export declare const originId: (manifest: Manifest) => string;
 export declare function seedExploration(manifest: Manifest): ExplorationChange;
+type MutableState = Omit<ExplorationState, 'nodes' | 'edges'> & {
+    nodes: Map<string, ExplorationNode>;
+    edges: ExplorationEdge[];
+};
+type Resource = {
+    id: string;
+    kind: string;
+    snapshots: readonly string[];
+    run: ReturnType<typeof explorationRun>;
+};
+export interface TaskDerivedIndex {
+    run: ReturnType<typeof explorationRun>;
+    processed: number;
+    tail: string;
+    assets: Map<string, TaskEvent>;
+    currentAssets: Set<string>;
+    state: MutableState;
+    resources: Map<string, Resource>;
+    view: ExplorationState;
+    resourceView: ReadonlyMap<string, Resource>;
+}
 export declare function explorationState(task: TaskData): ExplorationState;
-/** Validate against the accepted prefix without changing its state or journal. */
+export declare function taskAsset(task: TaskData, id: string, currentRunOnly?: boolean): TaskEvent | undefined;
+/** Validate only the proposed delta against the accepted prefix, without replay or mutation. */
 export declare function assertExplorationChange(task: TaskData, change: ExplorationChange): void;
 export declare function validExplorationEvent(row: Record<string, unknown>): boolean;
 /** Reject an entire planned batch before evidence reads or any durable effects. */
@@ -59,12 +81,7 @@ export declare function assertExplorationCapacity(row: Record<string, unknown> &
 }): void;
 export declare const EXPLORATION_OPS: readonly ["set_goals", "add_hint", "add_intent", "claim_intent", "finish_intent", "record_fact", "check_evidence", "prove_goal"];
 export declare function validateExplorationCommand(command: unknown): asserts command is Record<string, unknown>;
-export declare function currentResources(task: TaskData): Map<string, {
-    id: string;
-    kind: string;
-    snapshots: string[];
-    run: ReturnType<typeof explorationRun>;
-}>;
+export declare function currentResources(task: TaskData): ReadonlyMap<string, Resource>;
 /** Explicit resource and exact-snapshot anchors share the same Host relation index. */
 export declare function resourceAnchors(state: ExplorationState, resources: ReturnType<typeof currentResources>): Map<string, Set<string>>;
 export declare function planExploration(task: TaskData, command: Record<string, unknown>, checkPassed: (id: string, evidenceRefs: string[]) => boolean, checkRef?: string): {
@@ -87,12 +104,7 @@ export declare function explorationNodeView(n: ExplorationNode, state: Explorati
     asset_ids: string[];
     sourceSeq?: number;
 };
-export declare function explorationOverview(task: TaskData, state?: ExplorationState, resources?: Map<string, {
-    id: string;
-    kind: string;
-    snapshots: string[];
-    run: ReturnType<typeof explorationRun>;
-}>, check?: (id: string, refs: string[]) => boolean): {
+export declare function explorationOverview(task: TaskData, state?: ExplorationState, resources?: ReadonlyMap<string, Resource>, check?: (id: string, refs: string[]) => boolean): {
     phase: "worker" | "planner";
     currentIntent: string | null;
     round: number;
@@ -196,3 +208,4 @@ export declare function explorationOverview(task: TaskData, state?: ExplorationS
     verification: string;
     details: string;
 };
+export {};

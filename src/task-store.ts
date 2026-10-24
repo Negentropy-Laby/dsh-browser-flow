@@ -1,3 +1,4 @@
+import {DerivedCache,immutableValue} from './derived-cache.ts'
 export type TaskScope = import("./task-scope.ts").TaskScope;
 export type RunScope = import("./task-scope.ts").RunScope;
 export type Manifest = {
@@ -24,6 +25,7 @@ export type TaskEvent = {
     hash: string;
 };
 export type TaskData = {
+    derivedIndex?:import("./task-exploration.ts").TaskDerivedIndex;
     manifest: Manifest;
     snapshot?: import("./task-definitions.ts").DefinitionSnapshot;
     events: TaskEvent[];
@@ -58,7 +60,7 @@ import { resolveConfig } from './config.ts'
 import { validUserWait } from './task-wait.ts'
 import { trustedCriterion, validArtifact } from './task-criteria.ts'
 import {EXPLORATION_GUIDE} from './exploration-instructions.ts'
-import { isExploration, explorationState, explorationRun, seedExploration, planExploration, explorationOverview, currentResources, resourceAnchors, proofAvailable, explorationNodeView, originId, canonical, validateExplorationCommand, assertExplorationChange,assertExplorationCapacity, ExplorationError } from './task-exploration.ts'
+import { isExploration, explorationState, explorationRun, seedExploration, planExploration, explorationOverview, currentResources, resourceAnchors, taskAsset, proofAvailable, explorationNodeView, originId, canonical, validateExplorationCommand, assertExplorationChange,assertExplorationCapacity, ExplorationError } from './task-exploration.ts'
 import {EXPLORATION_LIMITS} from './exploration-limits.ts'
 import { validateAssertion, assertionRefs, evaluateAssertion } from './exploration-checks.ts'
 import { parseWorkbookData } from './workbook-core.ts'
@@ -105,7 +107,7 @@ waitMs: number;
 tasks: Map<string, TaskData>;
 bindings: Map<string, string>;
 private creationFailures = new Map<string, TaskError>();
-private checkedAssertions=new WeakMap<import('./task-criteria.ts').CheckedProof,{refs:string[];passed:boolean}>();
+private derived:DerivedCache;
 private evidenceReads = new WeakMap<TaskData, symbol>();
 private detailLengths = new WeakMap<TaskData,{projectionId:string;ref:string;totalChars:number}>();
 handles: WeakMap<TaskAccess, TaskData>;
@@ -119,7 +121,7 @@ tail: Promise<void>;
 
   /** @param {string | undefined} root - localTasksDir. @param {import('./task-definitions.ts').Profile | undefined} profile - actual dsh profile. @param {number} waitMs - bounded writer acquisition. @param {import('./graph/worker.ts').GraphWorkers|undefined} [graph] - optional derived view service. @param {import('./graph/protocol.ts').GraphConfig} [graphConfig] - resolved limits. */
   constructor(root: string | undefined, profile: import('./task-definitions.ts').Profile | undefined, waitMs: number, graph: import('./graph/worker.ts').GraphWorkers | undefined=undefined, graphConfig: import('./graph/protocol.ts').GraphConfig=resolveConfig(undefined)) {
-    this.graph=graph;this.graphConfig=graphConfig
+    this.graph=graph;this.graphConfig=graphConfig;this.derived=new DerivedCache(graphConfig.graphMaxDetailBytes)
      this.controlDocument=undefined
     this.root = root
     this.profileId = profile ? ('profile-'+hash(JSON.stringify([profile.name,resolve(profile.home)])).slice(0,32) as import('./task-scope.ts').ProfileId) : undefined
@@ -440,6 +442,7 @@ tail: Promise<void>;
       const manifest={...data.manifest,scope:{...data.manifest.scope,scopeRevision:data.manifest.scope.scopeRevision+1},runId:('run-'+randomUUID() as import('./task-scope.ts').RunId),
         ...(raw.goal===undefined?{}:{goal:raw.goal}),...(raw.constraints===undefined?{}:{constraints:(raw.constraints as string[])}),...(raw.criteria===undefined?{}:{criteria:(raw.criteria as string[])}),...(raw.origins===undefined?{}:{origins:(raw.origins as string[])})}
       await this.appendOwned(data,'revise',{manifest})
+      this.derived.clear(access.scope.taskId)
       void this.graph?.retire(access.scope.taskId).catch(()=>{/* The graph registry retains failed process cleanup. */})
       return this.access(data)
     })
@@ -460,15 +463,17 @@ tail: Promise<void>;
   }
   /** @param {TaskAccess} access - owner. @param {Record<string,unknown>} value - private original facts. @returns {Promise<string>} task-local evidence reference. */
   async proof(access: TaskAccess,value: Record<string, unknown>) : Promise<string> {
-    return this.serial(()=>this.proofOwned(access,value))
+    return this.serial(async()=>(await this.proofOwned(access,value)).id)
   }
-  private async proofOwned(access:TaskAccess,value:Record<string,unknown>,id?:string):Promise<string> {
+  private async proofOwned(access:TaskAccess,value:Record<string,unknown>,id?:string):Promise<{id:string;value:Record<string,unknown>}> {
     const data=this.openTask(access)
     const path=join('evidence',access.run.runId,'proof-'+randomUUID()+'.json').replaceAll('\\','/')
     await this.directory(join(data.dir,'evidence',access.run.runId))
     await this.writeNew(join(data.dir,path),value)
-    const bytes=await this.readArtifact(data,{role:'proof',path,sha256:'',bytes:0},false)
-    return this.assetOwned(access,'evidence',{artifact:path,sha256:hash(bytes),bytes:bytes.length},'code_verified',id)
+    const expected=Buffer.from(JSON.stringify(value)+'\n'),sha256=hash(expected)
+    const bytes=await this.readArtifact(data,{role:'proof',path,sha256,bytes:expected.length})
+    const ref=await this.assetOwned(access,'evidence',{artifact:path,sha256,bytes:bytes.length},'code_verified',id)
+    return {id:ref,value:JSON.parse(bytes.toString('utf8')) as Record<string,unknown>}
   }
   /** @param {TaskAccess} access - owner. @param {string} path - existing private original. @param {string} role - fixed evidence role. @returns {Promise<import('./task-criteria.ts').Artifact>} bound artifact without exposing its bytes. */
   async artifact(access: TaskAccess,path: string,role: string) : Promise<import('./task-criteria.ts').Artifact> {
@@ -577,22 +582,31 @@ tail: Promise<void>;
   }
   /** Read only a Host-registered immutable observation/file in this exact run. */
   private originalSource(data:TaskData,id:string) {
-    const row=data.events.find(e=>e.type==='asset'&&e.data.id===id&&validRunScope(e.data.run)&&sameRunScope(e.data.run,explorationRun(data)))?.data
+    const row=taskAsset(data,id,true)?.data
     if(!row||!['page','file'].includes(String(row.kind))||!record(row.data)||row.data.contextOnly===true||!validArtifact(row.data.original))throw new TaskError('task_not_bound','original snapshot is unavailable in this task/run')
     return {ref:id,kind:String(row.kind),format:row.data.format,artifact:{...row.data.original,role:id}}
   }
-  private sourceValue(source:{kind:string;format:unknown},bytes:Buffer):unknown {
+  private parseSource(source:{kind:string;format:unknown},bytes:Buffer):unknown {
     if(source.kind==='page')return JSON.parse(bytes.toString('utf8'))
     if(source.format==='xlsx')return parseWorkbookData(bytes)
     if(source.format==='json')return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes))
     if(source.format==='text')return {text:new TextDecoder('utf-8',{fatal:true}).decode(bytes)}
     throw new TaskError('unsupported','this file has no supported structured reader')
   }
+  private sourceDocument(data:TaskData,source:ReturnType<TaskStore['originalSource']>,bytes:Buffer):{value:unknown;text:string} {
+    const key=canonical(['source-v1',explorationRun(data),source]),cached=this.derived.get<{value:unknown;text:string}>(key)
+    if(cached)return cached
+    const value=immutableValue(this.parseSource(source,bytes)),text=JSON.stringify(value),result=Object.freeze({value,text})
+    this.derived.set(key,data.manifest.scope.taskId,result,Buffer.byteLength(text)*2);return result
+  }
+  private assertionKey(data:TaskData,id:string):string {
+    return canonical(['assertion-v1',explorationRun(data),id,taskAsset(data,id,true)?.data.data])
+  }
   checkPassed(data:TaskData,id:string,evidenceRefs:string[]):boolean {
     const checked=data.checkedProofs?.get(id),v=checked?.value
     if(!v||!checked||v.kind!=='structured_check'||v.schemaVersion!==2||!validRunScope(v.run)||!sameRunScope(v.run,explorationRun(data))||!Array.isArray(v.sources)||!v.sources.length)return false
     try{
-      const cached=this.checkedAssertions.get(checked)
+      const cached=this.derived.get<{refs:string[];passed:boolean}>(this.assertionKey(data,id))
       if(cached)return cached.refs.every(ref=>evidenceRefs.includes(ref))&&cached.passed
       validateAssertion(v.assertion)
       const values=new Map<string,unknown>()
@@ -600,11 +614,11 @@ tail: Promise<void>;
         if(!record(raw)||typeof raw.ref!=='string'||!evidenceRefs.includes(raw.ref))return false
         const source=this.originalSource(data,raw.ref),bytes=checked.files.get(raw.ref)
         if(!bytes||canonical(source)!==canonical(raw))return false
-        values.set(raw.ref,this.sourceValue(source,bytes))
+        values.set(raw.ref,this.sourceDocument(data,source,bytes).value)
       }
       if(assertionRefs(v.assertion).some(id=>!values.has(id)))return false
       const passed=evaluateAssertion(v.assertion,values).passed
-      this.checkedAssertions.set(checked,{refs:[...values.keys()],passed});return passed
+      this.derived.set(this.assertionKey(data,id),data.manifest.scope.taskId,{refs:[...values.keys()],passed},JSON.stringify([...values.keys()]).length+32);return passed
     }catch{return false}
   }
   /** The only semantic mutation entry. It never dispatches a page command. */
@@ -626,18 +640,29 @@ tail: Promise<void>;
         const planned=planExploration(data,command,(id,refs)=>{requiredChecks.push({id,refs});return true},checkRef)
         const payload=(result:Record<string,unknown>)=>({requestId,expectedVersion,command,changes:planned.changes,result,run:access.run})
         assertExplorationCapacity(payload({...planned.result,requestId,...(planned.changes.completed?{state:'completed'}:{}),...(checkRef?{status:'unavailable',ruleSource:'agent',evaluation:{passed:false,atoms:Array(EXPLORATION_LIMITS.atoms).fill(false)}}:{})}))
-        await this.refreshEvidence(access)
+        if(command.op!=='check_evidence')await this.refreshEvidence(access)
         beforeComplete(false)
         for(const check of requiredChecks)if(!this.checkPassed(data,check.id,check.refs))throw new TaskError('invalid_request','check is unavailable, failed or bound to different evidence; goal proof requires currently passing checks')
         if(command.op==='check_evidence'){
           validateAssertion(command.assertion)
-          const sources=assertionRefs(command.assertion).map(id=>this.originalSource(data,id)),values=new Map<string,unknown>()
-          for(const source of sources)values.set(source.ref,this.sourceValue(source,await this.readArtifact(data,source.artifact)))
-          // Re-read all sources before persisting; reads cannot mix source versions.
+          const sources=assertionRefs(command.assertion).map(id=>this.originalSource(data,id)),values=new Map<string,unknown>(),files=new Map<string,Buffer>(),token=Symbol()
+          this.evidenceReads.set(data,token)
+          for(const source of sources){const bytes=await this.readArtifact(data,source.artifact);files.set(source.ref,bytes);values.set(source.ref,this.sourceDocument(data,source,bytes).value)}
+          // Each original is verified at initial read, before persistence, and before publication.
           for(const source of sources)await this.readArtifact(data,source.artifact)
           const evaluation=evaluateAssertion(command.assertion,values)
-          checkRef=await this.proofOwned(access,{schemaVersion:2,kind:'structured_check',run:access.run,assertion:command.assertion,sources,files:sources.map(s=>s.artifact),evaluation,ruleSource:'agent'},checkRef)
-          await this.refreshEvidence(access)
+          const proof=await this.proofOwned(access,{schemaVersion:2,kind:'structured_check',run:access.run,assertion:command.assertion,sources,files:sources.map(s=>s.artifact),evaluation,ruleSource:'agent'},checkRef)
+          checkRef=proof.id
+          const version=data.events.length,tail=data.events.at(-1)?.hash;let available=true
+          for(const source of sources)try{await this.readArtifact(data,source.artifact)}catch{available=false}
+          this.openTask(access)
+          if(data.events.length!==version||data.events.at(-1)?.hash!==tail||this.evidenceReads.get(data)!==token)throw new TaskError('task_busy','task or evidence read changed before check publication; read the task again')
+          data.checkedProofs=new Map(data.checkedProofs)
+          if(available){
+            data.checkedProofs.set(checkRef,{value:proof.value,files})
+            data.evidenceIssues=(data.evidenceIssues??[]).filter(id=>id!==checkRef)
+            this.derived.set(this.assertionKey(data,checkRef),data.manifest.scope.taskId,{refs:sources.map(s=>s.ref),passed:evaluation.passed},JSON.stringify(sources.map(s=>s.ref)).length+32)
+          }else{data.checkedProofs.delete(checkRef);data.evidenceIssues=[...new Set([...(data.evidenceIssues??[]),checkRef])]}
         }
         if(checkRef){const available=data.checkedProofs?.get(checkRef);planned.result.status=available?this.checkPassed(data,checkRef,assertionRefs(command.assertion as import('./exploration-checks.ts').Assertion))?'passed':'failed':'unavailable';planned.result.ruleSource='agent';planned.result.evaluation=available?.value.evaluation??null}
         if(planned.changes.completed){
@@ -708,10 +733,10 @@ tail: Promise<void>;
     if(!isExploration(data.manifest))throw new TaskError('unsupported','file view requires a generic exploration task; use view:task with the snapshot ref for legacy metadata')
     const version=data.events.length,source=this.originalSource(data,id)
     if(source.kind!=='file')throw new TaskError('invalid_request','file view requires a file snapshot')
-    const bytes=await this.readArtifact(data,source.artifact),value=this.sourceValue(source,bytes)
+    const bytes=await this.readArtifact(data,source.artifact),document=this.sourceDocument(data,source,bytes)
     await this.readArtifact(data,source.artifact)
     if(data.events.length!==version)throw new TaskError('task_busy','task changed during file read')
-    const identity=graphProjectionId(hash(canonical([access.run,version,source.artifact]))),serialized=JSON.stringify(value)
+    const identity=graphProjectionId(hash(canonical([access.run,version,source.artifact]))),serialized=document.text
     if(!Number.isSafeInteger(offset)||offset<0||offset>serialized.length||Buffer.byteLength(serialized,'utf8')>this.graphConfig.graphMaxDetailBytes)throw new TaskError('invalid_request','invalid file detail capacity or offset')
     if((offset>0&&!projectionId)||(projectionId!==undefined&&projectionId!==identity))throw new TaskError('task_not_bound','file projection changed; restart from zero')
     return {ref:id,projectionId:identity,contextVersion:version,offset,totalChars:serialized.length,text:serialized.slice(offset,offset+budget),complete:offset+budget>=serialized.length}
@@ -743,7 +768,7 @@ tail: Promise<void>;
     if(offset>this.graphConfig.graphMaxDetailBytes)throw new TaskError('invalid_request','detail offset exceeds the configured task detail capacity')
     const position={run:access.run,version:data.events.length,tail:data.events.at(-1)?.hash}
     const definitionName=definitionResource(data.snapshot,id)
-    const row=data.events.findLast(event=>event.type==='asset'&&event.data.id===id)
+    const row=taskAsset(data,id)
     const asset=row?{id,taskId:data.manifest.scope.taskId,kind:row.data.kind,source:row.data.source,sourceSeq:row.seq,data:(row.data.data as Record<string, unknown>)}:undefined
     let facts=taskFacts(data),criterion=facts.criteria.find(item=>item.id===id)
     const semantic=isExploration(data.manifest)?explorationState(data).nodes.get(id):undefined
@@ -865,7 +890,7 @@ tail: Promise<void>;
   }
   /** @returns {Promise<void>} drain owned writes before releasing the profile writer lease. */
   async close() : Promise<void> {
-    this.closed=true;this.abort.abort()
+    this.closed=true;this.abort.abort();this.derived.clear()
     await Promise.allSettled([this.ready,this.tail])
     this.releaseWriter?.()
     await this.writer?.catch(()=>{})

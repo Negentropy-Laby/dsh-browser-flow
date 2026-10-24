@@ -1,3 +1,4 @@
+import {taskAsset} from './task-exploration.ts'
 import {taskFileMode} from './task-scope.ts'
 import { pageIdentity, fileIdentity, eventResourceDescriptor } from './task-resources.ts'
 
@@ -363,7 +364,7 @@ closing: Promise<void> | undefined;
         try{
           const pageRef=await this.tasks.asset(access,'page',{...redacted,documentToken:lease.value.documentToken,resourceIdentity:pageIdentity(access.run,lease.value,'observation')},'host',{persistOriginal:isExploration(this.tasks.openTask(access).manifest)})
           redacted.assetRef=pageRef
-          const event=this.tasks.openTask(access).events.find(e=>e.data.id===pageRef)!
+          const event=taskAsset(this.tasks.openTask(access),pageRef,true)!
           redacted.resourceRef=eventResourceDescriptor(event,access.run).id
           const judged=navigationVerdict(this.tasks.openTask(access).manifest,redacted)
           if(judged.verdict==='entry_reached'&&!this.tasks.openTask(access).blocked){const proofRef=await this.tasks.proof(access,{schemaVersion:1,kind:'navigation',run:access.run,pageRef});await this.tasks.relate(access,proofRef,pageRef,'observed_on');const verified=await this.tasks.verdict(access,judged,proofRef);redacted.navigation=verified===judged.verdict?judged:{verdict:'unverified',reason:'task-evidence-unverified'}}

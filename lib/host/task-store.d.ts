@@ -24,6 +24,7 @@ export type TaskEvent = {
     hash: string;
 };
 export type TaskData = {
+    derivedIndex?: import("./task-exploration.ts").TaskDerivedIndex;
     manifest: Manifest;
     snapshot?: import("./task-definitions.ts").DefinitionSnapshot;
     events: TaskEvent[];
@@ -69,7 +70,7 @@ export declare class TaskStore {
     tasks: Map<string, TaskData>;
     bindings: Map<string, string>;
     private creationFailures;
-    private checkedAssertions;
+    private derived;
     private evidenceReads;
     private detailLengths;
     handles: WeakMap<TaskAccess, TaskData>;
@@ -154,7 +155,9 @@ export declare class TaskStore {
     private assetOwned;
     /** Read only a Host-registered immutable observation/file in this exact run. */
     private originalSource;
-    private sourceValue;
+    private parseSource;
+    private sourceDocument;
+    private assertionKey;
     checkPassed(data: TaskData, id: string, evidenceRefs: string[]): boolean;
     /** The only semantic mutation entry. It never dispatches a page command. */
     explore(access: TaskAccess, command: unknown, requestId: unknown, expectedVersion: unknown, beforeComplete?: (completed: boolean) => void): Promise<Record<string, unknown>>;

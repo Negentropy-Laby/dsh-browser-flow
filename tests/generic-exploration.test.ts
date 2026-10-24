@@ -4,7 +4,7 @@ import {mkdtemp,rm,writeFile,readFile,rename,mkdir} from 'node:fs/promises'
 import {join} from 'node:path'
 import {tmpdir} from 'node:os'
 import {TaskStore} from '../src/task-store.ts'
-import {explorationState,currentResources,assertExplorationCapacity} from '../src/task-exploration.ts'
+import {explorationState,currentResources,assertExplorationCapacity,taskAsset} from '../src/task-exploration.ts'
 import {graphInput} from '../src/task-projections.ts'
 import {resolveConfig} from '../src/config.ts'
 import {GraphWorkers} from '../src/graph/worker.ts'
@@ -350,4 +350,43 @@ test('page originals require an explicit Host option and context snapshots never
  const h=await setup(t),ref=await h.store.asset(h.access,'page',{contextOnly:false,result:'unregistered'})
  await assert.rejects(h.checked(ref),/original snapshot/)
  await assert.rejects(h.store.asset(h.access,'page',{contextOnly:true},'host',{persistOriginal:true}),/ordinary page observation/)
+})
+
+test('derived indices apply only appended rows, agree with fresh replay and expose immutable values',async t=>{
+ const h=await setup(t);await h.start();const ref=await h.observe();await h.run({op:'record_fact',summary:'Observed',confidence:'observed',evidence_refs:[ref]})
+ const data=h.store.openTask(h.access),snapshot=(d:typeof data)=>({nodes:[...explorationState(d).nodes],edges:explorationState(d).edges,resources:[...currentResources(d)]})
+ const expected=snapshot({...data,derivedIndex:undefined});assert.deepEqual(snapshot(data),expected)
+ let rows=0;data.events=new Proxy(data.events,{get(target,key,receiver){if(typeof key==='string'&&/^\d+$/.test(key))rows++;return Reflect.get(target,key,receiver)}})
+ for(let i=0;i<20;i++){explorationState(data);currentResources(data);assert.equal(taskAsset(data,ref,true)?.data.id,ref)}
+ assert.equal(rows,60,'one prefix-tail check per lookup, no full replay')
+ const state=explorationState(data),fact=[...state.nodes.values()].find(n=>n.data.summary==='Observed')!
+ assert.throws(()=>{fact.data.summary='changed'},TypeError)
+ assert.throws(()=>{(state.nodes as Map<string,unknown>).set('fake',{})},TypeError)
+ assert.throws(()=>{(currentResources(data).values().next().value!.snapshots as string[]).push('fake')},TypeError)
+ assert.throws(()=>{taskAsset(data,ref)!.data.id='fake'},TypeError)
+ await h.run({op:'add_hint',text:'New information'});assert.deepEqual(snapshot(data),snapshot({...data,derivedIndex:undefined}))
+ const prior=data.derivedIndex;data.events=data.events.map((e,i)=>i===data.events.length-1?{...e,hash:e.hash+'changed'}:e)
+ snapshot(data);assert.notEqual(data.derivedIndex,prior,'changed accepted prefix invalidates the index')
+})
+test('check_evidence reads a new source three times, parses once and reuses only derived assertions',async t=>{
+ const h=await setup(t);await h.start();const ref=await h.observe(),data=h.store.openTask(h.access),path=(taskAsset(data,ref)!.data.data as any).original.path
+ let reads=0,parses=0;const read=h.store.readArtifact.bind(h.store),parse=(h.store as any).parseSource.bind(h.store)
+ h.store.readArtifact=async(...args)=>{if(args[1].path===path)reads++;return read(...args)}
+ ;(h.store as any).parseSource=(...args:unknown[])=>{parses++;return parse(...args)}
+ const check=await h.checked(ref);assert.equal(reads,3);assert.equal(parses,1)
+ await h.store.refreshEvidence(h.access);assert.equal(reads,5);assert.equal(h.store.checkPassed(data,check,[ref]),true);assert.equal(parses,1)
+ await h.store.refreshEvidence(h.access);assert.equal(h.store.checkPassed(data,check,[ref]),true);assert.equal(parses,1)
+ await writeFile(join(data.dir,path),'changed');await h.store.refreshEvidence(h.access);assert.equal(h.store.checkPassed(data,check,[ref]),false)
+})
+test('file pagination reuses parsing and serialization but rechecks content on every page',async t=>{
+ const h=await setup(t),data=h.store.openTask(h.access),path=join(data.dir,'evidence',h.access.run.runId,'selected.json')
+ await h.store.writeNew(path,{rows:Array(60).fill('中文😀')})
+ const original=await h.store.artifact(h.access,path,'selected'),id=await h.store.asset(h.access,'file',{format:'json',original})
+ let parses=0,reads=0;const parse=(h.store as any).parseSource.bind(h.store),read=h.store.readArtifact.bind(h.store)
+ ;(h.store as any).parseSource=(...args:unknown[])=>{parses++;return parse(...args)}
+ h.store.readArtifact=async(...args)=>{reads++;return read(...args)}
+ let offset=0,text='',projectionId:string|undefined,pages=0
+ for(;;){const part=await h.store.fileView(h.access,id,offset,100,projectionId) as any;pages++;text+=part.text;offset+=part.text.length;projectionId=part.projectionId;if(part.complete)break}
+ assert.equal(JSON.parse(text).rows.length,60);assert.equal(parses,1);assert.equal(reads,pages*2)
+ await writeFile(path,'{}');await assert.rejects(h.store.fileView(h.access,id,0,100,projectionId),/mismatch/)
 })

@@ -2,7 +2,7 @@
 import { randomUUID } from 'node:crypto'
 import { sameRunScope, validRunScope } from './task-scope.ts'
 import { eventResourceDescriptor } from './task-resources.ts'
-import type { Manifest, TaskData } from './task-store.ts'
+import type { Manifest, TaskData, TaskEvent } from './task-store.ts'
 import {EXPLORATION_LIMITS as LIMIT} from './exploration-limits.ts'
 
 export type ExplorationKind = 'goal'|'intent'|'fact'|'hint'
@@ -16,7 +16,7 @@ export interface ExplorationChange {
   round:boolean; completed:boolean
 }
 export interface ExplorationState {
-  nodes:Map<string,ExplorationNode>; edges:ExplorationEdge[]; phase:'planner'|'worker'
+  nodes:ReadonlyMap<string,ExplorationNode>; edges:readonly ExplorationEdge[]; phase:'planner'|'worker'
   currentIntent:ExplorationNode|undefined; round:number
 }
 export class ExplorationError extends Error {
@@ -48,42 +48,80 @@ function initialNode(n:ExplorationNode):boolean {
 function updateAllowed(n:ExplorationNode,state:string):boolean {
   return n.kind==='goal'?state==='met'&&['open','met'].includes(n.state):n.kind==='intent'&&(n.state==='open'&&state==='running'||n.state==='running'&&['done','blocked','exhausted','stopped'].includes(state))
 }
-function applyChange(state:ExplorationState,change:ExplorationChange,seq:number,assets:ReadonlySet<string>):void {
+type MutableState=Omit<ExplorationState,'nodes'|'edges'>&{nodes:Map<string,ExplorationNode>;edges:ExplorationEdge[]}
+type Resource={id:string;kind:string;snapshots:readonly string[];run:ReturnType<typeof explorationRun>}
+export interface TaskDerivedIndex {
+  run:ReturnType<typeof explorationRun>;processed:number;tail:string;assets:Map<string,TaskEvent>;currentAssets:Set<string>
+  state:MutableState;resources:Map<string,Resource>;view:ExplorationState;resourceView:ReadonlyMap<string,Resource>
+}
+function readonlyMap<K,V>(map:Map<K,V>):ReadonlyMap<K,V> {
+  return Object.freeze({get size(){return map.size},get:(k:K)=>map.get(k),has:(k:K)=>map.has(k),entries:()=>map.entries(),keys:()=>map.keys(),values:()=>map.values(),[Symbol.iterator]:()=>map[Symbol.iterator](),forEach:(f:(v:V,k:K,m:ReadonlyMap<K,V>)=>void,thisArg?:unknown)=>map.forEach((v,k)=>f.call(thisArg,v,k,readonlyMap(map)))})
+}
+function frozen<T>(value:T):T {
+  if(value&&typeof value==='object'&&!Object.isFrozen(value)){for(const v of Object.values(value))frozen(v);Object.freeze(value)}
+  return value
+}
+function validateChange(state:ExplorationState,change:ExplorationChange,assets:ReadonlySet<string>):void {
+  const added=new Map<string,ExplorationNode>(),updates=new Map<string,ExplorationNode>();let running=state.currentIntent?.id
   for(const n of change.nodes){
-    if(state.nodes.has(n.id)||assets.has(n.id)||!initialNode(n))fail('invalid exploration node state or duplicate ID','task_unavailable')
-    state.nodes.set(n.id,{...n,data:{...n.data},asset_ids:[...n.asset_ids],sourceSeq:seq})
+    if(state.nodes.has(n.id)||added.has(n.id)||assets.has(n.id)||!initialNode(n))fail('invalid exploration node state or duplicate ID','task_unavailable')
+    added.set(n.id,n)
   }
   for(const update of change.updates){
-    const n=state.nodes.get(update.id)
+    const n=updates.get(update.id)??added.get(update.id)??state.nodes.get(update.id)
     if(!n||!updateAllowed(n,update.state))fail('invalid exploration state transition','task_unavailable')
-    state.nodes.set(n.id,{...n,state:update.state})
+    updates.set(n.id,{...n,state:update.state})
+    if(n.kind==='intent'){
+      if(update.state==='running'){if(running&&running!==n.id)fail('multiple running intents','task_unavailable');running=n.id}
+      else if(running===n.id)running=undefined
+    }
   }
-  for(const edge of change.edges){
-    if(![edge.from,edge.to].every(id=>state.nodes.has(id)||assets.has(id)))fail('missing or foreign exploration endpoint','task_unavailable')
-    state.edges.push(edge)
+  for(const edge of change.edges)if(![edge.from,edge.to].every(id=>state.nodes.has(id)||added.has(id)||assets.has(id)))fail('missing or foreign exploration endpoint','task_unavailable')
+}
+function applyChange(state:MutableState,change:ExplorationChange,seq:number,assets:ReadonlySet<string>):void {
+  validateChange(state,change,assets)
+  for(const n of change.nodes)state.nodes.set(n.id,frozen({...structuredClone(n),sourceSeq:seq}))
+  for(const update of change.updates){
+    const n=state.nodes.get(update.id)!,next=frozen({...n,state:update.state});state.nodes.set(n.id,next)
+    if(n.kind==='intent')state.currentIntent=update.state==='running'?next:state.currentIntent?.id===n.id?undefined:state.currentIntent
   }
-  if(change.completed)for(const n of state.nodes.values())if(n.kind==='intent'&&n.state==='open')state.nodes.set(n.id,{...n,state:'stopped'})
+  for(const edge of change.edges)state.edges.push(frozen({...edge}))
+  if(change.completed)for(const n of state.nodes.values())if(n.kind==='intent'&&n.state==='open')state.nodes.set(n.id,frozen({...n,state:'stopped'}))
   if(change.round)state.round++
-  const running=[...state.nodes.values()].filter(n=>n.kind==='intent'&&n.state==='running')
-  if(running.length>1)fail('multiple running intents','task_unavailable')
-  state.currentIntent=running[0];state.phase=running.length?'worker':'planner'
+  state.phase=state.currentIntent?'worker':'planner'
 }
-export function explorationState(task:TaskData):ExplorationState {
-  const state:ExplorationState={nodes:new Map(),edges:[],phase:'planner',currentIntent:undefined,round:0}
-  if(!isExploration(task.manifest))return state
-  const assets=new Set<string>(),run=explorationRun(task)
-  applyChange(state,seedExploration(task.manifest),1,assets)
-  for(const event of task.events)if(validRunScope(event.data.run)&&sameRunScope(event.data.run,run)){
-    if(event.type==='asset')assets.add(String(event.data.id))
-    if(event.type==='exploration')applyChange(state,event.data.changes as unknown as ExplorationChange,event.seq,assets)
+/** One task owns one incremental derived index. Original journal data stays authoritative. */
+function derivedIndex(task:TaskData):TaskDerivedIndex {
+  const run=explorationRun(task);let index=task.derivedIndex
+  if(!index||!sameRunScope(index.run,run)||index.processed>task.events.length||(index.processed?task.events[index.processed-1]?.hash:'')!==index.tail){
+    const state:MutableState={nodes:new Map(),edges:[],phase:'planner',currentIntent:undefined,round:0},resources=new Map<string,Resource>(),assets=new Map<string,TaskEvent>(),currentAssets=new Set<string>()
+    if(isExploration(task.manifest))applyChange(state,seedExploration(task.manifest),1,currentAssets)
+    index={run,processed:0,tail:'',assets,currentAssets,state,resources,view:state,resourceView:readonlyMap(resources)};task.derivedIndex=index
   }
-  return state
+  const changed=index.processed!==task.events.length||index.view===index.state
+  while(index.processed<task.events.length){
+    const event=task.events[index.processed],same=validRunScope(event.data.run)&&sameRunScope(event.data.run,run)
+    if(event.type==='asset'){
+      const id=String(event.data.id);index.assets.set(id,frozen(structuredClone(event)))
+      if(same){
+        index.currentAssets.add(id);const d=eventResourceDescriptor(event,run),r=index.resources.get(d.id)
+        index.resources.set(d.id,frozen({id:d.id,kind:String(event.data.kind),snapshots:[...(r?.snapshots??[]),id],run}))
+      }
+    }
+    if(same&&isExploration(task.manifest)&&event.type==='exploration')applyChange(index.state,event.data.changes as unknown as ExplorationChange,event.seq,index.currentAssets)
+    index.processed++;index.tail=event.hash
+  }
+  if(changed)index.view=Object.freeze({...index.state,nodes:readonlyMap(index.state.nodes),edges:Object.freeze([...index.state.edges])})
+  return index
 }
-/** Validate against the accepted prefix without changing its state or journal. */
+export function explorationState(task:TaskData):ExplorationState {return derivedIndex(task).view}
+export function taskAsset(task:TaskData,id:string,currentRunOnly=false):TaskEvent|undefined {
+  const index=derivedIndex(task)
+  return !currentRunOnly||index.currentAssets.has(id)?index.assets.get(id):undefined
+}
+/** Validate only the proposed delta against the accepted prefix, without replay or mutation. */
 export function assertExplorationChange(task:TaskData,change:ExplorationChange):void {
-  const old=explorationState(task),state={...old,nodes:new Map(old.nodes),edges:[...old.edges]},run=explorationRun(task)
-  const assets=new Set(task.events.filter(e=>e.type==='asset'&&validRunScope(e.data.run)&&sameRunScope(e.data.run,run)).map(e=>String(e.data.id)))
-  applyChange(state,change,task.events.length+1,assets)
+  const index=derivedIndex(task);validateChange(index.view,change,index.currentAssets)
 }
 export function validExplorationEvent(row:Record<string,unknown>):boolean {
   if(!text(row.requestId,100)||!Number.isSafeInteger(row.expectedVersion)||Number(row.expectedVersion)<1||!object(row.command)||!object(row.result)||!object(row.changes))return false
@@ -110,14 +148,7 @@ export function validateExplorationCommand(command:unknown):asserts command is R
   const fields:Record<string,string[]>={set_goals:['text','goals'],add_hint:['text','asset_ids'],add_intent:['summary','asset_ids','parent_ids','priority','intents'],claim_intent:['intent_id'],finish_intent:['intent_id','state','reason'],record_fact:['summary','detail','evidence','confidence','intent_id','asset_ids','evidence_refs','check_refs','facts'],check_evidence:['assertion'],prove_goal:['goal_id','evidence_id','reason']}
   if(Object.keys(command).some(k=>k!=='op'&&!fields[String(command.op)].includes(k)))fail('unknown exploration argument')
 }
-export function currentResources(task:TaskData) {
-  const resources=new Map<string,{id:string;kind:string;snapshots:string[];run:ReturnType<typeof explorationRun>}>(),run=explorationRun(task)
-  for(const e of task.events)if(e.type==='asset'&&validRunScope(e.data.run)&&sameRunScope(e.data.run,run)){
-    const d=eventResourceDescriptor(e,run),r=resources.get(d.id)
-    if(r)r.snapshots.push(String(e.data.id));else resources.set(d.id,{id:d.id,kind:String(e.data.kind),snapshots:[String(e.data.id)],run})
-  }
-  return resources
-}
+export function currentResources(task:TaskData):ReadonlyMap<string,Resource> {return derivedIndex(task).resourceView}
 /** Explicit resource and exact-snapshot anchors share the same Host relation index. */
 export function resourceAnchors(state:ExplorationState,resources:ReturnType<typeof currentResources>) {
   const anchors=new Map([...resources.keys()].map(id=>[id,new Set<string>()])),snapshots=new Map<string,string>()
@@ -177,7 +208,7 @@ export function planExploration(task:TaskData,command:Record<string,unknown>,che
       if(!object(item)||Object.keys(item).some(k=>!['summary','detail','evidence','confidence','intent_id','asset_ids','evidence_refs','check_refs'].includes(k))||!text(item.summary)||!['observed','inferred'].includes(String(item.confidence))||(item.detail!==undefined&&!text(item.detail,8000))||(item.evidence!==undefined&&!text(item.evidence,2000))||(item.intent_id!==undefined&&item.intent_id!==intent.id))fail('provide a fact summary and observed/inferred confidence')
       const evidenceRefs=item.evidence_refs??[],checks=item.check_refs??[]
       if(!refs(evidenceRefs,LIMIT.sources)||!refs(checks)||(item.confidence==='observed'&&!evidenceRefs.length))fail('observed facts require at most 64 original snapshots and at most 32 check references')
-      for(const id of evidenceRefs){const e=task.events.find(e=>e.type==='asset'&&e.data.id===id&&validRunScope(e.data.run)&&sameRunScope(e.data.run,explorationRun(task)));if(!e||!['page','file'].includes(String(e.data.kind))||!object(e.data.data)||e.data.data.contextOnly===true)fail('fact evidence must be current original observations or files','task_not_bound')}
+      for(const id of evidenceRefs){const e=taskAsset(task,id,true);if(!e||!['page','file'].includes(String(e.data.kind))||!object(e.data.data)||e.data.data.contextOnly===true)fail('fact evidence must be current original observations or files','task_not_bound')}
       for(const id of checks)if(!checkPassed(id,evidenceRefs))fail('check is unavailable, failed or bound to different evidence')
       const n=add('fact','confirmed',{summary:item.summary,...(item.detail?{detail:item.detail}:{}),...(item.evidence?{evidence:item.evidence}:{}),confidence:item.confidence,intent_id:intent.id,evidence_refs:evidenceRefs,check_refs:checks},anchors(item.asset_ids))
       edge(intent.id,n.id,'yields');for(const id of evidenceRefs)edge(id,n.id,'observed_on');for(const id of checks)edge(n.id,id,'validated_by');return n.id
