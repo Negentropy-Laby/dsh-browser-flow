@@ -2,6 +2,8 @@
 export declare const TASK_FORMAT_VERSION = 1;
 export declare const EXPLORATION_FORMAT_VERSION = 2;
 export declare const supportedTaskFormat: (v: unknown) => v is 2 | 1;
+/** Generation 2 terminal history is absorbing; pending receipts can still settle. */
+export declare function validTaskTransition(manifest: import('./task-store.ts').Manifest, state: string, type: string): boolean;
 /** @param {unknown} value - JSON. @returns {value is Record<string, unknown>} object. */
 export declare const taskRecord: (value: unknown) => value is Record<string, unknown>;
 /** @param {unknown} raw - manifest from disk. @param {boolean} [legacy] - accept the predecessor's missing version only for inspection. @returns {raw is import('./task-store.ts').Manifest} supported manifest fields. */

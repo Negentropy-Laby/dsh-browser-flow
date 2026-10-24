@@ -61,7 +61,7 @@ import {EXPLORATION_GUIDE} from './exploration-instructions.ts'
 import { isExploration, explorationState, explorationRun, seedExploration, planExploration, explorationOverview, currentResources, resourceAnchors, canonical, validateExplorationCommand, ExplorationError } from './task-exploration.ts'
 import { validateAssertion, assertionRefs, evaluateAssertion } from './exploration-checks.ts'
 import { parseWorkbookData } from './workbook-core.ts'
-import { TASK_FORMAT_VERSION, EXPLORATION_FORMAT_VERSION, supportedTaskFormat, validTaskManifest, validTaskEvent } from './task-journal.ts'
+import { TASK_FORMAT_VERSION, EXPLORATION_FORMAT_VERSION, supportedTaskFormat, validTaskManifest, validTaskEvent, validTaskTransition } from './task-journal.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { open, readFile, mkdir, readdir, lstat, rm } from 'node:fs/promises'
 import type { Stats, BigIntStats } from 'node:fs'
@@ -325,6 +325,7 @@ tail: Promise<void>;
   /** @param {TaskData} data - private task. @param {string} type - event category. @param {Record<string,unknown>} payload - bounded event facts. @returns {Promise<TaskEvent>} durable append. */
   async appendOwned(data: TaskData,type: string,payload: Record<string, unknown>) : Promise<TaskEvent> {
     if(data.readOnly)throw new TaskError('task_read_only','legacy task history is immutable; read, revoke and hand off')
+    if(!validTaskTransition(data.manifest,data.state,type))throw new TaskError('task_write_blocked','this task has ended; start a new task in another Session')
     if((type==='created'&&data.events.length!==0)||!validTaskEvent(type,payload,data.manifest,data.pendingWrite,data.waiting,data.waitInput))throw new TaskError('invalid_request','unsupported task event or invalid event payload')
     if(!this.writable && data.events.length>0)throw new TaskError('task_unavailable','task storage has no writer; only read, revoke and hand off')
     if(data.unhealthy)throw new TaskError('task_storage_failed','the task journal is damaged; do not write again')
@@ -354,7 +355,7 @@ tail: Promise<void>;
       if(event.data.outcome==='unknown_outcome')data.blocked=true
       if(data.pendingWrite===event.data.attemptId)delete data.pendingWrite
     }
-    if(event.type==='revise' && record(event.data.manifest)){data.manifest=(event.data.manifest as Manifest);if(isExploration(data.manifest))data.state='active'}
+    if(event.type==='revise' && record(event.data.manifest))data.manifest=(event.data.manifest as Manifest)
     if(event.type==='exploration'&&record(event.data.changes)&&event.data.changes.completed===true)data.state='completed'
     if(event.type==='status' && typeof event.data.state==='string')data.state=event.data.state
   }
@@ -416,8 +417,11 @@ tail: Promise<void>;
   /** @param {TaskAccess} access - original run. @param {string} state - user task lifecycle request. @returns {Promise<TaskAccess>} status, never a business verdict. */
   async end(access: TaskAccess,state: string) : Promise<TaskAccess> {
     if(!['cancelled','handed_off'].includes(state))throw new TaskError('invalid_request','ending a task records cancelled or handed_off, never business success')
-    if(this.openTask(access).readOnly)return access
-    await this.append(access,'status',{state,run:access.run})
+    await this.serial(async()=>{
+      const data=this.openTask(access)
+      if(data.readOnly||(isExploration(data.manifest)&&data.state!=='active'))return
+      await this.appendOwned(data,'status',{state,run:access.run})
+    })
     void this.graph?.retire(access.scope.taskId).catch(()=>{/* The graph registry retains failed process cleanup. */})
     return access
   }
@@ -426,6 +430,7 @@ tail: Promise<void>;
     return this.serial(async()=>{
       const data=this.openTask(access)
       if(data.readOnly)throw new TaskError('task_read_only','legacy task history cannot be revised; use a new Session')
+      if(!validTaskTransition(data.manifest,data.state,'revise'))throw new TaskError('task_write_blocked','this task has ended; start a new task in another Session')
       if(data.waiting)throw new TaskError('awaiting_user','resolve the current human dependency or hand off before revising')
       if(data.pendingWrite)throw new TaskError('task_busy','a write is pending; revoke control and hand off before revising')
       if(!record(raw)||Object.keys(raw).some(key=>!['goal','constraints','criteria','origins','newRun'].includes(key)) || (raw.goal!==undefined&&!text(raw.goal,2000))
@@ -824,7 +829,7 @@ tail: Promise<void>;
         if(!record(event)||event.seq!==data.events.length+1||event.prev!==(data.events.at(-1)?.hash ?? '')||typeof event.type!=='string'||!record(event.data))throw new Error('task-journal-invalid')
         const unsigned=data.readOnly && event.schemaVersion===undefined ? {seq:event.seq,prev:event.prev,type:event.type,data:event.data} : {schemaVersion:event.schemaVersion,seq:event.seq,prev:event.prev,type:event.type,data:event.data}
         if(event.hash!==hash(JSON.stringify(unsigned)))throw new Error('task-journal-hash')
-        if(!data.readOnly && (event.schemaVersion!==data.manifest.schemaVersion || (event.type==='created'&&event.seq!==1) || !validTaskEvent(event.type,event.data,data.manifest,data.pendingWrite,data.waiting,data.waitInput)))throw new Error('task-journal-unsupported-semantics')
+        if(!data.readOnly && (event.schemaVersion!==data.manifest.schemaVersion || (event.type==='created'&&event.seq!==1) || !validTaskTransition(data.manifest,data.state,event.type) || !validTaskEvent(event.type,event.data,data.manifest,data.pendingWrite,data.waiting,data.waitInput)))throw new Error('task-journal-unsupported-semantics')
         if(data.events.length===0 && (event.type!=='created'||JSON.stringify(event.data.manifest)!==JSON.stringify(data.manifest)))throw new Error('task-journal-creation-mismatch')
         if(data.manifest.schemaVersion===undefined){
           const payload={...event.data,...(event.data.manifest && record(event.data.manifest)?{manifest:{...event.data.manifest,schemaVersion:TASK_FORMAT_VERSION}}:{}),...(event.type==='status'&&event.data.run===undefined?{run:{...data.manifest.scope,runId:data.manifest.runId,workflowRef:data.manifest.workflowRef}}:{})}
@@ -835,7 +840,7 @@ tail: Promise<void>;
       }
       if(tail!=='')throw new Error('task-journal-tail')
       if(data.events.length===0 || data.events[0].type!=='created')throw new Error('task-journal-missing')
-    }catch(error){data.unhealthy=true;data.blocked=true;data.storageIssue='invalid_or_unsupported_journal';void error}
+    }catch(error){data.unhealthy=true;data.blocked=true;data.storageIssue=`invalid_or_unsupported_journal:seq=${data.events.length+1}`;void error}
     if(data.pendingWrite)data.blocked=true
   }
   /** @returns {Promise<void>} drain owned writes before releasing the profile writer lease. */

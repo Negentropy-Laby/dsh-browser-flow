@@ -189,3 +189,42 @@ test('exact snapshot anchors participate in resource neighbors and exploration c
  assert.deepEqual((overview.value as {assetCoverage:{denominator:number;tested:number}}).assetCoverage.tested,1)
  assert.equal((overview.value as {assetCoverage:{denominator:number}}).assetCoverage.denominator,1,'checks and evidence stay outside exploration coverage')
 })
+
+for(const terminal of ['completed','cancelled','handed_off'])test(`generation 2 ${terminal} cannot be revised or overwritten, including after recovery`,async t=>{
+ const h=await setup(t)
+ if(terminal==='completed'){
+  await h.start();const ref=await h.observe(),check=await h.checked(ref),fact=await h.record(ref,check);await h.run({op:'finish_intent'})
+  const goal=[...explorationState(h.store.openTask(h.access)).nodes.values()].find(n=>n.kind==='goal')!
+  await h.run({op:'prove_goal',goal_id:goal.id,evidence_id:fact,reason:'Observed result'})
+ }else await h.store.end(h.access,terminal)
+ const data=h.store.openTask(h.access),count=data.events.length
+ await assert.rejects(h.store.revise(h.access,{goal:'Another result'}),{code:'task_write_blocked'})
+ await h.store.end(h.access,'cancelled');await h.store.end(h.access,'handed_off')
+ assert.equal(data.state,terminal);assert.equal(data.events.length,count)
+ await assert.rejects(h.store.beginAttempt(h.access,'click'),{code:'task_write_blocked'})
+ await assert.rejects(h.run({op:'add_hint',text:'New write'}),{code:'task_write_blocked'})
+ await h.store.close()
+ const restored=new TaskStore(h.root,{name:'test',home:join(h.root,'home')},1000);t.after(()=>restored.close())
+ const access=await restored.forSession('owner')
+ assert.equal(restored.openTask(access).state,terminal)
+ await assert.rejects(restored.revise(access,{newRun:true}),{code:'task_write_blocked'})
+})
+test('cancellation permits only settlement of the already registered pending attempt',async t=>{
+ const h=await setup(t);await h.start();const id=await h.store.beginAttempt(h.access,'click')
+ await h.store.end(h.access,'cancelled');await h.store.receipt(h.access,id,'unknown_outcome')
+ const data=h.store.openTask(h.access)
+ assert.equal(data.state,'cancelled');assert.equal(data.pendingWrite,undefined);assert.equal(data.blocked,true)
+ await assert.rejects(h.store.receipt(h.access,id,'executed'),{code:'invalid_request'})
+})
+test('recovery retains a terminal prefix and diagnoses a hash-valid resurrection without rewriting bytes',async t=>{
+ const h=await setup(t);await h.store.end(h.access,'cancelled')
+ const data=h.store.openTask(h.access),last=data.events.at(-1)!,path=join(data.dir,'basic_law_index/events.jsonl')
+ const {createHash,randomUUID}=await import('node:crypto')
+ const unsigned={schemaVersion:2,seq:last.seq+1,prev:last.hash,type:'revise',data:{manifest:{...data.manifest,scope:{...data.manifest.scope,scopeRevision:2},runId:'run-'+randomUUID()}}}
+ const bytes=Buffer.concat([await readFile(path),Buffer.from(JSON.stringify({...unsigned,hash:createHash('sha256').update(JSON.stringify(unsigned)).digest('hex')})+'\n')])
+ await writeFile(path,bytes);await h.store.close()
+ const restored=new TaskStore(h.root,{name:'test',home:join(h.root,'home')},1000);t.after(()=>restored.close())
+ const access=await restored.forSession('owner'),recovered=restored.openTask(access)
+ assert.equal(recovered.state,'cancelled');assert.equal(recovered.unhealthy,true)
+ assert.match(recovered.storageIssue!,new RegExp(`seq=${last.seq+1}$`));assert.deepEqual(await readFile(path),bytes)
+})

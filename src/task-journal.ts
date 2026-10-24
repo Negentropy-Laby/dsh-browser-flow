@@ -8,6 +8,11 @@ import { validOrigins } from './task-definitions.ts'
 export const TASK_FORMAT_VERSION = 1
 export const EXPLORATION_FORMAT_VERSION = 2
 export const supportedTaskFormat=(v:unknown)=>v===1||v===2
+/** Generation 2 terminal history is absorbing; pending receipts can still settle. */
+export function validTaskTransition(manifest:import('./task-store.ts').Manifest,state:string,type:string):boolean {
+  return !isExploration(manifest)||!['completed','cancelled','handed_off'].includes(state)
+    ||!['revise','attempt','exploration','status','wait_requested','wait_input','wait_resolved'].includes(type)
+}
 /** @param {unknown} value - JSON. @returns {value is Record<string, unknown>} object. */
 export const taskRecord = (value: unknown) : value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value)
 /** @param {unknown} value - text. @param {number} max - maximum length. @returns {value is string} bounded text. */
