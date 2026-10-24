@@ -189,7 +189,7 @@ describe('Host loadability', { skip: ready ? false : `missing Host build artifac
       panel: { instanceId: 'panel-rt', pages },
     })
     assert.equal(hello.status, 200)
-    assert.equal(hello.body.value.protocolVersion, 3)
+    assert.equal(hello.body.value.protocolVersion, 4)
     assert.equal(hello.body.value.capabilities.screenshot, 'unsupported')
 
     await post('/api/browser-flow/authorize',{instanceId:'panel-rt',connectionGeneration:1,sessionId:agent.id,taskOperation:'create',spec:{goal:'Synthetic real registry task',origins:['https://example.test']}})
