@@ -291,3 +291,21 @@ test('aggregate edge and payload capacities include the entire serialized event'
  assert.doesNotThrow(()=>assertExplorationCapacity(row))
  assert.throws(()=>assertExplorationCapacity({...row,padding:row.padding+'x'}),/200001 characters/)
 })
+
+test('semantic append and recovery reject missing and foreign endpoints at the valid prefix',async t=>{
+ const h=await setup(t),old=await h.observe();h.access=await h.store.revise(h.access,{newRun:true});await h.start()
+ const data=h.store.openTask(h.access),intent=explorationState(data).currentIntent!,base={requestId:'bad',expectedVersion:data.events.length,command:{op:'add_hint',text:'hint'},changes:{nodes:[],edges:[],updates:[],round:false,completed:false},result:{},run:h.access.run}
+ const path=join(data.dir,'basic_law_index/events.jsonl'),before=await readFile(path)
+ for(const endpoint of ['asset-missing',old,'missing-node'])for(const reverse of [false,true]){
+  const payload={...base,changes:{...base.changes,edges:[{id:'edge-bad',from:reverse?endpoint:intent.id,to:reverse?intent.id:endpoint,relation:'observed_on'}]}}
+  await assert.rejects(h.store.append(h.access,'exploration',payload),/endpoint/)
+ }
+ assert.deepEqual(await readFile(path),before)
+ const {createHash}=await import('node:crypto'),last=data.events.at(-1)!
+ const unsigned={schemaVersion:2,seq:last.seq+1,prev:last.hash,type:'exploration',data:{...base,changes:{...base.changes,edges:[{id:'bad',from:intent.id,to:'asset-missing',relation:'yields'}]}}}
+ const bytes=Buffer.concat([before,Buffer.from(JSON.stringify({...unsigned,hash:createHash('sha256').update(JSON.stringify(unsigned)).digest('hex')})+'\n')]);await writeFile(path,bytes);await h.store.close()
+ const restored=new TaskStore(h.root,{name:'test',home:join(h.root,'home')},1000);t.after(()=>restored.close())
+ const recovered=restored.openTask(await restored.forSession('owner'))
+ assert.equal(recovered.events.length,last.seq);assert.equal(recovered.unhealthy,true);assert.match(recovered.storageIssue!,/seq=/)
+ assert.deepEqual(await readFile(path),bytes)
+})

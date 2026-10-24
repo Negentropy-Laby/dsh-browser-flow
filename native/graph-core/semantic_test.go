@@ -97,3 +97,31 @@ func TestSemanticRejectsForeignRunAndUnapprovedData(t *testing.T) {
 		t.Fatal("unknown semantic payload accepted")
 	}
 }
+
+func TestSemanticClosedStatesAndEventKinds(t *testing.T) {
+	for _, mode := range []string{"wrong-event", "missing-update", "reopen", "wrong-initial", "missing-to"} {
+		t.Run(mode, func(t *testing.T) {
+			in := semanticSample()
+			e := Event{Seq: in.Version + 1, Hash: "invalid", Run: in.Scope, Type: "exploration", Semantic: &SemanticChange{}}
+			switch mode {
+			case "wrong-event":
+				e.Type = "status"
+				e.Semantic.Updates = []SemanticUpdate{{"missing", "running"}}
+			case "missing-update":
+				e.Semantic.Updates = []SemanticUpdate{{"missing", "running"}}
+			case "reopen":
+				e.Semantic.Updates = []SemanticUpdate{{"direction-0", "open"}}
+			case "wrong-initial":
+				e.Semantic.Nodes = []SemanticNode{{"bad", "hint", "agent", map[string]any{"state": "running"}}}
+			case "missing-to":
+				e.Semantic.Edges = []SemanticEdge{{"bad", "origin", "missing", "spawns"}}
+			}
+			in.Events = append(in.Events, e)
+			in.Version++
+			in.TailHash = e.Hash
+			if _, err := Build(context.Background(), in, "candidate"); err == nil {
+				t.Fatal("invalid semantics accepted")
+			}
+		})
+	}
+}

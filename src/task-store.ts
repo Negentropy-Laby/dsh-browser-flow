@@ -58,7 +58,7 @@ import { resolveConfig } from './config.ts'
 import { validUserWait } from './task-wait.ts'
 import { trustedCriterion, validArtifact } from './task-criteria.ts'
 import {EXPLORATION_GUIDE} from './exploration-instructions.ts'
-import { isExploration, explorationState, explorationRun, seedExploration, planExploration, explorationOverview, currentResources, resourceAnchors, canonical, validateExplorationCommand, assertExplorationCapacity, ExplorationError } from './task-exploration.ts'
+import { isExploration, explorationState, explorationRun, seedExploration, planExploration, explorationOverview, currentResources, resourceAnchors, canonical, validateExplorationCommand, assertExplorationChange,assertExplorationCapacity, ExplorationError } from './task-exploration.ts'
 import {EXPLORATION_LIMITS} from './exploration-limits.ts'
 import { validateAssertion, assertionRefs, evaluateAssertion } from './exploration-checks.ts'
 import { parseWorkbookData } from './workbook-core.ts'
@@ -330,6 +330,7 @@ tail: Promise<void>;
     if((type==='created'&&data.events.length!==0)||!validTaskEvent(type,payload,data.manifest,data.pendingWrite,data.waiting,data.waitInput))throw new TaskError('invalid_request','unsupported task event or invalid event payload')
     if(!this.writable && data.events.length>0)throw new TaskError('task_unavailable','task storage has no writer; only read, revoke and hand off')
     if(data.unhealthy)throw new TaskError('task_storage_failed','the task journal is damaged; do not write again')
+    if(type==='exploration')assertExplorationChange(data,payload.changes as unknown as import('./task-exploration.ts').ExplorationChange)
     const unsigned={schemaVersion:data.manifest.schemaVersion??TASK_FORMAT_VERSION,seq:data.events.length+1,prev:data.events.at(-1)?.hash ?? '',type,data:payload}
     const event={...unsigned,hash:hash(JSON.stringify(unsigned))}
     const bytes=Buffer.from(JSON.stringify(event)+'\n')
@@ -842,6 +843,7 @@ tail: Promise<void>;
           const payload={...event.data,...(event.data.manifest && record(event.data.manifest)?{manifest:{...event.data.manifest,schemaVersion:TASK_FORMAT_VERSION}}:{}),...(event.type==='status'&&event.data.run===undefined?{run:{...data.manifest.scope,runId:data.manifest.runId,workflowRef:data.manifest.workflowRef}}:{})}
           if(!validTaskEvent(event.type,payload,{...data.manifest,schemaVersion:TASK_FORMAT_VERSION},data.pendingWrite,data.waiting,data.waitInput))throw new Error('legacy-journal-unsupported-semantics')
         }
+        if(!data.readOnly&&event.type==='exploration')assertExplorationChange(data,event.data.changes as unknown as import('./task-exploration.ts').ExplorationChange)
         const accepted=(event as TaskEvent)
         data.events.push(accepted);this.reduce(data,accepted)
       }

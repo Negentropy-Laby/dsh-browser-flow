@@ -182,6 +182,9 @@ func buildReplay(ctx context.Context, in Input, id string, oracle func(*Projecti
 		if event.Seq != int64(i+1) || event.Run.TaskID != in.Scope.TaskID || event.Run.ProfileID != in.Scope.ProfileID || event.Run.OwnerSessionID != in.Scope.OwnerSessionID {
 			return nil, errors.New("invalid_history")
 		}
+		if event.Semantic != nil && (!in.Exploration || event.Type != "created" && event.Type != "revise" && event.Type != "exploration") {
+			return nil, errors.New("invalid_semantic_event_type")
+		}
 		switch event.Type {
 		case "created", "revise":
 			if event.Semantic != nil {

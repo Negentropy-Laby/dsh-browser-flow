@@ -49,6 +49,8 @@ export declare const explorationRun: (task: TaskData) => {
 export declare function canonical(value: unknown): string;
 export declare function seedExploration(manifest: Manifest): ExplorationChange;
 export declare function explorationState(task: TaskData): ExplorationState;
+/** Validate against the accepted prefix without changing its state or journal. */
+export declare function assertExplorationChange(task: TaskData, change: ExplorationChange): void;
 export declare function validExplorationEvent(row: Record<string, unknown>): boolean;
 /** Reject an entire planned batch before evidence reads or any durable effects. */
 export declare function assertExplorationCapacity(row: Record<string, unknown> & {

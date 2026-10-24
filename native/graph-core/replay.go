@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package graphcore
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 // replayState tracks only contributions affected by the current event. Each
 // live intent owns sets, so removing a cyclic branch cannot keep itself hot.
@@ -144,6 +147,9 @@ func (r *replayState) apply(ctx context.Context, p *Projection, event Event, sta
 	if event.Semantic != nil {
 		for _, u := range event.Semantic.Updates {
 			n := p.index[u.ID]
+			if n == nil || n.run != event.Run {
+				return errors.New("invalid_semantic_update")
+			}
 			r.dirty[n.key] = true
 			if liveNode(n) {
 				if r.live[n.key] == nil {

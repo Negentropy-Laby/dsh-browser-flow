@@ -37,6 +37,32 @@ func liveNode(n *Node) bool {
 	s := n.Data["state"]
 	return s == "open" || s == "running" || s == "paused"
 }
+func initialSemanticState(n SemanticNode) bool {
+	switch n.Kind {
+	case "goal", "intent":
+		return n.Data["state"] == "open"
+	case "hint":
+		return n.Data["state"] == "active"
+	case "fact":
+		if n.Source == "host" {
+			return n.Data["state"] == "origin"
+		}
+		return n.Data["state"] == "confirmed"
+	}
+	return false
+}
+func semanticTransition(n *Node, state string) bool {
+	if n.Kind == "goal" {
+		return state == "met" && (n.Data["state"] == "open" || n.Data["state"] == "met")
+	}
+	if n.Kind != "intent" {
+		return false
+	}
+	if n.Data["state"] == "open" {
+		return state == "running"
+	}
+	return n.Data["state"] == "running" && (state == "done" || state == "blocked" || state == "exhausted" || state == "stopped")
+}
 func (p *Projection) applySemantic(event Event) error {
 	c := event.Semantic
 	if c == nil || len(c.Nodes) > 128 || len(c.Edges) > 256 || len(c.Updates) > 128 {
@@ -61,6 +87,9 @@ func (p *Projection) applySemantic(event Event) error {
 				return errors.New("invalid_semantic_data")
 			}
 		}
+		if !initialSemanticState(n) {
+			return errors.New("invalid_semantic_state")
+		}
 		data := map[string]any{}
 		for k, v := range n.Data {
 			data[k] = v
@@ -71,6 +100,9 @@ func (p *Projection) applySemantic(event Event) error {
 		n := p.index[u.ID]
 		if n == nil || n.run != event.Run {
 			return errors.New("invalid_semantic_update")
+		}
+		if !semanticTransition(n, u.State) {
+			return errors.New("invalid_semantic_state")
 		}
 		n.Data["state"] = u.State
 	}
