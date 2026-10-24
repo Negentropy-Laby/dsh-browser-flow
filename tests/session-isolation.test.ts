@@ -63,7 +63,7 @@ function makeHost() {
  */
 async function call(route: import('../src/index.ts').FetchRoute, body: unknown)  {
   const response = await route.fetch(new Request('http://host.test/', {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body && typeof body === 'object' && !Array.isArray(body) ? { protocolVersion: 3, ...body } : body),
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body && typeof body === 'object' && !Array.isArray(body) ? { protocolVersion: 4, ...body } : body),
   }))
   return response.json()
 }
@@ -73,7 +73,7 @@ describe('Session isolation at the tool and route level', () => {
     const host = makeHost()
     const helloFor = async (instanceId:string, sessionId:string, lease:string) => {
       const answer = await call(present(host.routes.get('POST /api/browser-flow/hello')), {
-        kind: 'hello', protocolVersion: 3, connectionGeneration: 1, sessionId,
+        kind: 'hello', protocolVersion: 4, connectionGeneration: 1, sessionId,
         panel: {
           instanceId,
           pages: [{ lease, partition: 'part-1', url: 'https://a.test/' + lease, documentToken: 'doc-' + lease, tabId: 'tab-' + lease }],
@@ -99,7 +99,7 @@ describe('Session isolation at the tool and route level', () => {
   it('refuses to authorize a page the other Session reported', async () => {
     const host = makeHost()
     await call(present(host.routes.get('POST /api/browser-flow/hello')), {
-      kind: 'hello', protocolVersion: 3, connectionGeneration: 1, sessionId: 'session-2',
+      kind: 'hello', protocolVersion: 4, connectionGeneration: 1, sessionId: 'session-2',
       panel: {
         instanceId: 'panel-2',
         pages: [{ lease: 'theirs', partition: 'part-1', url: 'https://a.test/theirs', documentToken: 'doc-theirs', tabId: 'tab-theirs' }],

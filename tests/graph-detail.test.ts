@@ -147,7 +147,7 @@ it('rejects corrupt fragments and unowned complete JSON before returning detail'
  for(const mode of ['offset','total','empty','duplicate','base64','utf8','json','foreign','limit','binding'] as const){
   const stdin=new PassThrough(),stdout=new PassThrough();let end!:()=>void;const done=new Promise<void>(resolve=>{end=resolve});let chunks=0
   const decoder=new Frames(config.graphMaxFrameBytes,raw=>{
-   const q=expectRecord(raw);let value:unknown=q.op==='hello'?{kernelVersion:'4',rulesVersion:'structural-v1'}:view
+   const q=expectRecord(raw);let value:unknown=q.op==='hello'?{kernelVersion:'5',rulesVersion:'structural-v1'}:view
    if(q.op==='detail'){
     chunks++;const offset=Number(q.offsetBytes??0),data=mode==='utf8'?Buffer.from([255]):mode==='json'?Buffer.from('{broken'):mode==='foreign'?Buffer.from('{"nodes":[],"edges":[],"digests":[]}'):serialized
     const count=chunks===1&&['total','duplicate'].includes(mode)?10:data.length-offset

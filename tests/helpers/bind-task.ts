@@ -22,5 +22,5 @@ export async function bindTestTask(service:import('../../src/index.ts').BrowserF
     await writeFile(join(fixture.dir,'definition.json'),JSON.stringify({...fixture.definition,adapter:'bjrsj',origins,workflows:fixture.definition.workflows.map(row=>({...row,id:'import',stopBoundary:'import_confirmed'}))}))
     return service.tasks.create(sessionId,{definitionId:fixture.definition.id,workflowRef:'import',goal:'Synthetic verifier task'})
   }
-  return service.tasks.create(sessionId,{goal:'Synthetic task',origins})
+  return service.tasks.create(sessionId,{goal:'Synthetic task',origins,workflowRef:'generic'})
 }

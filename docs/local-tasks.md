@@ -1,5 +1,7 @@
 # Local tasks and infrastructure
 
+New generic tasks need only a goal and allowed origins. They use generation 2 and the ARTEX-style exploration loop described in [workflow.md](workflow.md); no local definition is required. The definition-specific instructions below describe generation-1 compatibility. A semantic intent contains browser attempts; Agent business assessments and Host evidence checks remain distinct.
+
 `/tasks/` is ignored at the repository root and excluded from the package's explicit file whitelist. Keep local definitions, instructions, input files and detailed evidence there. Infrastructure, trusted site safety policies and synthetic fixtures stay tracked outside it. Build and cleanup never delete local tasks.
 
 Set `localTasksDir` in a private profile when a separate task directory is needed. Without that setting it defaults to `profileContext.home/browser-flow/tasks`; neither CWD nor the plugin installation directory supplies a storage location. Missing directories are normal at load. Task creation initializes runtime storage lazily. Resource references must stay within a definition and may not traverse links. Never commit resolved user directories or profile data.
@@ -18,7 +20,7 @@ The profile store acquires one cross-process writer lease in a verified local OS
 
 Every async resumption rechecks the exact Agent, task/run, lease, document, epoch, panel and generation. Revocation clears control before any journal operation. Shutdown stops admission, revokes, drains admitted operations and their final records, then releases storage. A task-log error cannot hold the page grant open. A readable existing journal can be opened without a writer for safe task inspection; it cannot authorize new writes.
 
-Recovery preserves valid history and damaged original bytes; it never truncates evidence or sends a command. Incomplete attempts and damaged tails block writes. Unknown results remain blocked through new runs, revisions, handoff and restart. Ending a task records user lifecycle and does not assert that its business criteria passed.
+Recovery preserves valid history and damaged original bytes; it never truncates evidence or sends a command. Incomplete attempts and damaged tails block writes. Unknown results remain blocked through new runs, revisions, handoff and restart. User cancellation/handoff does not assert business success. New generation-2 exploration tasks can also complete after all mandatory goals obtain current source-backed proofs; that conclusion remains Agent-authored.
 
 Only a synchronized, valid unknown receipt sets the durable unknown-write block. Invalid or duplicate receipts leave the task state unchanged. A journal write or synchronization failure independently blocks writes until safe handoff; it cannot be treated as an unexecuted action.
 
@@ -42,7 +44,7 @@ Every authorized guest is checked against the task's exact allowed origins. The 
 
 The Host queue also refuses direct `act` entry without the task's current durable attempt. This prevents internal consumers from bypassing the write journal. Recovery validates revision ownership before reducing it; an inconsistent revision cannot replace a task's Session/profile/task identity.
 
-New storage uses format v1 for manifests, ownership and every journal record. Append and recovery share the closed event parser. Unversioned predecessors remain byte-preserved, read-only history; unknown or invalid records expose a storage issue and cannot enable writes. A new Session is required for new work.
+Legacy definition storage uses format v1 for manifests, ownership and every journal record. Append and recovery share the closed event parser. Unversioned predecessors remain byte-preserved, read-only history; unknown or invalid records expose a storage issue and cannot enable writes. A new Session is required for new work.
 
 Trusted adapters add stable, task-scoped criteria. User text remains unverified unless a supported code predicate applies. A business label is not a proof: navigation rechecks its owned page observation; import rechecks the input snapshot, once-only acknowledged dispatch, identity, complete response and fresh table through the existing strict validators. Originals and their digests stay private. Missing, changed, foreign or previous-run evidence cannot certify a current criterion, including after recovery.
 

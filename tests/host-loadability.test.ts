@@ -175,7 +175,7 @@ describe('Host loadability', { skip: ready ? false : `missing Host build artifac
       const response = await present(route).fetch(new Request(`http://127.0.0.1:62231${path}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body && typeof body === 'object' && !Array.isArray(body) ? { protocolVersion: 3, ...body } : body),
+        body: JSON.stringify(body && typeof body === 'object' && !Array.isArray(body) ? { protocolVersion: 4, ...body } : body),
       }))
       return { status: response.status, body: await response.json() }
     }
@@ -185,11 +185,11 @@ describe('Host loadability', { skip: ready ? false : `missing Host build artifac
       url: 'https://example.test/sheet?token=leak', documentToken: 'doc-rt', tabId: 'tab-rt',
     }]
     const hello = await post('/api/browser-flow/hello', {
-      kind: 'hello', protocolVersion: 3, connectionGeneration: 1, sessionId: agent.id,
+      kind: 'hello', protocolVersion: 4, connectionGeneration: 1, sessionId: agent.id,
       panel: { instanceId: 'panel-rt', pages },
     })
     assert.equal(hello.status, 200)
-    assert.equal(hello.body.value.protocolVersion, 3)
+    assert.equal(hello.body.value.protocolVersion, 4)
     assert.equal(hello.body.value.capabilities.screenshot, 'unsupported')
 
     await post('/api/browser-flow/authorize',{instanceId:'panel-rt',connectionGeneration:1,sessionId:agent.id,taskOperation:'create',spec:{goal:'Synthetic real registry task',origins:['https://example.test']}})

@@ -16,7 +16,7 @@ async function fixture(t:import('node:test').TestContext) {
   t.after(async()=>{await store.close();await rm(root,{recursive:true,force:true})})
   return {root,store,profile}
 }
-const spec={goal:'Read a synthetic task',origins:['https://one.example','https://two.example'],constraints:['Do not submit'],criteria:['Current visible document observed']}
+const spec={workflowRef:'generic',goal:'Read a synthetic task',origins:['https://one.example','https://two.example'],constraints:['Do not submit'],criteria:['Current visible document observed']}
 it('rejects invalid task display budgets before evidence or graph work',async t=>{
   const {store}=await fixture(t),access=await store.create('budget-owner',spec)
   store.refreshEvidence=async()=>{assert.fail('invalid display budget reached evidence work')}

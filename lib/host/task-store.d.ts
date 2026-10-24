@@ -24,6 +24,7 @@ export type TaskEvent = {
     hash: string;
 };
 export type TaskData = {
+    derivedIndex?: import("./task-exploration.ts").TaskDerivedIndex;
     manifest: Manifest;
     snapshot?: import("./task-definitions.ts").DefinitionSnapshot;
     events: TaskEvent[];
@@ -69,6 +70,7 @@ export declare class TaskStore {
     tasks: Map<string, TaskData>;
     bindings: Map<string, string>;
     private creationFailures;
+    private derived;
     private evidenceReads;
     private detailLengths;
     handles: WeakMap<TaskAccess, TaskData>;
@@ -135,6 +137,7 @@ export declare class TaskStore {
     view(access: TaskAccess, budget: number, signal?: AbortSignal | undefined): Promise<ReturnType<typeof taskView>>;
     /** @param {TaskAccess} access - owner. @param {Record<string,unknown>} value - private original facts. @returns {Promise<string>} task-local evidence reference. */
     proof(access: TaskAccess, value: Record<string, unknown>): Promise<string>;
+    private proofOwned;
     /** @param {TaskAccess} access - owner. @param {string} path - existing private original. @param {string} role - fixed evidence role. @returns {Promise<import('./task-criteria.ts').Artifact>} bound artifact without exposing its bytes. */
     artifact(access: TaskAccess, path: string, role: string): Promise<import('./task-criteria.ts').Artifact>;
     /** @param data - opened owner. @param ref - relative evidence file. @returns Current identity and timestamps after checking private ownership and size. */
@@ -146,7 +149,22 @@ export declare class TaskStore {
     /** @param {TaskAccess} access - owner. @param {Record<string,unknown>} result - trusted validator result. @param {string} proofRef - private original reference. @returns {Promise<string>} independently checked current verdict. */
     verdict(access: TaskAccess, result: Record<string, unknown>, proofRef: string): Promise<string>;
     /** @param {TaskAccess} access - capability. @param {string} kind - code-owned asset kind. @param {Record<string,unknown>} data - safe facts; raw personnel remain in private evidence. @param {'host'|'code_verified'} [source] - factual authority. @returns {Promise<string>} unique task-local reference, never deduplicated by name or content. */
-    asset(access: TaskAccess, kind: string, data: Record<string, unknown>, source?: 'host' | 'code_verified'): Promise<string>;
+    asset(access: TaskAccess, kind: string, value: Record<string, unknown>, source?: 'host' | 'code_verified', options?: {
+        persistOriginal?: boolean;
+    }): Promise<string>;
+    private assetOwned;
+    /** Read only a Host-registered immutable observation/file in this exact run. */
+    private originalSource;
+    private parseSource;
+    private sourceDocument;
+    private assertionKey;
+    checkPassed(data: TaskData, id: string, evidenceRefs: string[]): boolean;
+    /** The only semantic mutation entry. It never dispatches a page command. */
+    explore(access: TaskAccess, command: unknown, requestId: unknown, expectedVersion: unknown, beforeComplete?: (completed: boolean) => void): Promise<Record<string, unknown>>;
+    /** Semantic queries stay available when Go is unavailable; explicit reads recheck evidence. */
+    queryExploration(access: TaskAccess, query: unknown, budget?: number): Promise<Record<string, unknown>>;
+    private semanticProjection;
+    fileView(access: TaskAccess, id: string, offset: number, budget: number, projectionId?: string): Promise<object>;
     /** @param {TaskAccess} access - capability. @param {string} from - existing task asset. @param {string} to - existing task asset. @param {string} relation - fixed relation. @returns {Promise<string>} journaled relation after both ownership checks. */
     relate(access: TaskAccess, from: string, to: string, relation: string): Promise<string>;
     /** Verified guest context for an operation; a missing observation stays context-only. */

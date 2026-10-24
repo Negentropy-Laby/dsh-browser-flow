@@ -51,7 +51,7 @@ function page(overrides = {}) {
 function hello(overrides = {}) {
   return {
     kind: 'hello',
-    protocolVersion: 3,
+    protocolVersion: 4,
     connectionGeneration: 1,
     sessionId: 'session-1',
     panel: { instanceId: 'panel-1', pages: [page()] },

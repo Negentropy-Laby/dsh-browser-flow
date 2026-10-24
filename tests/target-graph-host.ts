@@ -96,18 +96,18 @@ async function main(){
   context.provide('connection',{fetch:{register:(route:import('../src/index.ts').FetchRoute)=>{routes.set(route.path,route);return()=>routes.delete(route.path)}}})
   await context.plugin({inject:plugin.inject,apply:(ctx:import('../src/index.ts').HostContext)=>plugin.apply(ctx,{localTasksDir:join(scratch,'tasks')})})
   assert.equal(context.tools.schemas().filter((row)=>row.name.startsWith('browser_')).length,6);assert.equal(routes.size,7);checks.push('six tools and seven routes')
-  async function post(path:string,body:object){const response=await routes.get('/api/browser-flow/'+path).fetch(new Request('http://fixture.test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({protocolVersion:3,...body})}));const value=await response.json();assert.equal(value.ok,true,JSON.stringify(value));return value.value}
+  async function post(path:string,body:object){const response=await routes.get('/api/browser-flow/'+path).fetch(new Request('http://fixture.test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({protocolVersion:4,...body})}));const value=await response.json();assert.equal(value.ok,true,JSON.stringify(value));return value.value}
   const outputs:Record<string,unknown>={}
   for(const id of ['a','b'] as const){
    const sessionId='graph-'+id,instanceId='panel-'+id
    const page={lease:'synthetic-guest-'+id,partition:'synthetic-'+id,documentToken:'document-'+id,url:'https://'+id+'.example/fixture'}
    await post('hello',{kind:'hello',connectionGeneration:1,sessionId,panel:{instanceId,pages:[page]}})
-   const task=await post('authorize',{instanceId,connectionGeneration:1,sessionId,taskOperation:'create',spec:{goal:'Synthetic graph '+id,origins:['https://'+id+'.example'],criteria:['A free criterion stays unverified']}})
+   const task=await post('authorize',{instanceId,connectionGeneration:1,sessionId,taskOperation:'create',spec:{workflowRef:'generic',goal:'Synthetic graph '+id,origins:['https://'+id+'.example'],criteria:['A free criterion stays unverified']}})
    if(id==='a')firstScope=task.task
    await post('authorize',{instanceId,connectionGeneration:1,sessionId,...page})
    const result=await present(context.tools.get('browser_observe')).execute({view:'task'},{agent:agents.get(sessionId),signal:new AbortController().signal})
    assert.equal(result.ok,true);assert.equal(expectRecord(expectRecord(expectRecord(result.value).active_context).graph).status,'ready',JSON.stringify(result))
-   assert.equal(expectRecord(expectRecord(expectRecord(result.value).active_context).graph).kernelVersion,'4')
+   assert.equal(expectRecord(expectRecord(expectRecord(result.value).active_context).graph).kernelVersion,'5')
    assert.equal(expectRecord(result.value).businessVerdict,'unverified');outputs[id]=result
    const exec={agent:agents.get(sessionId),signal:new AbortController().signal}
    for(const ref of ['graph:assets','graph:exploration','coverage']){
@@ -247,6 +247,39 @@ async function main(){
    assert.ok(expectList(JSON.parse(expectString(details.text))).every(c=>expectRecord(c).status!=='passed'))
    checks.push('changed bytes with fixed reported metadata invalidate Host proof and stale graph','fact detail independently rechecks evidence')
   }finally{await store.close();await detachEvidence();await evidenceGraph.close()}
+  // Exercise generation 2 through the mounted Windows Host tool runtime.
+  const genericFacts:string[]=[]
+  for(const suffix of ['one','two']){
+   const sessionId='generic-'+suffix,instanceId='generic-panel-'+suffix,agent={id:sessionId}
+   agents.set(sessionId,agent)
+   const page={lease:'generic-guest-'+suffix,partition:'generic-partition-'+suffix,documentToken:'generic-document-'+suffix,url:'https://'+suffix+'.example/neutral'}
+   await post('hello',{kind:'hello',connectionGeneration:1,sessionId,panel:{instanceId,pages:[page]}})
+   await post('authorize',{instanceId,connectionGeneration:1,sessionId,taskOperation:'create',spec:{goal:'Establish a synthetic outcome',origins:['https://'+suffix+'.example']}})
+   await post('authorize',{instanceId,connectionGeneration:1,sessionId,...page})
+   const exec={agent,signal:new AbortController().signal}
+   const tool=async(name:string,args:Record<string,unknown>)=>expectRecord(expectOk(await present(context.tools.get(name)).execute(args,exec)))
+   let request=0
+   const explore=async(command:Record<string,unknown>)=>{const summary=await tool('browser_observe',{view:'task'});return tool('browser_act',{action:'explore',explore:command,requestId:'windows-'+(++request),expectedVersion:summary.contextVersion})}
+   await explore({op:'add_intent',summary:'Inspect the actual synthetic outcome'})
+   await explore({op:'claim_intent'})
+   const observing=present(context.tools.get('browser_observe')).execute({view:'table'},exec)
+   const polled=await post('poll',{instanceId,connectionGeneration:1,sessionId,pages:[page]}),command=polled.commands[0]
+   assert.equal(command.op.view,'table')
+   await post('result',{kind:'result',task:command.task,id:command.id,leaseId:command.leaseId,instanceId,connectionGeneration:1,epoch:command.epoch,sequence:command.sequence,outcome:'ok',payload:{url:page.url,documentToken:page.documentToken,title:'neutral-'+suffix,tables:[],domComplete:true,datasetComplete:false}})
+   const observation=expectRecord(expectOk(await observing)),ref=expectString(observation.assetRef)
+   const check=await explore({op:'check_evidence',assertion:{op:'equals',left:{ref,path:['title']},right:{value:observation.title}}})
+   const fact=await explore({op:'record_fact',summary:'Observed and checked a synthetic result',confidence:'observed',evidence_refs:[ref],check_refs:[check.check_ref],asset_ids:[observation.resourceRef]})
+   genericFacts.push(expectString(expectList(fact.ids)[0]))
+   await explore({op:'finish_intent'})
+   const overview=await tool('browser_observe',{view:'task',query:{op:'graph_overview'}}),goal=expectRecord(expectList(expectRecord(overview.value).goals)[0])
+   const completed=await explore({op:'prove_goal',goal_id:goal.id,evidence_id:genericFacts.at(-1),reason:'The original snapshot satisfies the source-backed synthetic assertion'})
+   assert.equal(completed.state,'completed');assert.equal(completed.proofSource,'agent')
+   const view=await tool('browser_observe',{view:'task'});assert.equal(view.state,'completed');assert.equal(expectRecord(expectRecord(view.active_context).graph).status,'ready');assert.equal(expectRecord(view.active_context).pageControl,'unavailable')
+   const detail=await tool('browser_observe',{view:'task',ref:'graph:exploration'})
+   assert.ok(expectString(detail.text).includes('fact'))
+   if(suffix==='two')assert.equal(expectFailure(await present(context.tools.get('browser_observe')).execute({view:'task',query:{op:'node_detail',id:genericFacts[0]}},exec)).code,'task_not_bound')
+  }
+  checks.push('Windows generation-2 goals/intents/facts and source-backed assertions through mounted tools','Windows completion revokes control and remains readable without claiming trusted business verdict','Windows generation-2 semantic and resource isolation')
   await context.fiber.dispose();assert.ok((await Promise.all(owned.map(handle=>handle.waitForExit()))).every(Boolean));assert.equal(context.tools?.schemas().filter((row)=>row.name.startsWith('browser_')).length??0,0);checks.push('awaited provider and plugin disposal')
   const manifest=JSON.parse(await readFile(new URL('../lib/native/manifest.json',import.meta.url),'utf8'))
   const result={recordedAt:new Date().toISOString(),status:'PASS',kind:'target-artifact fixture; synthetic task calls, not normal Agent or website acceptance',target:sha,node:process.version,platform:process.platform,checks,timings,native:manifest,hostSha256:createHash('sha256').update(await readFile(new URL('../lib/host/index.js',import.meta.url))).digest('hex')}

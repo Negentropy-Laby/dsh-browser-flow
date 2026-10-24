@@ -20,14 +20,15 @@ function expected(input:GraphInput):{refs:Map<string,Expected>;edges:Map<string,
   edges.set(id,{id,taskId:input.scope.taskId,from,to,relation,sourceSeq})
  }
  for(const e of input.events){const run=e.run
-  if(e.type==='created'||e.type==='revise')add(goal(e.run),{kind:'goal',source:'user_declared',sourceSeq:e.seq,data:{goal:e.goal},run})
+  if(!e.semantic&&(e.type==='created'||e.type==='revise'))add(goal(e.run),{kind:'goal',source:'user_declared',sourceSeq:e.seq,data:{goal:e.goal},run})
   if(e.type==='asset'&&e.id)add(e.id,{kind:e.kind??'',source:e.source??'',sourceSeq:e.seq,data:{...(e.kind==='page'?{documentToken:e.documentToken??''}:{}),...(e.resource?{resourceRef:e.resource.id,snapshotKind:e.resource.snapshotKind}:{})},run})
-  if(e.type==='attempt'&&e.id){add(e.id,{kind:'intent',source:'model_intent',sourceSeq:e.seq,data:{action:e.action,status:'pending',businessSuccess:false},run});link(`intent-edge-${e.seq}`,e.id,goal(e.run),'attempts',e.seq)}
+  if(e.type==='attempt'&&e.id){add(e.id,{kind:input.exploration?'attempt':'intent',source:'model_intent',sourceSeq:e.seq,data:{action:e.action,status:'pending',businessSuccess:false},run});link(`intent-edge-${e.seq}`,e.id,e.intentId??goal(e.run),'attempts',e.seq)}
   if(e.type==='receipt'&&e.id){const a=result.get(e.id);if(a)a.data.status=e.outcome;const id=`receipt-${input.scope.taskId}-${e.seq}`;add(id,{kind:'receipt',source:'host',sourceSeq:e.seq,data:{outcome:e.outcome},run});link(`receipt-edge-${e.seq}`,id,e.id,'records',e.seq)}
+  if(e.semantic){if(e.type==='revise')for(const n of result.values())if(n.kind==='intent'&&!sameRunScope(n.run,e.run))n.data.state='stopped';for(const n of e.semantic.nodes)add(n.id,{kind:n.kind,source:n.source,sourceSeq:e.seq,data:{...n.data},run});for(const u of e.semantic.updates){const n=result.get(u.id);if(!n)bad();n.data.state=u.state};if(e.semantic.completed)for(const n of result.values())if(n.kind==='intent'&&sameRunScope(n.run,e.run)&&n.data.state==='open')n.data.state='stopped';for(const edge of e.semantic.edges)link(edge.id,edge.from,edge.to,edge.relation,e.seq)}
   if(e.type==='edge')link(e.id??'',e.from??'',e.to??'',e.relation??'',e.seq)
  }
  const run=input.scope
- add(goal(input.scope),{kind:'goal',source:'user_declared',sourceSeq:1,data:{goal:input.goal},run})
+ if(!input.exploration)add(goal(input.scope),{kind:'goal',source:'user_declared',sourceSeq:1,data:{goal:input.goal},run})
  for(const c of input.criteria){
   add(c.id,{kind:'criterion',source:c.source,sourceSeq:1,data:{label:c.label,status:c.status,validatorId:c.validatorId??'',validatorVersion:c.version??0},run})
   if(c.source==='code_verified'&&c.status==='passed')link(`proof-edge-${input.proofSeq}-${c.id}`,input.proofRef,c.id,'proves',input.proofSeq)
@@ -45,7 +46,7 @@ function digests(value:unknown,refs:Map<string,Expected>,input:GraphInput,hash:s
   const row=object(valueRow);keys(row,['id','members','anchors','outcomes','sourceSeqs','signature'])
   if(typeof row.signature!=='string'||!/^[a-f0-9]{64}$/.test(row.signature)||row.id!==`digest-${hash}-${row.signature}`)bad()
   const members=list(row.members),memberSet=new Set(members),anchors=list(row.anchors);if(members.length<input.minGroup)bad();let run:GraphInput['scope']|undefined;const outcomes:Record<string,number>={},seqs:number[]=[]
-  for(const id of members){if(typeof id!=='string'||covered.has(id)||protectedRefs.has(id))bad();const node=refs.get(id);if(!node||!['intent','receipt'].includes(node.kind)||['pending','unknown_outcome'].includes(String(node.data.status??node.data.outcome)))bad();if(run&&!sameRunScope(run,node.run))bad();run=node.run;covered.add(id);seqs.push(node.sourceSeq);if(node.kind==='receipt'){const outcome=String(node.data.outcome);outcomes[outcome]=(outcomes[outcome]??0)+1}}
+  for(const id of members){if(typeof id!=='string'||covered.has(id)||protectedRefs.has(id))bad();const node=refs.get(id);if(!node||!['intent','receipt','fact'].includes(node.kind)||['pending','unknown_outcome','open','running','paused','origin'].includes(String(node.data.state??node.data.status??node.data.outcome)))bad();if(run&&!sameRunScope(run,node.run))bad();run=node.run;covered.add(id);seqs.push(node.sourceSeq);if(node.kind==='receipt'){const outcome=String(node.data.outcome);outcomes[outcome]=(outcomes[outcome]??0)+1}}
   for(const id of anchors)if(typeof id!=='string'||!refs.has(id)||memberSet.has(id))bad()
   if(!equal(outcomes,row.outcomes)||!equal(seqs.sort((a,b)=>a-b),row.sourceSeqs))bad();if(all.has(String(row.id)))bad();all.set(String(row.id),{row,members:memberSet})
  }
@@ -58,7 +59,7 @@ function edge(value:unknown,input:GraphInput,refs:Map<string,Expected>,ds:Map<st
 }
 function attempt(value:unknown,refs:Map<string,Expected>,frontier:boolean):void {
  const row=object(value);keys(row,['id','action','status','sourceSeq','source','businessSuccess']);if(typeof row.id!=='string')bad();const n=refs.get(row.id)
- if(!n||n.kind!=='intent'||row.action!==n.data.action||row.status!==n.data.status||row.sourceSeq!==n.sourceSeq||row.source!=='model_intent'||row.businessSuccess!==false)bad()
+ if(!n||!['intent','attempt'].includes(n.kind)||row.action!==n.data.action||row.status!==n.data.status||row.sourceSeq!==n.sourceSeq||row.source!=='model_intent'||row.businessSuccess!==false)bad()
  if(frontier&&!['pending','unknown_outcome'].includes(String(row.status)))bad()
 }
 function isAsset(kind:string):boolean{return ['page','file','unit_check','import_result','evidence'].includes(kind)}
@@ -86,12 +87,13 @@ function connected(seeds:string[],edges:Map<string,ExpectedEdge>):Set<string> {
 export function validateView(value:unknown,input:GraphInput,hash:string):JsonRecord {
  const v=object(value);if(Object.keys(v).sort().join(',')!=='active_context,knowledge_graph,procedural_law_index,technical_law_index')bad()
  const p=object(v.procedural_law_index),t=object(v.technical_law_index),g=object(v.knowledge_graph),a=object(v.active_context),{refs,edges:expectedEdges}=expected(input)
- keys(p,['goal','constraints','criteria','intents','frontier','details','criteriaRef']);keys(t,['assets','total','byKind']);keys(g,['nodes','edges','totalEdges','totalNodes','digests','digestCount','details','views']);keys(a,['recentAssets','round','complete','truncated'])
+ keys(p,['goal','constraints','criteria','intents','attempts','frontier','details','criteriaRef']);keys(t,['assets','total','byKind']);keys(g,['nodes','edges','totalEdges','totalNodes','digests','digestCount','details','views']);keys(a,['recentAssets','round','complete','truncated'])
  if(p.goal!==undefined&&!equal(p.goal,{text:input.goal,source:'user_declared'}))bad()
  if(p.constraints!==undefined&&!equal(p.constraints,input.constraints))bad()
  if(p.criteria!==undefined&&!equal(p.criteria,input.criteria))bad()
- for(const row of p.intents===undefined?[]:list(p.intents))attempt(row,refs,false)
- for(const row of p.frontier===undefined?[]:list(p.frontier))attempt(row,refs,true)
+ for(const row of p.intents===undefined?[]:list(p.intents)){if(input.exploration)metadata(row,refs);else attempt(row,refs,false)}
+ for(const row of p.attempts===undefined?[]:list(p.attempts))attempt(row,refs,false)
+ for(const row of p.frontier===undefined?[]:list(p.frontier)){if(input.exploration){metadata(row,refs);if(!['open','running','paused'].includes(String(refs.get(String(object(row).id))?.data.state)))bad()}else attempt(row,refs,true)}
  for(const row of t.assets===undefined?[]:list(t.assets))metadata(row,refs,true)
  for(const row of a.recentAssets===undefined?[]:list(a.recentAssets))metadata(row,refs,true)
  for(const row of g.nodes===undefined?[]:list(g.nodes))metadata(row,refs)

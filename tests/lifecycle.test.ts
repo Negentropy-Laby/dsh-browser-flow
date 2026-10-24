@@ -29,7 +29,7 @@ function ready() {
   const state = createControlState()
   const limits = resolveConfig({})
   state.registerConnection({
-    kind: 'hello', protocolVersion: 3, connectionGeneration: 1, sessionId: 'session-1',
+    kind: 'hello', protocolVersion: 4, connectionGeneration: 1, sessionId: 'session-1',
     panel: { instanceId: 'panel-1', pages: [page] },
   })
   const granted = state.authorize({
@@ -100,7 +100,7 @@ describe('a restored channel opens a new generation', () => {
     assert.equal(state.leaseCountForSession('session-1'), 1)
     // Reconnect uses a new generation.
     const rejoined = state.registerConnection({
-      kind: 'hello', protocolVersion: 3, connectionGeneration: 2, sessionId: 'session-1',
+      kind: 'hello', protocolVersion: 4, connectionGeneration: 2, sessionId: 'session-1',
       panel: { instanceId: 'panel-1', pages: [page] },
     })
     assert.equal(rejoined.ok, true)
@@ -112,7 +112,7 @@ describe('a restored channel opens a new generation', () => {
   it('refuses a poll that names the generation it replaced', () => {
     const { state, limits } = ready()
     state.registerConnection({
-      kind: 'hello', protocolVersion: 3, connectionGeneration: 2, sessionId: 'session-1',
+      kind: 'hello', protocolVersion: 4, connectionGeneration: 2, sessionId: 'session-1',
       panel: { instanceId: 'panel-1', pages: [page] },
     })
     const current = state.takeCommands('panel-1', 2, limits)
@@ -181,14 +181,14 @@ describe('revoked leases do not accumulate', () => {
     const state = createControlState()
     const limits = resolveConfig({})
     state.registerConnection({
-      kind: 'hello', protocolVersion: 3, connectionGeneration: 1, sessionId: 'session-1',
+      kind: 'hello', protocolVersion: 4, connectionGeneration: 1, sessionId: 'session-1',
       panel: { instanceId: 'panel-1', pages: [] },
     })
     // Forty grant-and-revoke cycles: far more history than the Host should keep.
     for (let index = 0; index < 40; index += 1) {
       const guest = 'guest-' + String(index)
       state.registerConnection({
-        kind: 'hello', protocolVersion: 3, connectionGeneration: 1, sessionId: 'session-1',
+        kind: 'hello', protocolVersion: 4, connectionGeneration: 1, sessionId: 'session-1',
         panel: { instanceId: 'panel-1', pages: [{ lease: guest, partition: 'part-1', url: 'https://a.test/x' + String(index), documentToken: 'doc-' + String(index), tabId: 'tab-' + String(index) }] },
       })
       const granted = state.authorize({
@@ -215,12 +215,12 @@ describe('revoked leases do not accumulate', () => {
   it('never prunes an active lease', () => {
     const state = createControlState()
     state.registerConnection({
-      kind: 'hello', protocolVersion: 3, connectionGeneration: 1, sessionId: 'session-1',
+      kind: 'hello', protocolVersion: 4, connectionGeneration: 1, sessionId: 'session-1',
       panel: { instanceId: 'panel-1', pages: [] },
     })
     // One live grant, then enough churn to trigger pruning.
     state.registerConnection({
-      kind: 'hello', protocolVersion: 3, connectionGeneration: 1, sessionId: 'session-1',
+      kind: 'hello', protocolVersion: 4, connectionGeneration: 1, sessionId: 'session-1',
       panel: { instanceId: 'panel-1', pages: [{ lease: 'keep', partition: 'part-1', url: 'https://a.test/keep', documentToken: 'doc-keep', tabId: 'tab-keep' }] },
     })
     const live = state.authorize({
@@ -233,7 +233,7 @@ describe('revoked leases do not accumulate', () => {
     for (let index = 0; index < 40; index += 1) {
       const guest = 'churn-' + String(index)
       state.registerConnection({
-        kind: 'hello', protocolVersion: 3, connectionGeneration: 1, sessionId: 'session-churn',
+        kind: 'hello', protocolVersion: 4, connectionGeneration: 1, sessionId: 'session-churn',
         panel: { instanceId: 'panel-churn', pages: [{ lease: guest, partition: 'part-1', url: 'https://a.test/c' + String(index), documentToken: 'doc-c' + String(index), tabId: 'tab-c' + String(index) }] },
       })
       const granted = state.authorize({

@@ -1,5 +1,5 @@
+import {nativeToolPump} from './helpers/native-tool-pump.ts'
 import {expectOk,expectRecord,expectNumber,present,expectSized,expectList,expectString} from './helpers/assertions.ts'
-import {validateCommand} from '../src/protocol.ts'
 import {attachInspector} from './helpers/inspector.ts'
 /** Target-Electron primitive qualification. Requires an already launched owned Desktop; never contacts the real portal. */
 import assert from 'node:assert/strict'
@@ -8,8 +8,6 @@ import {resolve,join} from 'node:path'
 import {createHash,randomUUID} from 'node:crypto'
 import {BrowserFlowService} from '../src/index.ts'
 import {resolveConfig} from '../src/config.ts'
-import {programFor} from '../src/clientcore.ts'
-import {PAGE_CODE} from '../src/panel.ts'
 import {identityProgram,findProgram,actProgram} from '../src/pagecode.ts'
 import {importProgram} from '../src/import-page.ts'
 import {workbook,scope,people} from './import-fixture.ts'
@@ -44,23 +42,13 @@ try {
       service.state.registerConnection({connectionGeneration:1,sessionId:agent.id,panel:{instanceId:'panel',pages:[panelPage]}})
       await service.tasks.create(agent.id,{definitionId:'synthetic',workflowRef:'import',goal:'Synthetic native case '+kind+' '+transport+' '+mode})
       const binding={instanceId:'panel',connectionGeneration:1,sessionId:agent.id,...panelPage}
-      const post=async (body:object)=>(await service.handleAuthorize(new Request('http://localhost/api/browser-flow/authorize',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({protocolVersion:3,...binding,...body})}))).json()
+      const post=async (body:object)=>(await service.handleAuthorize(new Request('http://localhost/api/browser-flow/authorize',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({protocolVersion:4,...binding,...body})}))).json()
       assert.equal((await post({})).ok,true)
       const preview=await post({fileOperation:'prepare',path:file,scope:{...scope,kind}});assert.equal(preview.ok,true,JSON.stringify(preview))
       assert.equal((await post({fileOperation:'confirm',fileGrantId:preview.value.fileGrantId})).ok,true)
       const caller=expectOk(service.resolveCaller({agent}))
       const importOwner=service.importMetadata(expectOk(service.leaseOf(caller))).importOwner
-      async function tool(name:string,args:Record<string,unknown>){
-        let ready!:()=>void;const signal=new Promise<void>(resolve=>{ready=resolve});const original=service.state.run
-        service.state.run=(...args)=>{const p=original(...args);ready();return p}
-        try{const result=present(service.tools.get(name)).execute(args,{agent,signal:new AbortController().signal});const first=await Promise.race([signal.then(()=>({queued:true as const})),result.then(value=>({queued:false as const,value}))]);if(!first.queued)return first.value;
-          const command=expectOk(service.state.takeCommands('panel',1,service.config)).commands[0];assert.ok(command)
-          const checked=validateCommand({...command,kind:'command'});assert.ok(checked.ok)
-          const value=expectRecord(await page(programFor(PAGE_CODE,expectRecord(expectRecord(checked).command).op as import('../src/clientcore.ts').PageOperation)))
-          service.state.settle({task:command.task,id:command.id,leaseId:command.leaseId,instanceId:'panel',connectionGeneration:1,epoch:command.epoch,sequence:command.sequence,...(expectRecord(value).ok?{outcome:'ok',payload:expectRecord(value.value)}:{outcome:'failed',error:{code:expectString(expectRecord(value.error).code),message:expectString(expectRecord(value.error).message)}})},service.config)
-          return await result
-        }finally{service.state.run=original}
-      }
+      const tool=nativeToolPump(service,agent,page)
       await tool('browser_observe',{view:'bjrsj_import'})
       assert.equal(expectSized((await evaluate(mainProgram('fixtureRequests',fixtureId,requestKey)))).length,0,'passive installation must not initiate a request')
       const unit=await tool('browser_find',{by:'text',value:'单位信息变更'});assert.equal(unit.ok,true)

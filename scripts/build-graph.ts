@@ -19,6 +19,6 @@ if(!testing){
  const hash=createHash('sha256')
  function visit(dir: string){for(const item of readdirSync(dir,{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name))){const path=join(dir,item.name);if(item.isDirectory())visit(path);else if(item.name.endsWith('.go')||item.name==='go.mod'){hash.update(relative(source,path).replaceAll('\\','/'));hash.update(readFileSync(path))}}}
  visit(source)
- writeFileSync(join(root,'lib','native','manifest.json'),JSON.stringify({protocolVersion:2,kernelVersion:'4',rulesVersion:'structural-v1',goVersion:'go1.26.5',platform:'win32',arch:'x64',flags,sourceSha256:hash.digest('hex'),sha256:createHash('sha256').update(readFileSync(target)).digest('hex')},null,2)+'\n')
+ writeFileSync(join(root,'lib','native','manifest.json'),JSON.stringify({protocolVersion:2,kernelVersion:'5',rulesVersion:'structural-v1',goVersion:'go1.26.5',platform:'win32',arch:'x64',flags,sourceSha256:hash.digest('hex'),sha256:createHash('sha256').update(readFileSync(target)).digest('hex')},null,2)+'\n')
 }
 process.stdout.write('graph helper built: '+(testing?'test host':'Windows x64')+'\n')

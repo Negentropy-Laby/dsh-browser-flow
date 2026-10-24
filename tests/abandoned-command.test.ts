@@ -28,7 +28,7 @@ function ready() {
   const state = createControlState({ now: () => clock.t })
   const limits = resolveConfig({ commandBudgetMs: 500, waitMaxMs: 500 })
   state.registerConnection({
-    kind: 'hello', protocolVersion: 3, connectionGeneration: 1, sessionId: 'session-1',
+    kind: 'hello', protocolVersion: 4, connectionGeneration: 1, sessionId: 'session-1',
     panel: { instanceId: 'panel-1', pages: [page] },
   })
   const authorized = state.authorize({

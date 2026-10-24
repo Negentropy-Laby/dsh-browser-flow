@@ -66,7 +66,7 @@ async function call(route: import('../src/index.ts').FetchRoute, body: unknown) 
   const request = new Request('http://host.test/', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body && typeof body === 'object' && !Array.isArray(body) ? { protocolVersion: 3, ...body } : body),
+    body: JSON.stringify(body && typeof body === 'object' && !Array.isArray(body) ? { protocolVersion: 4, ...body } : body),
   })
   const response = await route.fetch(request)
   return { status: response.status, body: await response.json() }
@@ -86,7 +86,7 @@ const PAGE = { lease: 'guest-1', partition: 'part-1', url: 'https://a.test/x', d
 async function authorized(host: ReturnType<typeof makeHost>) {
   await bindTestTask(host.service,'session-1',[new URL(PAGE.url).origin])
   const hello = await call(present(host.routes.get('POST /api/browser-flow/hello')), {
-    kind: 'hello', protocolVersion: 3, connectionGeneration: 1, sessionId: 'session-1',
+    kind: 'hello', protocolVersion: 4, connectionGeneration: 1, sessionId: 'session-1',
     panel: { instanceId: 'panel-1', pages: [PAGE] },
   })
   assert.equal(hello.status, 200)

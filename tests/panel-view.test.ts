@@ -48,7 +48,7 @@ it('shows user wait reason, full resume condition and input without implying aut
 it('requires a recognized import workflow and shows every file confirmation field',()=>{
  const filePreview={fileGrantId:'file-a',path:'<local-file>.xlsx',kind:'modify',bytes:8192,rows:7,sha256:'a'.repeat(64)}
  assert.equal(has(render({authorized:'guest-a',filePreview}),'data-browser-flow-import'),false)
- const task={...TASK_VIEW,task:runScope({...TASK,workflowRef:'import'})},rows=render({task,authorized:'guest-a',filePreview})
+ const task={...TASK_VIEW,fileMode:'legacy_import' as const,task:runScope({...TASK,workflowRef:'import'})},rows=render({task,authorized:'guest-a',filePreview})
  assert.equal(has(rows,'data-browser-flow-import'),true)
  for(const text of [filePreview.path,filePreview.sha256,'7','8192 bytes',COPY.en.stopBoundary])assert.ok(rows.some(row=>row.children.includes(text)),text)
  action(rows,'confirm-file')
@@ -60,6 +60,15 @@ it('refuses an old revision draft while leaving explicit reload and cancel avail
  assert.equal(action(rows,'task-revise').props.disabled,true)
  assert.equal(action(rows,'reloadDraft').props.disabled,false)
  assert.equal(action(rows,'cancelEdit').props.disabled,false)
+})
+it('shows generic file confirmation without legacy business fields or a fixed stop boundary',()=>{
+ const filePreview={fileGrantId:'file-generic',path:'<local-file>.json',kind:'generic',bytes:128,rows:0,sha256:'b'.repeat(64)}
+ const task={...TASK_VIEW,fileMode:'generic' as const,adapter:'generic',task:runScope({...TASK,adapter:'generic',workflowRef:'exploration'})}
+ const rows=render({task,authorized:'guest-a',filePreview}),text=rows.flatMap(row=>row.children.filter(child=>typeof child==='string')).join('\n')
+ assert.ok(text.includes(COPY.en.genericFilePath));assert.ok(text.includes(COPY.en.genericFileBoundary))
+ assert.equal(text.includes(COPY.en.stopBoundary),false);assert.equal(text.includes('file_generic'),false)
+ for(const key of ['kind','unitId','legalIdentity','firstRow','lastRow'])assert.equal(rows.some(row=>row.props['data-browser-flow-input']===key),false)
+ action(rows,'confirm-file')
 })
 it('keeps raw failure codes in expanded diagnostics and exposes safe connection states',()=>{
  const error={code:'synthetic_internal_code',message:'Private technical details'}
@@ -79,4 +88,10 @@ it('has translated labels for every rendered state and operation in both locales
  const rows=render({task:undefined,detailsOpen:true})
  for(const row of rows)for(const child of row.children)if(typeof child==='string')assert.equal(/^(state[A-Z]|task-|prepare-file|detailsTitle)/.test(child),false,child)
  assert.deepEqual(Object.keys(COPY.en).sort(),Object.keys(COPY.zh).sort())
+})
+
+it('does not infer file capability from a generation 1 workflow named exploration',()=>{
+ const task={...TASK_VIEW,adapter:'generic',task:runScope({...TASK,adapter:'generic',workflowRef:'exploration'})}
+ assert.equal(has(render({task,authorized:'guest-a'}),'data-browser-flow-import'),false)
+ assert.equal(has(render({task:{...task,fileMode:'none'},authorized:'guest-a'}),'data-browser-flow-import'),false)
 })

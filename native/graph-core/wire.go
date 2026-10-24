@@ -111,7 +111,7 @@ func Serve(reader io.Reader, writer io.Writer, maxFrame, maxDetail int) error {
 					bound = &s
 					generation = q.Generation
 					r.OK = true
-					r.Value = map[string]any{"kernelVersion": "4", "rulesVersion": "structural-v1"}
+					r.Value = map[string]any{"kernelVersion": "5", "rulesVersion": "structural-v1"}
 				}
 			case "project":
 				if bound == nil {

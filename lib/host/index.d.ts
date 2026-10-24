@@ -50,6 +50,7 @@ export type ControlStore = ReturnType<typeof createControlState>;
 import { TaskStore } from './task-store.ts';
 import { Config } from './config.ts';
 import { failure } from './protocol.ts';
+import { GenericFiles } from './generic-files.ts';
 import { ImportFiles } from './import-files.ts';
 import { createControlState, monotonicNow } from './state.ts';
 import { type ToolDefinition } from './tools.ts';
@@ -67,6 +68,8 @@ export declare class BrowserFlowService {
     config: import("./config.ts").BrowserFlowConfig;
     tasks: TaskStore;
     importFiles: ImportFiles;
+    genericFiles: GenericFiles;
+    private fileGrants;
     instanceTokens: WeakMap<object, string>;
     now: typeof monotonicNow;
     state: ControlStore;
@@ -220,12 +223,131 @@ export declare class BrowserFlowService {
                 reason: string;
             };
         };
+        instructions: {
+            text: string;
+            complete: boolean;
+            name: string;
+            ref: string;
+        }[];
+        resources: string[];
+        exploration?: {
+            phase: "worker" | "planner";
+            currentIntent: string | null;
+            round: number;
+            originRef: string;
+            goals: {
+                details?: string | undefined;
+                text?: string | undefined;
+                proofSource?: string | null | undefined;
+                evidenceVerification?: string | null | undefined;
+                data: Record<string, unknown>;
+                summary: string;
+                id: string;
+                kind: import("./task-exploration.ts").ExplorationKind;
+                source: "agent" | "host" | "user_declared";
+                state: string;
+                asset_ids: string[];
+                sourceSeq?: number;
+            }[];
+            goals_total: number;
+            goals_unmet: number;
+            goals_details: {
+                op: string;
+            };
+            hints: {
+                details?: string | undefined;
+                text?: string | undefined;
+                proofSource?: string | null | undefined;
+                evidenceVerification?: string | null | undefined;
+                data: Record<string, unknown>;
+                summary: string;
+                id: string;
+                kind: import("./task-exploration.ts").ExplorationKind;
+                source: "agent" | "host" | "user_declared";
+                state: string;
+                asset_ids: string[];
+                sourceSeq?: number;
+            }[];
+            open_intents: {
+                details?: string | undefined;
+                text?: string | undefined;
+                proofSource?: string | null | undefined;
+                evidenceVerification?: string | null | undefined;
+                data: Record<string, unknown>;
+                summary: string;
+                id: string;
+                kind: import("./task-exploration.ts").ExplorationKind;
+                source: "agent" | "host" | "user_declared";
+                state: string;
+                asset_ids: string[];
+                sourceSeq?: number;
+            }[];
+            running_intents: {
+                details?: string | undefined;
+                text?: string | undefined;
+                proofSource?: string | null | undefined;
+                evidenceVerification?: string | null | undefined;
+                data: Record<string, unknown>;
+                summary: string;
+                id: string;
+                kind: import("./task-exploration.ts").ExplorationKind;
+                source: "agent" | "host" | "user_declared";
+                state: string;
+                asset_ids: string[];
+                sourceSeq?: number;
+            }[];
+            recent_done_intents: {
+                details?: string | undefined;
+                text?: string | undefined;
+                proofSource?: string | null | undefined;
+                evidenceVerification?: string | null | undefined;
+                data: Record<string, unknown>;
+                summary: string;
+                id: string;
+                kind: import("./task-exploration.ts").ExplorationKind;
+                source: "agent" | "host" | "user_declared";
+                state: string;
+                asset_ids: string[];
+                sourceSeq?: number;
+            }[];
+            recent_facts: {
+                details?: string | undefined;
+                text?: string | undefined;
+                proofSource?: string | null | undefined;
+                evidenceVerification?: string | null | undefined;
+                data: Record<string, unknown>;
+                summary: string;
+                id: string;
+                kind: import("./task-exploration.ts").ExplorationKind;
+                source: "agent" | "host" | "user_declared";
+                state: string;
+                asset_ids: string[];
+                sourceSeq?: number;
+            }[];
+            facts_total: number;
+            assetCoverage: {
+                denominator: number;
+                tested: number;
+                pct: number | null;
+                note: string;
+            };
+            verification: string;
+            details: string;
+        } | undefined;
+        assetCoverage?: {
+            denominator: number;
+            tested: number;
+            pct: number | null;
+            note: string;
+        } | undefined;
+        usage?: string | undefined;
         task: import("./task-scope.ts").RunScope;
         state: string;
         contextVersion: number;
         goal: string;
         origins: string[];
         adapter: string;
+        fileMode: import("./task-scope.ts").FileMode;
         definition: {
             id: string;
             version: string | undefined;
@@ -235,13 +357,6 @@ export declare class BrowserFlowService {
             id: string;
             stopBoundary: string;
         } | null;
-        instructions: {
-            text: string;
-            complete: boolean;
-            name: string;
-            ref: string;
-        }[];
-        resources: string[];
     } | {
         businessVerdict: string;
         writeBlocked: boolean;
@@ -316,12 +431,131 @@ export declare class BrowserFlowService {
                 reason: string;
             };
         };
+        instructions: {
+            text: string;
+            complete: boolean;
+            name: string;
+            ref: string;
+        }[];
+        resources: string[];
+        exploration?: {
+            phase: "worker" | "planner";
+            currentIntent: string | null;
+            round: number;
+            originRef: string;
+            goals: {
+                details?: string | undefined;
+                text?: string | undefined;
+                proofSource?: string | null | undefined;
+                evidenceVerification?: string | null | undefined;
+                data: Record<string, unknown>;
+                summary: string;
+                id: string;
+                kind: import("./task-exploration.ts").ExplorationKind;
+                source: "agent" | "host" | "user_declared";
+                state: string;
+                asset_ids: string[];
+                sourceSeq?: number;
+            }[];
+            goals_total: number;
+            goals_unmet: number;
+            goals_details: {
+                op: string;
+            };
+            hints: {
+                details?: string | undefined;
+                text?: string | undefined;
+                proofSource?: string | null | undefined;
+                evidenceVerification?: string | null | undefined;
+                data: Record<string, unknown>;
+                summary: string;
+                id: string;
+                kind: import("./task-exploration.ts").ExplorationKind;
+                source: "agent" | "host" | "user_declared";
+                state: string;
+                asset_ids: string[];
+                sourceSeq?: number;
+            }[];
+            open_intents: {
+                details?: string | undefined;
+                text?: string | undefined;
+                proofSource?: string | null | undefined;
+                evidenceVerification?: string | null | undefined;
+                data: Record<string, unknown>;
+                summary: string;
+                id: string;
+                kind: import("./task-exploration.ts").ExplorationKind;
+                source: "agent" | "host" | "user_declared";
+                state: string;
+                asset_ids: string[];
+                sourceSeq?: number;
+            }[];
+            running_intents: {
+                details?: string | undefined;
+                text?: string | undefined;
+                proofSource?: string | null | undefined;
+                evidenceVerification?: string | null | undefined;
+                data: Record<string, unknown>;
+                summary: string;
+                id: string;
+                kind: import("./task-exploration.ts").ExplorationKind;
+                source: "agent" | "host" | "user_declared";
+                state: string;
+                asset_ids: string[];
+                sourceSeq?: number;
+            }[];
+            recent_done_intents: {
+                details?: string | undefined;
+                text?: string | undefined;
+                proofSource?: string | null | undefined;
+                evidenceVerification?: string | null | undefined;
+                data: Record<string, unknown>;
+                summary: string;
+                id: string;
+                kind: import("./task-exploration.ts").ExplorationKind;
+                source: "agent" | "host" | "user_declared";
+                state: string;
+                asset_ids: string[];
+                sourceSeq?: number;
+            }[];
+            recent_facts: {
+                details?: string | undefined;
+                text?: string | undefined;
+                proofSource?: string | null | undefined;
+                evidenceVerification?: string | null | undefined;
+                data: Record<string, unknown>;
+                summary: string;
+                id: string;
+                kind: import("./task-exploration.ts").ExplorationKind;
+                source: "agent" | "host" | "user_declared";
+                state: string;
+                asset_ids: string[];
+                sourceSeq?: number;
+            }[];
+            facts_total: number;
+            assetCoverage: {
+                denominator: number;
+                tested: number;
+                pct: number | null;
+                note: string;
+            };
+            verification: string;
+            details: string;
+        } | undefined;
+        assetCoverage?: {
+            denominator: number;
+            tested: number;
+            pct: number | null;
+            note: string;
+        } | undefined;
+        usage?: string | undefined;
         task: import("./task-scope.ts").RunScope;
         state: string;
         contextVersion: number;
         goal: string;
         origins: string[];
         adapter: string;
+        fileMode: import("./task-scope.ts").FileMode;
         definition: {
             id: string;
             version: string | undefined;
@@ -331,13 +565,6 @@ export declare class BrowserFlowService {
             id: string;
             stopBoundary: string;
         } | null;
-        instructions: {
-            text: string;
-            complete: boolean;
-            name: string;
-            ref: string;
-        }[];
-        resources: string[];
     }>;
     /** @param {ResolvedCaller} caller - tool caller. @param  result - owned canonical result. @returns  task identity/state attached without reading any other task. */
     annotate<T extends object>(caller: ResolvedCaller, result: Result<T>): {
@@ -394,7 +621,14 @@ export declare class BrowserFlowService {
         value: {
             fileGrant?: {
                 fileGrantId?: string | undefined;
-                state: "prepared" | "confirmed" | "consumed";
+                assetRef?: string | undefined;
+                state: "confirmed" | "prepared" | "consumed";
+                kind: string;
+                format: string;
+                sha256: string;
+            } | {
+                fileGrantId?: string | undefined;
+                state: "confirmed" | "prepared" | "consumed";
                 kind: import("./import-rules.ts").BatchKind;
                 sha256: string;
                 rows: number;
@@ -443,6 +677,9 @@ export declare class BrowserFlowService {
         ref: string;
         offset: number;
         projectionId?: string;
+        query?: unknown;
+        documentToken?: string;
+        elementRef?: string;
     }): Promise<{
         ok: false;
         error: {
@@ -466,6 +703,9 @@ export declare class BrowserFlowService {
         ref: string;
         offset: number;
         projectionId?: string;
+        query?: unknown;
+        documentToken?: string;
+        elementRef?: string;
     }): Promise<{
         ok: false;
         error: {

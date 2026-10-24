@@ -205,3 +205,46 @@ func TestDisplayBudgetValidationAndZeroPreparation(t *testing.T) {
 		}
 	}
 }
+
+func TestSemanticFailureDoesNotTerminateRPCServer(t *testing.T) {
+	good := semanticSample()
+	bad := semanticSample()
+	e := Event{Type: "status", Seq: bad.Version + 1, Hash: "bad", Run: bad.Scope, Semantic: &SemanticChange{Updates: []SemanticUpdate{{"nonexistent", "open"}}}}
+	bad.Events = append(bad.Events, e)
+	bad.Version++
+	bad.TailHash = e.Hash
+	q := Request{ProtocolVersion: 2, ID: "hello", Generation: "g", Scope: good.Scope, BudgetMS: 5000, Budget: 6000, Op: "hello"}
+	input := encodeFrame(q)
+	for i, in := range []Input{bad, good} {
+		raw, _ := json.Marshal(in)
+		sum := sha256.Sum256(raw)
+		q.ID = string(rune('a' + i))
+		q.Op = "project"
+		q.Input = raw
+		q.InputHash = hex.EncodeToString(sum[:])
+		q.Version = in.Version
+		q.TailHash = in.TailHash
+		input = append(input, encodeFrame(q)...)
+	}
+	var output bytes.Buffer
+	if err := Serve(bytes.NewReader(input), &output, 1<<20, 32<<20); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		var size uint32
+		if err := binary.Read(&output, binary.BigEndian, &size); err != nil {
+			t.Fatal(err)
+		}
+		var r Response
+		if err := json.Unmarshal(output.Next(int(size)), &r); err != nil {
+			t.Fatal(err)
+		}
+		if i == 1 {
+			if r.OK || r.Code != "projection_failed" {
+				t.Fatal(r)
+			}
+		} else if !r.OK {
+			t.Fatal(r)
+		}
+	}
+}

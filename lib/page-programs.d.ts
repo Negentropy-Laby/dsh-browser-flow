@@ -7,3 +7,5 @@ export const PAGE_ACTION_SOURCE: string
 export const PAGE_WAIT_SOURCE: string
 export const PAGE_POLICY_SOURCE: string
 export const PASSIVE_IMPORT_SOURCE: string
+
+export const PAGE_FILE_SOURCE: string

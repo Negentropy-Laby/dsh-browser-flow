@@ -83,6 +83,204 @@ export declare function createTools(service: ToolService, config: import('./conf
     parameters: {
         type: string;
         properties: {
+            explore: {
+                type: string;
+                properties: {
+                    op: {
+                        type: string;
+                        enum: string[];
+                    };
+                    text: {
+                        type: string;
+                        description: string;
+                    };
+                    goals: {
+                        type: string;
+                        maxItems: number;
+                        items: {
+                            type: string;
+                            properties: {
+                                text: {
+                                    type: string;
+                                };
+                            };
+                            required: string[];
+                            additionalProperties: boolean;
+                        };
+                    };
+                    summary: {
+                        type: string;
+                        description: string;
+                    };
+                    detail: {
+                        type: string;
+                        maxLength: number;
+                    };
+                    evidence: {
+                        type: string;
+                        maxLength: number;
+                    };
+                    confidence: {
+                        type: string;
+                        enum: string[];
+                    };
+                    intent_id: {
+                        type: string;
+                        description: string;
+                    };
+                    asset_ids: {
+                        type: string;
+                        items: {
+                            type: string;
+                        };
+                        maxItems: number;
+                        description: string;
+                    };
+                    parent_ids: {
+                        type: string;
+                        items: {
+                            type: string;
+                        };
+                        maxItems: number;
+                        description: string;
+                    };
+                    priority: {
+                        type: string;
+                        minimum: number;
+                        maximum: number;
+                    };
+                    evidence_refs: {
+                        type: string;
+                        items: {
+                            type: string;
+                        };
+                        maxItems: number;
+                        description: string;
+                    };
+                    check_refs: {
+                        type: string;
+                        items: {
+                            type: string;
+                        };
+                        maxItems: number;
+                        description: string;
+                    };
+                    intents: {
+                        type: string;
+                        maxItems: number;
+                        items: {
+                            type: string;
+                            properties: {
+                                summary: {
+                                    type: string;
+                                    maxLength: number;
+                                };
+                                asset_ids: {
+                                    type: string;
+                                    items: {
+                                        type: string;
+                                    };
+                                    maxItems: number;
+                                };
+                                parent_ids: {
+                                    type: string;
+                                    items: {
+                                        type: string;
+                                    };
+                                    maxItems: number;
+                                };
+                                priority: {
+                                    type: string;
+                                    minimum: number;
+                                    maximum: number;
+                                };
+                            };
+                            required: string[];
+                            additionalProperties: boolean;
+                        };
+                    };
+                    facts: {
+                        type: string;
+                        maxItems: number;
+                        items: {
+                            type: string;
+                            properties: {
+                                summary: {
+                                    type: string;
+                                    maxLength: number;
+                                };
+                                detail: {
+                                    type: string;
+                                    maxLength: number;
+                                };
+                                evidence: {
+                                    type: string;
+                                    maxLength: number;
+                                };
+                                confidence: {
+                                    type: string;
+                                    enum: string[];
+                                };
+                                intent_id: {
+                                    type: string;
+                                };
+                                asset_ids: {
+                                    type: string;
+                                    items: {
+                                        type: string;
+                                    };
+                                    maxItems: number;
+                                };
+                                evidence_refs: {
+                                    type: string;
+                                    items: {
+                                        type: string;
+                                    };
+                                    maxItems: number;
+                                };
+                                check_refs: {
+                                    type: string;
+                                    items: {
+                                        type: string;
+                                    };
+                                    maxItems: number;
+                                };
+                            };
+                            required: string[];
+                            additionalProperties: boolean;
+                        };
+                    };
+                    state: {
+                        type: string;
+                        enum: string[];
+                    };
+                    reason: {
+                        type: string;
+                    };
+                    goal_id: {
+                        type: string;
+                    };
+                    evidence_id: {
+                        type: string;
+                    };
+                    assertion: {
+                        type: string;
+                        description: string;
+                        additionalProperties: boolean;
+                    };
+                };
+                required: string[];
+                additionalProperties: boolean;
+            };
+            requestId: {
+                type: string;
+                description: string;
+            };
+            expectedVersion: {
+                type: string;
+                minimum: number;
+                description: string;
+            };
             documentToken: {
                 type: string;
                 description: string;

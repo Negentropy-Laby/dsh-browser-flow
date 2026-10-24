@@ -23,6 +23,15 @@ interface ActionTarget {
 }
 /** Action-specific fields are validated before a fixed program is selected. */
 export type PageActionInput = ActionTarget & ({
+    action: 'set_file';
+    file: {
+        fileGrantId: string;
+        name: string;
+        base64: string;
+        bytes: number;
+        sha256: string;
+    };
+} | {
     action: 'click';
 } | {
     action: 'type' | 'select';

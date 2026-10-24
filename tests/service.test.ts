@@ -82,7 +82,7 @@ async function call(route:import('../src/index.ts').FetchRoute, body:unknown) {
   const response = await route.fetch(new Request('http://127.0.0.1:62231' + route.path, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body && typeof body === 'object' && !Array.isArray(body) ? { protocolVersion: 3, ...body } : body),
+    body: JSON.stringify(body && typeof body === 'object' && !Array.isArray(body) ? { protocolVersion: 4, ...body } : body),
   }))
   return { status: response.status, body: await response.json() }
 }
@@ -95,7 +95,7 @@ async function authorized(options:Parameters<typeof host>[0] = {}) {
   service.start()
   const helloRoute = fake.routes.get('POST /api/browser-flow/hello')
   const hello = await call(present(helloRoute), {
-    kind: 'hello', protocolVersion: 3, connectionGeneration: 1, sessionId: 'session-1',
+    kind: 'hello', protocolVersion: 4, connectionGeneration: 1, sessionId: 'session-1',
     panel: {
       instanceId: 'panel-1',
       pages: [{ lease: 'guest-1', partition: 'part-1', url: 'https://example.test/a?token=abc', documentToken: 'doc-1', tabId: 'tab-1' }],
@@ -194,7 +194,7 @@ describe('tool authorization paths', () => {
     service.start()
     const helloRoute = fake.routes.get('POST /api/browser-flow/hello')
     await call(present(helloRoute), {
-      kind: 'hello', protocolVersion: 3, connectionGeneration: 1, sessionId: 'session-1',
+      kind: 'hello', protocolVersion: 4, connectionGeneration: 1, sessionId: 'session-1',
       panel: { instanceId: 'panel-1', pages: [{ lease: 'guest-1', partition: 'part-1', url: 'https://example.test/', documentToken: 'doc-1' }] },
     })
     const authorizeRoute = fake.routes.get('POST /api/browser-flow/authorize')

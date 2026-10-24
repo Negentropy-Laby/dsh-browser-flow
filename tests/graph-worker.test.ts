@@ -130,7 +130,7 @@ it('does not replace a retiring worker after service disposal begins',async t=>{
 it('rejects wrong identities, malformed frames and fake authority without replay',async t=>{
  for(const mode of ['owner','generation','version','malformed','authority'] as const){
   let deliveries=0
-  const runtime=heldRuntime((q,stdout)=>{deliveries++;const r={protocolVersion:2,id:q.id,generation:q.generation,scope:q.scope,version:q.version,tailHash:q.tailHash,inputHash:q.inputHash,ok:true,value:{kernelVersion:'4',rulesVersion:'structural-v1'} as Record<string,unknown>}
+  const runtime=heldRuntime((q,stdout)=>{deliveries++;const r={protocolVersion:2,id:q.id,generation:q.generation,scope:q.scope,version:q.version,tailHash:q.tailHash,inputHash:q.inputHash,ok:true,value:{kernelVersion:'5',rulesVersion:'structural-v1'} as Record<string,unknown>}
    if(mode==='owner')r.scope={...expectRecord(q.scope),ownerSessionId:'foreign'}
    if(mode==='generation')r.generation='old'
    if(mode==='version')r.protocolVersion=1

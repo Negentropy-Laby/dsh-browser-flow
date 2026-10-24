@@ -61,7 +61,7 @@ function makeHost() {
  */
 async function call(route: import('../src/index.ts').FetchRoute, body: unknown) {
   const response = await route.fetch(new Request('http://host.test/', {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body && typeof body === 'object' && !Array.isArray(body) ? { protocolVersion: 3, ...body } : body),
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body && typeof body === 'object' && !Array.isArray(body) ? { protocolVersion: 4, ...body } : body),
   }))
   return { status: response.status, body: await response.json() }
 }
@@ -74,7 +74,7 @@ describe('R04: several candidate pages stay several entries', () => {
       { lease: 'guest-2', partition: 'part-1', url: 'https://a.test/two', documentToken: 'doc-2', tabId: 'tab-2' },
     ]
     const hello = await call(present(host.routes.get('POST /api/browser-flow/hello')), {
-      kind: 'hello', protocolVersion: 3, connectionGeneration: 1, sessionId: 'session-1',
+      kind: 'hello', protocolVersion: 4, connectionGeneration: 1, sessionId: 'session-1',
       panel: { instanceId: 'panel-1', pages },
     })
     assert.equal(hello.status, 200)
@@ -103,7 +103,7 @@ describe('a command the panel took but never answered is settled', () => {
     const page = { lease: 'guest-1', partition: 'part-1', url: 'https://a.test/x', documentToken: 'doc-1', tabId: 'tab-1' }
     const agent = { id: 'session-1' }
     state.registerConnection({
-      kind: 'hello', protocolVersion: 3, connectionGeneration: 1, sessionId: 'session-1',
+      kind: 'hello', protocolVersion: 4, connectionGeneration: 1, sessionId: 'session-1',
       panel: { instanceId: 'panel-1', pages: [page] },
     })
     state.authorize({
@@ -132,7 +132,7 @@ describe('a command the panel took but never answered is settled', () => {
     const page = { lease: 'guest-1', partition: 'part-1', url: 'https://a.test/x', documentToken: 'doc-1', tabId: 'tab-1' }
     const agent = { id: 'session-1' }
     state.registerConnection({
-      kind: 'hello', protocolVersion: 3, connectionGeneration: 1, sessionId: 'session-1',
+      kind: 'hello', protocolVersion: 4, connectionGeneration: 1, sessionId: 'session-1',
       panel: { instanceId: 'panel-1', pages: [page] },
     })
     state.authorize({

@@ -28,7 +28,7 @@ const agent = { id: 'session-1' }
  */
 function connect(state: ReturnType<typeof createControlState>, instanceId: string, sessionId: string = 'session-1') : void {
   const registered = state.registerConnection({
-    kind: 'hello', protocolVersion: 3, connectionGeneration: 1,
+    kind: 'hello', protocolVersion: 4, connectionGeneration: 1,
     sessionId, panel: { instanceId, pages: [page] },
   })
   assert.equal(registered.ok, true)

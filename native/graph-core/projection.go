@@ -33,6 +33,8 @@ type Criterion struct {
 
 // Event excludes original assets, files, paths and business response bodies.
 type Event struct {
+	IntentID      string              `json:"intentId,omitempty"`
+	Semantic      *SemanticChange     `json:"semantic,omitempty"`
 	Seq           int64               `json:"seq"`
 	Hash          string              `json:"hash"`
 	Type          string              `json:"type"`
@@ -52,6 +54,7 @@ type Event struct {
 
 // Input is a complete sanitized replay snapshot plus current proof references.
 type Input struct {
+	Exploration       bool        `json:"exploration,omitempty"`
 	LiveDocumentToken string      `json:"liveDocumentToken"`
 	Scope             Scope       `json:"scope"`
 	Version           int64       `json:"version"`
@@ -179,9 +182,25 @@ func buildReplay(ctx context.Context, in Input, id string, oracle func(*Projecti
 		if event.Seq != int64(i+1) || event.Run.TaskID != in.Scope.TaskID || event.Run.ProfileID != in.Scope.ProfileID || event.Run.OwnerSessionID != in.Scope.OwnerSessionID {
 			return nil, errors.New("invalid_history")
 		}
+		if event.Semantic != nil && (!in.Exploration || event.Type != "created" && event.Type != "revise" && event.Type != "exploration") {
+			return nil, errors.New("invalid_semantic_event_type")
+		}
 		switch event.Type {
 		case "created", "revise":
-			p.add(goalID(event.Run), "goal", "user_declared", event.Seq, event.Run, map[string]any{"goal": event.Goal})
+			if event.Semantic != nil {
+				if event.Type == "revise" {
+					for _, n := range p.Nodes {
+						if n.Kind == "intent" && n.run != event.Run {
+							n.Data["state"] = "stopped"
+						}
+					}
+				}
+				if err := p.applySemantic(event); err != nil {
+					return nil, err
+				}
+			} else {
+				p.add(goalID(event.Run), "goal", "user_declared", event.Seq, event.Run, map[string]any{"goal": event.Goal})
+			}
 		case "asset":
 			switch event.Kind {
 			case "page", "file", "unit_check", "import_result", "evidence":
@@ -206,8 +225,16 @@ func buildReplay(ctx context.Context, in Input, id string, oracle func(*Projecti
 			a := &Attempt{event.ID, event.Action, "pending", event.Seq, "model_intent", false}
 			attempts[event.ID] = a
 			p.Attempts = append(p.Attempts, a)
-			p.add(event.ID, "intent", "model_intent", event.Seq, event.Run, map[string]any{"action": event.Action, "status": "pending", "businessSuccess": false})
-			p.edge(fmt.Sprintf("intent-edge-%d", event.Seq), event.ID, goalID(event.Run), "attempts", event.Seq)
+			kind := "intent"
+			target := goalID(event.Run)
+			if in.Exploration {
+				kind = "attempt"
+				if event.IntentID != "" {
+					target = event.IntentID
+				}
+			}
+			p.add(event.ID, kind, "model_intent", event.Seq, event.Run, map[string]any{"action": event.Action, "status": "pending", "businessSuccess": false})
+			p.edge(fmt.Sprintf("intent-edge-%d", event.Seq), event.ID, target, "attempts", event.Seq)
 		case "receipt":
 			a := attempts[event.ID]
 			if a == nil || a.Status != "pending" {
@@ -218,8 +245,15 @@ func buildReplay(ctx context.Context, in Input, id string, oracle func(*Projecti
 			rid := fmt.Sprintf("receipt-%s-%d", in.Scope.TaskID, event.Seq)
 			p.add(rid, "receipt", "host", event.Seq, event.Run, map[string]any{"outcome": event.Outcome})
 			p.edge(fmt.Sprintf("receipt-edge-%d", event.Seq), rid, a.ID, "records", event.Seq)
-			if pageWrite(a.Action) {
+			if pageWrite(a.Action) && !in.Exploration {
 				p.Round++
+			}
+		case "exploration":
+			if !in.Exploration || event.Semantic == nil {
+				return nil, errors.New("unsupported_event")
+			}
+			if err := p.applySemantic(event); err != nil {
+				return nil, err
 			}
 		case "status", "waiting", "wait_requested", "wait_input", "wait_resolved", "business_verdict":
 		default:
@@ -235,7 +269,9 @@ func buildReplay(ctx context.Context, in Input, id string, oracle func(*Projecti
 	if len(in.Events) > 0 && in.TailHash != in.Events[len(in.Events)-1].Hash {
 		return nil, errors.New("invalid_tail")
 	}
-	p.add(goalID(in.Scope), "goal", "user_declared", 1, in.Scope, map[string]any{"goal": in.Goal})
+	if !in.Exploration {
+		p.add(goalID(in.Scope), "goal", "user_declared", 1, in.Scope, map[string]any{"goal": in.Goal})
+	}
 	for _, criterion := range in.Criteria {
 		p.add(criterion.ID, "criterion", criterion.Source, 1, in.Scope, map[string]any{"label": criterion.Label, "status": criterion.Status, "validatorId": criterion.ValidatorID, "validatorVersion": criterion.Version})
 		if criterion.Source == "code_verified" && criterion.Status == "passed" {
@@ -286,6 +322,12 @@ func (p *Projection) causal() *coldGraph {
 	edges := []cgEdge{}
 	for _, n := range p.Nodes {
 		kind, state := n.Kind, "done"
+		if v, ok := n.Data["state"].(string); ok {
+			state = v
+		}
+		if kind == "fact" && n.Data["state"] == "origin" {
+			kind = "begin"
+		}
 		if kind == "receipt" {
 			kind = kindFact
 		}
@@ -307,7 +349,7 @@ func (p *Projection) causal() *coldGraph {
 		switch edge.Relation {
 		case "attempts", "records":
 			edges = append(edges, cgEdge{to.key, edge.Relation, from.key})
-		case "yields":
+		case "yields", "derived_from", "spawns", "proves":
 			edges = append(edges, cgEdge{from.key, edge.Relation, to.key})
 		}
 	}
@@ -351,7 +393,7 @@ func (p *Projection) View(budget int) map[string]any {
 	intents := []any{}
 	frontier := []any{}
 	for _, n := range p.Nodes {
-		if n.Kind != "goal" && n.Kind != "criterion" && n.Kind != "intent" && n.Kind != "receipt" {
+		if assetKind(n.Kind) {
 			counts[n.Kind]++
 			asset := metadata(n)
 			if n.Kind == "page" {
@@ -386,7 +428,7 @@ func (p *Projection) View(budget int) map[string]any {
 		edges = edges[len(edges)-12:]
 	}
 	for _, a := range p.Attempts {
-		if a.Status == "pending" || a.Status == "unknown_outcome" {
+		if !p.Input.Exploration && (a.Status == "pending" || a.Status == "unknown_outcome") {
 			frontier = append(frontier, a)
 		}
 		if !p.covered[a.ID] {
@@ -404,19 +446,36 @@ func (p *Projection) View(budget int) map[string]any {
 	for _, count := range counts {
 		totalAssets += count
 	}
+	procedural := map[string]any{"goal": map[string]any{"text": p.Input.Goal, "source": "user_declared"}, "constraints": p.Input.Constraints, "criteria": p.Input.Criteria, "intents": intents, "frontier": frontier}
+	if p.Input.Exploration {
+		semanticIntents, semanticFrontier := []any{}, []any{}
+		for _, n := range p.Nodes {
+			if n.Kind == "intent" {
+				semanticIntents = append(semanticIntents, metadata(n))
+				if liveNode(n) {
+					semanticFrontier = append(semanticFrontier, metadata(n))
+				}
+			}
+		}
+		if len(semanticIntents) > 8 {
+			semanticIntents = semanticIntents[len(semanticIntents)-8:]
+		}
+		procedural["attempts"] = intents
+		procedural["intents"] = semanticIntents
+		procedural["frontier"] = semanticFrontier
+	}
 	value := map[string]any{
-		"procedural_law_index": map[string]any{"goal": map[string]any{"text": p.Input.Goal, "source": "user_declared"}, "constraints": p.Input.Constraints, "criteria": p.Input.Criteria, "intents": intents, "frontier": frontier},
+		"procedural_law_index": procedural,
 		"technical_law_index":  map[string]any{"assets": assets, "total": totalAssets, "byKind": counts},
-		"knowledge_graph":      map[string]any{"nodes": graphNodes, "edges": edges, "totalEdges": len(p.Edges), "totalNodes": len(p.Nodes), "digests": digests, "digestCount": len(p.Digests), "details": "graph"},
+		"knowledge_graph":      map[string]any{"nodes": graphNodes, "edges": edges, "totalEdges": len(p.Edges), "totalNodes": len(p.Nodes), "digests": digests, "digestCount": len(p.Digests), "details": "graph", "views": p.graphSummary()},
 		"active_context":       map[string]any{"recentAssets": assets, "round": p.Round, "complete": true},
 	}
-	value["knowledge_graph"].(map[string]any)["views"] = p.graphSummary()
+
 	b, _ := json.Marshal(value)
 	if len(b) > budget {
 		value["procedural_law_index"] = map[string]any{"details": "goal", "criteriaRef": "criteria"}
 		value["technical_law_index"] = map[string]any{"total": totalAssets}
-		value["knowledge_graph"] = map[string]any{"details": "graph", "totalEdges": len(p.Edges), "digestCount": len(p.Digests)}
-		value["knowledge_graph"].(map[string]any)["views"] = p.graphSummary()
+		value["knowledge_graph"] = map[string]any{"details": "graph", "totalEdges": len(p.Edges), "digestCount": len(p.Digests), "views": p.graphSummary()}
 		value["active_context"] = map[string]any{"recentAssets": []any{}, "round": p.Round, "complete": false, "truncated": true}
 	}
 	return value

@@ -1,4 +1,5 @@
 /** Host-owned fact selection. Derived graph output never supplies authority. */
+import { isExploration, explorationState, seedExploration } from './task-exploration.ts'
 import { trustedCriterion, evidenceVerdict } from './task-criteria.ts'
 import { validRunScope, sameRunScope } from './task-scope.ts'
 
@@ -49,9 +50,10 @@ export function taskReferences(task: import('./task-store.ts').TaskData,{current
   for(const event of task.events){const row=event.data
     if((event.type==='created'||event.type==='revise')&&row.manifest&&typeof row.manifest==='object'&&'scope' in row.manifest){
       const m=(row.manifest as import('./task-store.ts').Manifest),declared={...m.scope,runId:m.runId,workflowRef:m.workflowRef}
-      if(!currentRunOnly||(validRunScope(declared)&&sameRunScope(declared,run)))ids.add(`goal-${m.scope.taskId}-r${m.scope.scopeRevision}`)
+      if(!currentRunOnly||(validRunScope(declared)&&sameRunScope(declared,run))){ids.add(`goal-${m.scope.taskId}-r${m.scope.scopeRevision}`);if(isExploration(m))for(const n of seedExploration(m).nodes)ids.add(n.id)}
     }
     if(currentRunOnly&&(!validRunScope(row.run)||!sameRunScope(row.run,run)))continue
+    if(event.type==='exploration'&&typeof row.changes==='object'&&row.changes!==null&&'nodes' in row.changes&&Array.isArray(row.changes.nodes))for(const n of row.changes.nodes)if(n&&typeof n==='object'&&typeof n.id==='string')ids.add(n.id)
     if(event.type==='asset'&&typeof row.id==='string')ids.add(row.id)
     if(event.type==='attempt'&&typeof row.attemptId==='string')ids.add(row.attemptId)
     if(event.type==='receipt')ids.add(`receipt-${task.manifest.scope.taskId}-${event.seq}`)

@@ -27,7 +27,9 @@
     "native/graph-core/GO-LICENSE",
     "native/graph-core/extraction.json",
     "LICENSE",
-    "NOTICE"
+    "NOTICE",
+    "docs/upgrade-v4.md",
+    "docs/exploration-contract.md"
   ],
   "dsh": {
     "bundle": {

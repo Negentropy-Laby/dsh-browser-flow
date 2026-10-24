@@ -13,7 +13,7 @@ function fixture() {
   const state = createControlState({ now: () => 0 })
   const agent = { id: 'session-review' }
   function connect(id:string, pages:import('../src/state.ts').PanelPage[], sessionId = agent.id) {
-    return state.registerConnection({ kind: 'hello', protocolVersion: 3, connectionGeneration: 1,
+    return state.registerConnection({ kind: 'hello', protocolVersion: 4, connectionGeneration: 1,
       sessionId, panel: { instanceId: id, pages } })
   }
   function authorize(page:import('../src/state.ts').PanelPage, overrides = {}) {

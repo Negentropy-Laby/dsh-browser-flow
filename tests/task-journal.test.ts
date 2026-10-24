@@ -12,7 +12,7 @@ async function fixture(t: TestContext) {
   const profile={name:'test',home:join(root,'home')}
   const store=new TaskStore(root,profile,100)
   t.after(async()=>{await store.close();await rm(root,{recursive:true,force:true})})
-  const access=await store.create('owner',{goal:'Synthetic history',origins:['https://one.example']})
+  const access=await store.create('owner',{workflowRef:'generic',goal:'Synthetic history',origins:['https://one.example']})
   const dir=store.openTask(access).dir
   const journal=join(dir,'basic_law_index/events.jsonl')
   assert.ok(store.runtime)
@@ -52,7 +52,7 @@ it('blocks only the affected task for well-hashed unknown events, versions and i
     const before=await readFile(f.journal),restored=await reopen(t,f)
     assert.throws(()=>restored.store.openTask(restored.access,true),{code:'task_write_blocked'})
     assert.ok(restored.store.openTask(restored.access).storageIssue)
-    await restored.store.create('independent',{goal:'Independent',origins:['https://two.example']})
+    await restored.store.create('independent',{workflowRef:'generic',goal:'Independent',origins:['https://two.example']})
     assert.deepEqual(await readFile(f.journal),before)
   }
 })
@@ -72,7 +72,7 @@ it('retains unversioned history and Session ownership read-only without promotin
   assert.equal(restored.store.openTask(restored.access).readOnly,true)
   assert.throws(()=>restored.store.openTask(restored.access,true),{code:'task_read_only'})
   assert.equal((await restored.store.view(restored.access,8000)).active_context.businessVerdict,'unverified')
-  await assert.rejects(restored.store.create('owner',{goal:'Replacement',origins:['https://one.example']}),{code:'task_bound'})
+  await assert.rejects(restored.store.create('owner',{workflowRef:'generic',goal:'Replacement',origins:['https://one.example']}),{code:'task_bound'})
   await assert.rejects(restored.store.revise(restored.access,{newRun:true}),{code:'task_read_only'})
   await restored.store.end(restored.access,'handed_off')
   assert.deepEqual(await readFile(f.journal),before)

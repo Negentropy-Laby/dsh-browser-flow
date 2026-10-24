@@ -3,7 +3,7 @@ import {deferred} from './helpers/deferred.ts'
 import type {BundleRegistration} from './helpers/client-ports.ts'
 import { TASK as BASE_TASK, TASK_VIEW as BASE_VIEW,runScope } from './helpers/task-scope.ts'
 import {fixturePrimitives} from './helpers/panel-ui.ts'
-const TASK=runScope({...BASE_TASK,workflowRef:'import'}),TASK_VIEW={...BASE_VIEW,task:TASK}
+const TASK=runScope({...BASE_TASK,workflowRef:'import'}),TASK_VIEW={...BASE_VIEW,task:TASK,fileMode:'legacy_import' as const}
 /** Revocation barriers exercised against the shipped bundle and real React/DOM. */
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
@@ -92,7 +92,7 @@ async function withPanel(run:(panel:PanelFixture)=>Promise<void>, fileRace = fal
     if (route.endsWith('/poll')) {
       const commands = pendingCommands
       pendingCommands = []
-      answer = { ok: true, value: { protocolVersion: 3, task:TASK_VIEW, commands, dropped: [], agent: { id: 'session-1', instance: 'agent-1' } } }
+      answer = { ok: true, value: { protocolVersion: 4, task:TASK_VIEW, commands, dropped: [], agent: { id: 'session-1', instance: 'agent-1' } } }
     } else if (route.endsWith('/authorize')) {
       if(body.fileOperation){
         if(body.fileOperation===heldFileOperation){fileEntered.resolve();await fileReply.promise}
@@ -139,7 +139,7 @@ async function withPanel(run:(panel:PanelFixture)=>Promise<void>, fileRace = fal
     await act(async () => { container.querySelector('[data-browser-flow-action="authorize"]').click() })
     const enqueue = (op={ kind: 'act', action: 'click', target: { documentToken: 'doc-1', elementRef: 'el-0' } }) => {
       resultSeen = deferred<Record<string,unknown>>()
-      pendingCommands = [{protocolVersion:3,task:TASK, id: `command-${sent.length}`, leaseId: 'lease-1', connectionGeneration: 1, epoch: 0, sequence: 0,
+      pendingCommands = [{protocolVersion:4,task:TASK, id: `command-${sent.length}`, leaseId: 'lease-1', connectionGeneration: 1, epoch: 0, sequence: 0,
         budgetMs: 10000, deadlineAt: 0, op }]
     }
     const revoke = async (failure:boolean) => {

@@ -1,3 +1,5 @@
+import {isRecord} from './object.ts'
+import {operationFileMode} from './file-mode.ts'
 export type ErrorCode = (typeof ERROR_CODES)[number];
 /** Canonical success/failure union used inside the Host. */
 export type Result<T> = { ok: true; value: T } | ReturnType<typeof failure>
@@ -7,7 +9,7 @@ export interface ElementTarget { documentToken: string; elementRef: string }
 export interface FindQuery { by: string; value: string; name?: string }
 /** Validated page action arguments; user waits never enter the page queue. */
 export interface ActionInput {
-  action: string; wait?: unknown
+  action: string; wait?: unknown; explore?:unknown; requestId?:unknown; expectedVersion?:unknown
   documentToken?: string; elementRef?: string; fileGrantId?: unknown; value?: unknown; checked?: unknown
 }
 /** Validated wait arguments. */
@@ -26,18 +28,18 @@ export interface PanelPage {
 }
 /** Canonical panel registration; task authorization is a separate operation. */
 export interface PanelHello {
-  kind: 'hello'; protocolVersion: 3; connectionGeneration: number; sessionId: string
+  kind: 'hello'; protocolVersion: 4; connectionGeneration: number; sessionId: string
   panel: { instanceId: string; pages: PanelPage[] }
 }
 /** Canonical command identity, before an operation-specific consumer narrows its payload. */
 export interface CommandEnvelope {
-  kind: 'command'; protocolVersion: 3; task: import('./task-scope.ts').RunScope
+  kind: 'command'; protocolVersion: 4; task: import('./task-scope.ts').RunScope
   id: string; leaseId: string; connectionGeneration: number; epoch: number
   sequence: number; deadlineAt: number; op: Record<string, unknown>
 }
 /** Terminal result identity and bounded optional diagnostic from a panel. */
 export interface ResultEnvelope {
-  kind: 'result'; protocolVersion: 3; task: import('./task-scope.ts').RunScope
+  kind: 'result'; protocolVersion: 4; task: import('./task-scope.ts').RunScope
   id: string; leaseId: string; instanceId: string; connectionGeneration: number
   epoch: number; sequence: number; outcome: 'ok' | 'failed' | 'dropped' | 'unknown_outcome'
   payload?: Record<string, unknown>
@@ -63,7 +65,7 @@ export interface ResultEnvelope {
 import { validRunScope } from './task-scope.ts'
 
 /** Protocol revision. A mismatch fails the handshake loudly instead of guessing. */
-export const PROTOCOL_VERSION = 3
+export const PROTOCOL_VERSION = 4
 
 /** Base path of this plugin's Host routes on the existing `/api` connection. */
 export const ROUTE_PREFIX = '/api/browser-flow'
@@ -175,9 +177,7 @@ export function success<T>(value: T) : {
  * @param {unknown} value - candidate.
  * @returns {value is Record<string, unknown>} whether it is a plain object.
  */
-export function isRecord(value: unknown) : value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
+export {isRecord}
 
 /**
  * Read a required string field with a length bound.
@@ -251,7 +251,7 @@ export function validateCommand(value: unknown) : {
   if (!isRecord(value)) return { ok: false, reason: 'command must be an object' }
   const kind = readString(value, 'kind')
   if (kind !== 'command') return { ok: false, reason: 'kind must be "command"' }
-  if (value.protocolVersion !== PROTOCOL_VERSION || !validRunScope(value.task)) return {ok:false,reason:'protocol v3 and complete task/run scope are required'}
+  if (value.protocolVersion !== PROTOCOL_VERSION || !validRunScope(value.task)) return {ok:false,reason:'protocol v4 and complete task/run scope are required'}
   const id = readString(value, 'id', MAX_TOKEN)
   if (id === undefined || id.length === 0) return { ok: false, reason: 'id is required' }
   const leaseId = readString(value, 'leaseId', MAX_TOKEN)
@@ -294,7 +294,12 @@ function validateImportExtension(op: Record<string, unknown>) : {
     if(!isRecord(policy)||policy.adapter!=='bjrsj'||!['navigation','import'].includes(String(policy.workflow))||Object.keys(policy).some(key=>!['adapter','workflow','kind'].includes(key))||(policy.kind!==undefined&&!['add','modify','reduce'].includes(String(policy.kind))))return {ok:false,reason:'unsupported site action policy'}
     fields.pagePolicy={...policy}
   }
-  const required = op.action === 'set_file' || op.view === 'bjrsj_import'
+  if(op.fileMode!==undefined&&op.action!=='set_file')return {ok:false,reason:'file mode is only valid for set_file'}
+  let mode:'generic'|'legacy_import'
+  try{mode=operationFileMode(op)}catch{return {ok:false,reason:'file mode conflicts with its envelope'}}
+  const legacy=mode==='legacy_import'
+  if(op.action==='set_file')fields.fileMode=mode
+  const required = (op.action === 'set_file'&&legacy) || op.view === 'bjrsj_import'
   if (op.importScope !== undefined || required) {
     const scope = op.importScope
     if (!isRecord(scope) || typeof scope.kind!=='string' || !['add','modify','reduce'].includes(scope.kind) || Object.keys(scope).length !== 1
@@ -303,8 +308,9 @@ function validateImportExtension(op: Record<string, unknown>) : {
     fields.importScope = {kind:scope.kind}; fields.importOwner = op.importOwner; fields.windowMs = op.windowMs
   }
   if (op.view !== undefined) {
-    if (op.kind !== 'observe' || op.view !== 'bjrsj_import') return {ok:false,reason:'observe view is unknown'}
+    if (op.kind !== 'observe' || !['bjrsj_import','table','region'].includes(String(op.view))) return {ok:false,reason:'observe view is unknown'}
     fields.view = op.view
+    if(op.target!==undefined){const target=validateTarget(op.target);if(!target.ok)return target;fields.target=target.target}
   }
   if (op.action === 'set_file') {
     const file = op.file
@@ -312,11 +318,11 @@ function validateImportExtension(op: Record<string, unknown>) : {
       || typeof file.fileGrantId !== 'string' || !file.fileGrantId || file.fileGrantId.length > MAX_TOKEN
       || typeof file.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(file.sha256)
       || typeof file.name !== 'string' || !file.name || file.name.length > 255 || /[\\/\x00-\x1f]/.test(file.name)
-      || !isRecord(file.expectedIdentity) || typeof file.expectedIdentity.unitId !== 'string' || !/^[A-Z0-9-]{1,64}$/.test(file.expectedIdentity.unitId)
-      || typeof file.expectedIdentity.legalIdentity !== 'string' || !/^[A-Z0-9]{18}$/.test(file.expectedIdentity.legalIdentity)
-      || typeof file.bytes !== 'number' || !Number.isSafeInteger(file.bytes) || file.bytes < 1 || file.bytes > 10*1024*1024
+      || legacy&&(!isRecord(file.expectedIdentity) || typeof file.expectedIdentity.unitId !== 'string' || !/^[A-Z0-9-]{1,64}$/.test(file.expectedIdentity.unitId)
+      || typeof file.expectedIdentity.legalIdentity !== 'string' || !/^[A-Z0-9]{18}$/.test(file.expectedIdentity.legalIdentity))
+      || typeof file.bytes !== 'number' || !Number.isSafeInteger(file.bytes) || file.bytes < 1 || file.bytes > (legacy?10*1024*1024:16_000_000)
       || typeof file.base64 !== 'string' || file.base64.length !== 4*Math.ceil(file.bytes/3) || !/^[A-Za-z0-9+/]+={0,2}$/.test(file.base64)
-      || file.kind !==  (fields.importScope as Record<string, unknown>).kind) return {ok:false,reason:'file envelope is invalid or exceeds its own limit'}
+      || legacy&&file.kind !== (fields.importScope as Record<string, unknown>).kind || !legacy&&(file.kind!==undefined||file.expectedIdentity!==undefined)) return {ok:false,reason:'file envelope is invalid or exceeds its own limit'}
     const padding = file.bytes % 3 === 1 ? '==' : file.bytes % 3 === 2 ? '=' : ''
     if ((file.base64.match(/=*$/)?.[0] ?? '') !== padding) return {ok:false,reason:'file encoding length mismatch'}
     fields.file = { ...file }
@@ -433,7 +439,7 @@ export function validateResult(value: unknown) : {
 } {
   if (!isRecord(value)) return { ok: false, reason: 'result must be an object' }
   if (readString(value, 'kind') !== 'result') return { ok: false, reason: 'kind must be "result"' }
-  if (value.protocolVersion !== PROTOCOL_VERSION || !validRunScope(value.task)) return {ok:false,reason:'protocol v3 and complete task/run scope are required'}
+  if (value.protocolVersion !== PROTOCOL_VERSION || !validRunScope(value.task)) return {ok:false,reason:'protocol v4 and complete task/run scope are required'}
   const id = readString(value, 'id', MAX_TOKEN)
   if (id === undefined || id.length === 0) return { ok: false, reason: 'id is required' }
   const leaseId = readString(value, 'leaseId', MAX_TOKEN)

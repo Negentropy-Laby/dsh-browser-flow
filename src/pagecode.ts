@@ -1,5 +1,5 @@
 /** Fixed program builders serialize only JSON arguments into compiled TypeScript functions. */
-import { PAGE_RUNTIME_SOURCE, PAGE_IDENTITY_SOURCE, PAGE_OBSERVE_SOURCE, PAGE_FIND_SOURCE, PAGE_ACTION_SOURCE, PAGE_WAIT_SOURCE, PAGE_POLICY_SOURCE } from '#browser-flow/page-programs'
+import { PAGE_FILE_SOURCE, PAGE_RUNTIME_SOURCE, PAGE_IDENTITY_SOURCE, PAGE_OBSERVE_SOURCE, PAGE_FIND_SOURCE, PAGE_ACTION_SOURCE, PAGE_WAIT_SOURCE, PAGE_POLICY_SOURCE } from '#browser-flow/page-programs'
 import type { PageActionInput, PageWaitInput } from './page/input.ts'
 
 const SENSITIVE_QUERY_NAMES = Object.freeze([
@@ -13,11 +13,11 @@ export function prelude(): string { return `const runtime=(${PAGE_RUNTIME_SOURCE
 /** @returns Identity program for the current document. */
 export function identityProgram(): string { return `(function(){${prelude()}return (${PAGE_IDENTITY_SOURCE})(runtime);})()` }
 /** @param maxChars - text budget. @param maxNodes - node budget. @returns Bounded observation program. */
-export function observeProgram(maxChars:number,maxNodes:number): string { return `(function(){${prelude()}return (${PAGE_OBSERVE_SOURCE})(runtime,${JSON.stringify(maxChars)},${JSON.stringify(maxNodes)});})()` }
+export function observeProgram(maxChars:number,maxNodes:number,options?:{view?:string;documentToken?:string;elementRef?:string}): string { return `(function(){${prelude()}return (${PAGE_OBSERVE_SOURCE})(runtime,${JSON.stringify(maxChars)},${JSON.stringify(maxNodes)},${JSON.stringify(options??{})});})()` }
 /** @param query - validated locator. @param limit - maximum returned matches. @returns Fixed locator program. */
 export function findProgram(query:{by:string;value:string;name?:string},limit:number): string { return `(function(){${prelude()}return (${PAGE_FIND_SOURCE})(runtime,${JSON.stringify(query)},${JSON.stringify(limit)});})()` }
 /** @param input - validated page action and reference. @returns One fixed action without retries. */
-export function actProgram(input:PageActionInput): string { return `(function(){${prelude()}return (${PAGE_ACTION_SOURCE})(runtime,${JSON.stringify(input)},(${PAGE_POLICY_SOURCE}));})()` }
+export function actProgram(input:PageActionInput): string { return `(function(){${prelude()}return (${PAGE_ACTION_SOURCE})(runtime,${JSON.stringify(input)},(${PAGE_POLICY_SOURCE}),(${PAGE_FILE_SOURCE}));})()` }
 /** @param input - validated document condition and relative timeout. @returns Fixed DOM wait program. */
 export function waitProgram(input:PageWaitInput): string { return `(function(){${prelude()}return (${PAGE_WAIT_SOURCE})(runtime,${JSON.stringify(input)});})()` }
 /**

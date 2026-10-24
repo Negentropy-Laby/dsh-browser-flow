@@ -1,3 +1,4 @@
+import { isRecord } from './object.ts';
 export type ErrorCode = (typeof ERROR_CODES)[number];
 /** Canonical success/failure union used inside the Host. */
 export type Result<T> = {
@@ -19,6 +20,9 @@ export interface FindQuery {
 export interface ActionInput {
     action: string;
     wait?: unknown;
+    explore?: unknown;
+    requestId?: unknown;
+    expectedVersion?: unknown;
     documentToken?: string;
     elementRef?: string;
     fileGrantId?: unknown;
@@ -64,7 +68,7 @@ export interface PanelPage {
 /** Canonical panel registration; task authorization is a separate operation. */
 export interface PanelHello {
     kind: 'hello';
-    protocolVersion: 3;
+    protocolVersion: 4;
     connectionGeneration: number;
     sessionId: string;
     panel: {
@@ -75,7 +79,7 @@ export interface PanelHello {
 /** Canonical command identity, before an operation-specific consumer narrows its payload. */
 export interface CommandEnvelope {
     kind: 'command';
-    protocolVersion: 3;
+    protocolVersion: 4;
     task: import('./task-scope.ts').RunScope;
     id: string;
     leaseId: string;
@@ -88,7 +92,7 @@ export interface CommandEnvelope {
 /** Terminal result identity and bounded optional diagnostic from a panel. */
 export interface ResultEnvelope {
     kind: 'result';
-    protocolVersion: 3;
+    protocolVersion: 4;
     task: import('./task-scope.ts').RunScope;
     id: string;
     leaseId: string;
@@ -104,7 +108,7 @@ export interface ResultEnvelope {
     };
 }
 /** Protocol revision. A mismatch fails the handshake loudly instead of guessing. */
-export declare const PROTOCOL_VERSION = 3;
+export declare const PROTOCOL_VERSION = 4;
 /** Base path of this plugin's Host routes on the existing `/api` connection. */
 export declare const ROUTE_PREFIX = "/api/browser-flow";
 /** Errors this plugin reports to the model and the panel. */
@@ -151,7 +155,7 @@ export declare function success<T>(value: T): {
  * @param {unknown} value - candidate.
  * @returns {value is Record<string, unknown>} whether it is a plain object.
  */
-export declare function isRecord(value: unknown): value is Record<string, unknown>;
+export { isRecord };
 /**
  * Read a required string field with a length bound.
  * @param {Record<string, unknown>} row - source object.

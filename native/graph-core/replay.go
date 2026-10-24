@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package graphcore
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 // replayState tracks only contributions affected by the current event. Each
 // live intent owns sets, so removing a cyclic branch cannot keep itself hot.
@@ -113,7 +116,7 @@ func (r *replayState) apply(ctx context.Context, p *Projection, event Event, sta
 	for ; r.nodes < len(p.Nodes); r.nodes++ {
 		n := p.Nodes[r.nodes]
 		r.dirty[n.key] = true
-		if n.Kind == "intent" && n.Data["status"] == "pending" {
+		if liveNode(n) {
 			if err := r.activate(ctx, n.key); err != nil {
 				return err
 			}
@@ -125,12 +128,38 @@ func (r *replayState) apply(ctx context.Context, p *Projection, event Event, sta
 		switch e.Relation {
 		case "attempts", "records":
 			from, to = to, from
-		case "yields":
+		case "yields", "derived_from", "spawns", "proves":
 		default:
 			continue
 		}
 		if err := r.edge(ctx, from, to); err != nil {
 			return err
+		}
+	}
+	if event.Type == "revise" || event.Semantic != nil && event.Semantic.Completed {
+		for _, n := range p.Nodes {
+			if n.Kind == "intent" && !liveNode(n) {
+				r.dirty[n.key] = true
+				r.settle(n.key)
+			}
+		}
+	}
+	if event.Semantic != nil {
+		for _, u := range event.Semantic.Updates {
+			n := p.index[u.ID]
+			if n == nil || n.run != event.Run {
+				return errors.New("invalid_semantic_update")
+			}
+			r.dirty[n.key] = true
+			if liveNode(n) {
+				if r.live[n.key] == nil {
+					if err := r.activate(ctx, n.key); err != nil {
+						return err
+					}
+				}
+			} else {
+				r.settle(n.key)
+			}
 		}
 	}
 	if event.Type == "receipt" && event.Outcome != "unknown_outcome" {
@@ -141,7 +170,7 @@ func (r *replayState) apply(ctx context.Context, p *Projection, event Event, sta
 	for key := range r.dirty {
 		r.visits++
 		n := p.Nodes[key-1]
-		cold := (n.Kind == "intent" || n.Kind == "receipt") && r.hot[key] == 0 && !protected[n.ID]
+		cold := (n.Kind == "intent" || n.Kind == "receipt" || n.Kind == "fact") && n.Data["state"] != "origin" && r.hot[key] == 0 && !protected[n.ID]
 		if cold {
 			if stamps[key] == nil {
 				v := p.Round

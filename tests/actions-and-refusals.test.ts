@@ -79,7 +79,7 @@ describe('actions and refusals through the tool layer', { skip: jsdomEntry === u
       url: identity.value.url, documentToken: identity.value.documentToken, tabId: 'tab-1',
     }]
     await call(present(fake.routes.get('POST /api/browser-flow/hello')), {
-      kind: 'hello', protocolVersion: 3, connectionGeneration: 1, sessionId: agent.id,
+      kind: 'hello', protocolVersion: 4, connectionGeneration: 1, sessionId: agent.id,
       panel: { instanceId: 'panel-1', pages },
     })
     await bindTestTask(service,agent.id,[new URL(pages[0].url).origin])

@@ -9,9 +9,9 @@ import { createTools } from '../src/tools.ts'
 import { resolveConfig } from '../src/config.ts'
 import { resolve } from 'node:path'
 
-const command=(op:Record<string,unknown>)=>({kind:'command',protocolVersion:3,task:TASK,id:'c',leaseId:'l',connectionGeneration:1,epoch:0,sequence:0,deadlineAt:1000,op})
+const command=(op:Record<string,unknown>)=>({kind:'command',protocolVersion:4,task:TASK,id:'c',leaseId:'l',connectionGeneration:1,epoch:0,sequence:0,deadlineAt:1000,op})
 describe('authorized import wire and model interface',()=>{
-  it('requires matching v3 peers',()=>assert.equal(PROTOCOL_VERSION,3))
+  it('requires matching v4 peers',()=>assert.equal(PROTOCOL_VERSION,4))
   it('refuses an unresolved or remote private root at load',()=>{
     assert.throws(()=>resolveConfig({importEvidenceDir:'relative/private'}),/local absolute/)
     assert.throws(()=>resolveConfig({importEvidenceDir:'//server/share'}),/local absolute/)
@@ -38,4 +38,15 @@ describe('authorized import wire and model interface',()=>{
     assert.equal(validateCommand(command({...op,file:{...file,bytes,base64:Buffer.alloc(bytes).toString('base64')}})).ok,true)
     assert.equal(validateCommand(command({kind:'act',action:'type',target:op.target,value:'x'.repeat(bytes)})).ok,false)
   })
+})
+
+it('normalizes old file envelopes once and refuses a conflicting explicit mode',()=>{
+ const generic={kind:'act',action:'set_file',target:{documentToken:'d',elementRef:'e'},file:{fileGrantId:'g',name:'data.json',sha256:'a'.repeat(64),base64:'eA==',bytes:1}}
+ const legacy={...generic,importScope:{kind:'add'},importOwner:'owner',windowMs:25000,file:{...generic.file,kind:'add',expectedIdentity:{unitId:'UNIT1',legalIdentity:'123456789012345678'}}}
+ for(const [op,mode]of [[generic,'generic'],[legacy,'legacy_import']] as const){
+  for(const input of [op,{...op,fileMode:mode}]){const result=validateCommand(command(input));assert.equal(result.ok,true);if(result.ok)assert.equal(result.command.op.fileMode,mode)}
+ }
+ assert.equal(validateCommand(command({...legacy,fileMode:'generic'})).ok,false)
+ assert.equal(validateCommand(command({...generic,fileMode:'legacy_import'})).ok,false)
+ assert.equal(validateCommand(command({...generic,fileMode:'unknown'})).ok,false)
 })

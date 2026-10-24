@@ -38,7 +38,7 @@ function countFacts(data:TaskData) {
 
 for(const kind of ['navigation','import','unproved'] as const)it(`reuses read-phase facts for ${kind} views, summaries and criterion details`,async t=>{
   const env=kind==='navigation'?await navigation(t):kind==='import'?await importProof(t):await taskHost(t)
-  if(kind==='unproved')await env.task('a',{goal:'Synthetic unproved',origins:['https://a.example'],criteria:['Free text']})
+  if(kind==='unproved')await env.task('a',{workflowRef:'generic',goal:'Synthetic unproved',origins:['https://a.example'],criteria:['Free text']})
   const store=env.service.tasks,access=present(store.current('session-a')),data=store.openTask(access),expected=taskFacts(data),criterion=present(expected.criteria.find(c=>c.source==='code_verified')??expected.criteria[0]),counter=countFacts(data)
   try{
     const view=taskView(data,8000,undefined,'unavailable',store.writable)

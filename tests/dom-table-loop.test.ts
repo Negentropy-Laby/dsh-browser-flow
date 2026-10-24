@@ -96,7 +96,7 @@ describe('six-tool DOM table closed loop', { skip: jsdomEntry === undefined ? 'j
         url: identity.value.url, documentToken: identity.value.documentToken, tabId: 'tab-1',
       }]
       const hello = await call(present(fake.routes.get('POST /api/browser-flow/hello')), {
-        kind: 'hello', protocolVersion: 3, connectionGeneration: 1, sessionId: agent.id,
+        kind: 'hello', protocolVersion: 4, connectionGeneration: 1, sessionId: agent.id,
         panel: { instanceId: 'panel-1', pages },
       })
       assert.equal(hello.status, 200)

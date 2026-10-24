@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import {createHash} from 'node:crypto'
 import {it,type TestContext} from 'node:test'
 import {mkdtemp,mkdir,open,writeFile,rm,rename,type FileHandle} from 'node:fs/promises'
 import type {StatOptions} from 'node:fs'
@@ -105,7 +106,8 @@ it('retains digest and path identity checks after bounded reads',async t=>{
 })
 it('reads a newly written proof through the same bounded artifact entry',async t=>{
  const f=await fixture(t),read=f.store.readArtifact.bind(f.store);let reads=0
- f.store.readArtifact=async(...args)=>{reads++;assert.equal(args[2],false);return read(...args)}
- const id=await f.store.proof(f.access,{schemaVersion:1,kind:'synthetic',run:f.access.run})
+ const proof={schemaVersion:1,kind:'synthetic',run:f.access.run},bytes=Buffer.from(JSON.stringify(proof)+'\n')
+ f.store.readArtifact=async(...args)=>{reads++;assert.notEqual(args[2],false);assert.equal(args[1].sha256,createHash('sha256').update(bytes).digest('hex'));assert.equal(args[1].bytes,bytes.length);return read(...args)}
+ const id=await f.store.proof(f.access,proof)
  assert.ok(f.data.events.some(event=>event.type==='asset'&&event.data.id===id));assert.equal(reads,1)
 })

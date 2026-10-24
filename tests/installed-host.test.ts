@@ -99,7 +99,7 @@ describe('installed Desktop Host loadability', { skip: ready ? false : `missing 
       const response = await present(route).fetch(new Request(`http://127.0.0.1:62231${path}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body && typeof body === 'object' && !Array.isArray(body) ? { protocolVersion: 3, ...body } : body),
+        body: JSON.stringify(body && typeof body === 'object' && !Array.isArray(body) ? { protocolVersion: 4, ...body } : body),
       }))
       return { status: response.status, body: await response.json() }
     }
@@ -108,7 +108,7 @@ describe('installed Desktop Host loadability', { skip: ready ? false : `missing 
       url: 'https://example.test/sheet?access_token=leak', documentToken: 'doc-installed', tabId: 'tab-installed',
     }]
     const hello = await post('/api/browser-flow/hello', {
-      kind: 'hello', protocolVersion: 3, connectionGeneration: 1, sessionId: agent.id,
+      kind: 'hello', protocolVersion: 4, connectionGeneration: 1, sessionId: agent.id,
       panel: { instanceId: 'panel-installed', pages },
     })
     assert.equal(hello.status, 200)
