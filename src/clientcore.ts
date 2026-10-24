@@ -1,3 +1,4 @@
+import {operationFileMode} from './file-mode.ts'
 export type PageOperation = {
     kind: "observe" | "find" | "act" | "wait";
     maxChars?: number | undefined;
@@ -19,6 +20,7 @@ export type PageOperation = {
     importScope?: object | undefined;
     importOwner?: string | undefined;
     windowMs?: number | undefined;
+    fileMode?:'generic'|'legacy_import';
     file?: {base64:string;sha256:string} | undefined;
 };
 export type PagePrograms = {
@@ -62,7 +64,7 @@ export const WEBVIEW_SELECTOR = 'webview[data-sidebar-browser-frame="webview"]'
  * @throws {Error} for an operation this build does not implement.
  */
 export function programFor(pageCode: PagePrograms, op: PageOperation) : string {
-  if (op.view === 'bjrsj_import' || (op.kind === 'act' && op.action === 'set_file' && (op.importScope!==undefined||(op.pagePolicy && 'adapter' in op.pagePolicy && op.pagePolicy.adapter==='bjrsj')))) {
+  if (op.view === 'bjrsj_import' || (op.kind === 'act' && op.action === 'set_file' && operationFileMode(op)==='legacy_import')) {
     if (!pageCode.import) throw new Error('the scoped import program is unavailable')
     return pageCode.import({mode:op.action === 'set_file' ? 'set_file' : 'observe',owner:op.importOwner,scope:op.importScope,windowMs:op.windowMs,target:op.target,file:op.file})
   }

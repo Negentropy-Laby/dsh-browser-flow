@@ -15,6 +15,8 @@ test('file capability depends on generation and adapter, never just workflow nam
  assert.equal(taskFileMode({schemaVersion:1,adapter:'bjrsj',workflowRef:'import'}),'legacy_import')
  const h=await taskHost(t);await h.task('a',{goal:'Explore',origins:['https://example.test']})
  const a=await h.service.tasks.forSession('session-a');assert.equal((await h.service.taskSummary(a)).fileMode,'generic')
+ await h.task('b');const b=await h.service.tasks.forSession('session-b')
+ await assert.rejects(h.service.tasks.fileView(b,'asset-any',0,8000),{code:'unsupported'})
 })
 test('file limits are explicit and legacy import rejects oversized input before parsing',async t=>{
  const root=await mkdtemp(join(tmpdir(),'bf-file-limit-'));t.after(()=>rm(root,{recursive:true,force:true}))

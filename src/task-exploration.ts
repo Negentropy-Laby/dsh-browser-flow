@@ -32,8 +32,9 @@ export function canonical(value:unknown):string {
 }
 function fail(message:string,code='invalid_request'):never {throw new ExplorationError(code,message)}
 function node(id:string,kind:ExplorationKind,source:ExplorationNode['source'],state:string,data:Record<string,unknown>,asset_ids:string[]=[]):ExplorationNode{return {id,kind,source,state,data,asset_ids}}
+export const originId=(manifest:Manifest)=>`fact-origin-${manifest.scope.taskId}-r${manifest.scope.scopeRevision}`
 export function seedExploration(manifest:Manifest):ExplorationChange {
-  const suffix=`${manifest.scope.taskId}-r${manifest.scope.scopeRevision}`,origin=`fact-origin-${suffix}`
+  const suffix=`${manifest.scope.taskId}-r${manifest.scope.scopeRevision}`,origin=originId(manifest)
   const nodes=[node(`goal-${suffix}`,'goal','user_declared','open',{text:manifest.goal,mandatory:true,original:true}),node(origin,'fact','host','origin',{summary:manifest.goal,origins:manifest.origins,confidence:'instruction'})]
   manifest.criteria.forEach((label,i)=>nodes.push(node(`goal-condition-${suffix}-${i+1}`,'goal','user_declared','open',{text:label,mandatory:true,original:true})))
   manifest.constraints.forEach((label,i)=>nodes.push(node(`hint-${suffix}-${i+1}`,'hint','user_declared','active',{text:label})))
@@ -142,7 +143,7 @@ export function planExploration(task:TaskData,command:Record<string,unknown>,che
   if(op==='set_goals'){
     planner();const items=command.goals??[{text:command.text}]
     if(!Array.isArray(items)||!items.length||items.length>32)fail('provide 1 to 32 goals')
-    result.ids=items.map(item=>{if(!object(item)||Object.keys(item).some(k=>k!=='text')||!text(item.text))fail('goals require text');const n=add('goal','open',{text:item.text,mandatory:true,original:false});edge([...state.nodes.values()].find(n=>n.state==='origin')!.id,n.id,'spawns');return n.id})
+    result.ids=items.map(item=>{if(!object(item)||Object.keys(item).some(k=>k!=='text')||!text(item.text))fail('goals require text');const n=add('goal','open',{text:item.text,mandatory:true,original:false});edge(originId(task.manifest),n.id,'spawns');return n.id})
   }else if(op==='add_hint'){
     if(!text(command.text))fail('hint text required');result.id=add('hint','active',{text:command.text},anchors(command.asset_ids)).id
   }else if(op==='add_intent'){
@@ -154,7 +155,7 @@ export function planExploration(task:TaskData,command:Record<string,unknown>,che
       const parents=item.parent_ids??[];if(!refs(parents))fail('parent_ids must be fact references')
       for(const id of parents)one(id,'fact')
       const n=add('intent','open',{summary:item.summary,priority},anchors(item.asset_ids))
-      for(const id of parents.length?parents:[[...state.nodes.values()].find(n=>n.state==='origin')!.id])edge(id,n.id,'derived_from')
+      for(const id of parents.length?parents:[originId(task.manifest)])edge(id,n.id,'derived_from')
       return n.id
     })
   }else if(op==='claim_intent'){
@@ -194,20 +195,32 @@ export function planExploration(task:TaskData,command:Record<string,unknown>,che
   }
   return {changes,result}
 }
-export function explorationOverview(task:TaskData) {
-  const state=explorationState(task),all=[...state.nodes.values()],resources=currentResources(task)
-  const anchors=resourceAnchors(state,resources),explorable=[...resources.values()].filter(r=>['page','file'].includes(r.kind))
-  const denominator=explorable.length,count=explorable.filter(r=>[...anchors.get(r.id)!].some(id=>{const n=state.nodes.get(id);return n?.kind==='fact'&&n.state!=='origin'})).length
-  const compact=(n:ExplorationNode)=>({id:n.id,state:n.state,source:n.source,summary:String(n.data.summary??n.data.text??'').slice(0,160),...(typeof n.data.confidence==='string'?{confidence:n.data.confidence}:{}),...(typeof n.data.priority==='number'?{priority:n.data.priority}:{}),asset_ids:n.asset_ids,details:n.id})
-  return {phase:state.phase,currentIntent:state.currentIntent?.id??null,round:state.round,
-    goals:all.filter(n=>n.kind==='goal').slice(0,8).map(n=>({...compact(n),proofSource:n.state==='met'?'agent':null})),
-    goals_total:all.filter(n=>n.kind==='goal').length,goals_unmet:all.filter(n=>n.kind==='goal'&&n.state!=='met').length,goals_details:{op:'list_goals'},
-    hints:all.filter(n=>n.kind==='hint').slice(-8).map(compact),
-    open_intents:all.filter(n=>n.kind==='intent'&&n.state==='open').sort((a,b)=>Number(b.data.priority)-Number(a.data.priority)).slice(0,8).map(compact),
-    running_intents:all.filter(n=>n.kind==='intent'&&n.state==='running').map(compact),
-    recent_done_intents:all.filter(n=>n.kind==='intent'&&!['open','running'].includes(n.state)).slice(-8).map(compact),
-    recent_facts:all.filter(n=>n.kind==='fact'&&n.state!=='origin').slice(-8).map(compact),
-    facts_total:all.filter(n=>n.kind==='fact'&&n.state!=='origin').length,
+/** Only semantic observed facts with source-backed checks can establish a goal. */
+export function proofAvailable(state:ExplorationState,goalId:string,check:(id:string,refs:string[])=>boolean):boolean {
+  return state.edges.some(edge=>{
+    if(edge.to!==goalId||edge.relation!=='proves')return false
+    const f=state.nodes.get(edge.from),evidence=f?.data.evidence_refs,checks=f?.data.check_refs
+    return f?.kind==='fact'&&f.data.confidence==='observed'&&refs(evidence,LIMIT.sources)&&evidence.length>0&&refs(checks)&&checks.length>0&&checks.every(id=>check(id,evidence))
+  })
+}
+export function explorationNodeView(n:ExplorationNode,state:ExplorationState,check:(id:string,refs:string[])=>boolean,compact=false) {
+  const summary=String(n.data.summary??n.data.text??''),data=compact?{summary:summary.slice(0,240),...(n.kind==='goal'?{text:summary.slice(0,240)}:{}),...(typeof n.data.confidence==='string'?{confidence:n.data.confidence}:{}),...(typeof n.data.priority==='number'?{priority:n.data.priority}:{})}:n.data
+  return {...n,data,summary:compact?summary.slice(0,160):summary,...(n.kind==='goal'?{text:compact?summary.slice(0,160):summary,proofSource:n.state==='met'?'agent':null,evidenceVerification:n.state==='met'?proofAvailable(state,n.id,check)?'host_checked':'unavailable':null}:{}),...(compact?{details:n.id}:{})}
+}
+export function explorationOverview(task:TaskData,state=explorationState(task),resources=currentResources(task),check:(id:string,refs:string[])=>boolean=()=>false) {
+  const goals:ExplorationNode[]=[],facts:ExplorationNode[]=[],hints:ExplorationNode[]=[],open:ExplorationNode[]=[],running:ExplorationNode[]=[],done:ExplorationNode[]=[]
+  for(const n of state.nodes.values()){
+    if(n.kind==='goal')goals.push(n)
+    else if(n.kind==='fact'&&n.id!==originId(task.manifest))facts.push(n)
+    else if(n.kind==='hint')hints.push(n)
+    else if(n.kind==='intent')(n.state==='open'?open:n.state==='running'?running:done).push(n)
+  }
+  const factIds=new Set(facts.map(n=>n.id)),anchors=resourceAnchors(state,resources),explorable=[...resources.values()].filter(r=>['page','file'].includes(r.kind))
+  const denominator=explorable.length,count=explorable.filter(r=>[...anchors.get(r.id)!].some(id=>factIds.has(id))).length
+  const compact=(n:ExplorationNode)=>explorationNodeView(n,state,check,true)
+  return {phase:state.phase,currentIntent:state.currentIntent?.id??null,round:state.round,originRef:originId(task.manifest),
+    goals:goals.slice(0,8).map(compact),goals_total:goals.length,goals_unmet:goals.filter(n=>n.state!=='met').length,goals_details:{op:'list_goals'},
+    hints:hints.slice(-8).map(compact),open_intents:open.sort((a,b)=>Number(b.data.priority)-Number(a.data.priority)).slice(0,8).map(compact),running_intents:running.map(compact),recent_done_intents:done.slice(-8).map(compact),recent_facts:facts.slice(-8).map(compact),facts_total:facts.length,
     assetCoverage:{denominator,tested:count,pct:denominator?count/denominator:null,note:'Known task resources anchored by facts; not business success or all website functions.'},
     verification:'last_checked; use explicit task reads to revalidate originals',details:'graph:exploration'}
 }

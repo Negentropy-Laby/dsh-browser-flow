@@ -236,7 +236,7 @@ closing: Promise<void> | undefined;
     data.liveDocumentToken=this.tasks.controlDocument?.(access)
     const budget=Math.max(1800,Math.floor(this.config.observeMaxChars*3/4))
     const view=withGraph?await this.tasks.view(access,budget,signal):taskView(data,budget,undefined,'not_requested',this.tasks.writable,undefined,this.graph.cleanup(access.scope.taskId))
-    const exploration=isExploration(data.manifest)?explorationOverview(data):undefined
+    const exploration=isExploration(data.manifest)?explorationOverview(data,undefined,undefined,(id,refs)=>this.tasks.checkPassed(data,id,refs)):undefined
     const workflow=data.snapshot?.definition.workflows.find(row=>row.id===data.manifest.workflowRef)
     const resources=workflow ? [...workflow.instructions,...workflow.resources].map(definitionRef) : []
     const instructions=(workflow?.instructions ?? []).map(name=>({name,ref:definitionRef(name),text:data.snapshot?.files[name] ?? ''}))
@@ -361,7 +361,7 @@ closing: Promise<void> | undefined;
         redacted.contextOnly=false
         redacted.documentToken=lease.value.documentToken
         try{
-          const pageRef=await this.tasks.asset(access,'page',{...redacted,documentToken:lease.value.documentToken,resourceIdentity:pageIdentity(access.run,lease.value,'observation')})
+          const pageRef=await this.tasks.asset(access,'page',{...redacted,documentToken:lease.value.documentToken,resourceIdentity:pageIdentity(access.run,lease.value,'observation')},'host',{persistOriginal:isExploration(this.tasks.openTask(access).manifest)})
           redacted.assetRef=pageRef
           const event=this.tasks.openTask(access).events.find(e=>e.data.id===pageRef)!
           redacted.resourceRef=eventResourceDescriptor(event,access.run).id
@@ -499,8 +499,9 @@ closing: Promise<void> | undefined;
       if(this.now()-startedAt>=this.config.commandBudgetMs||signal?.aborted)throw new TaskError('deadline_exceeded','the command expired during durable preparation; no page command was delivered')
       const entry=this.importFiles.current(lease)
       let file
-      const generic=isExploration(this.tasks.openTask(access).manifest)?this.genericFiles.current(lease):undefined
+      const mode=taskFileMode(this.tasks.openTask(access).manifest),generic=mode==='generic'?this.genericFiles.current(lease):undefined
       if(input.action==='set_file'){
+        if(mode==='none'||mode==='generic'&&!generic)throw new TaskError('not_authorized','this task has no confirmed file capability')
         if(!generic&&(!entry?.identityVerified||entry.id!==input.fileGrantId))throw new TaskError('not_authorized','a confirmed file and both current identity anchors are required')
         try{file=generic?await this.genericFiles.dispatch(lease,String(input.fileGrantId)):await this.importFiles.dispatch(lease,String(input.fileGrantId))}catch{throw new TaskError('not_authorized','file authorization, source or snapshot changed; do not retry implicitly')}
         if(generic?.assetRef)await this.tasks.relate(access,attempt,generic.assetRef,'selected_from')
@@ -513,7 +514,7 @@ closing: Promise<void> | undefined;
       action: input.action,
       target: { documentToken: input.documentToken, elementRef: input.elementRef },
       ...(held.value.importKind ? this.importMetadata(held.value) : {}),
-      ...(file ? {file} : {}),
+      ...(file ? {file,fileMode:mode} : {}),
       ...(input.value === undefined ? {} : { value: input.value }),
       ...(input.checked === undefined ? {} : { checked: input.checked }),
     }, signal,startedAt,attempt)

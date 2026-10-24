@@ -39,3 +39,14 @@ describe('authorized import wire and model interface',()=>{
     assert.equal(validateCommand(command({kind:'act',action:'type',target:op.target,value:'x'.repeat(bytes)})).ok,false)
   })
 })
+
+it('normalizes old file envelopes once and refuses a conflicting explicit mode',()=>{
+ const generic={kind:'act',action:'set_file',target:{documentToken:'d',elementRef:'e'},file:{fileGrantId:'g',name:'data.json',sha256:'a'.repeat(64),base64:'eA==',bytes:1}}
+ const legacy={...generic,importScope:{kind:'add'},importOwner:'owner',windowMs:25000,file:{...generic.file,kind:'add',expectedIdentity:{unitId:'UNIT1',legalIdentity:'123456789012345678'}}}
+ for(const [op,mode]of [[generic,'generic'],[legacy,'legacy_import']] as const){
+  for(const input of [op,{...op,fileMode:mode}]){const result=validateCommand(command(input));assert.equal(result.ok,true);if(result.ok)assert.equal(result.command.op.fileMode,mode)}
+ }
+ assert.equal(validateCommand(command({...legacy,fileMode:'generic'})).ok,false)
+ assert.equal(validateCommand(command({...generic,fileMode:'legacy_import'})).ok,false)
+ assert.equal(validateCommand(command({...generic,fileMode:'unknown'})).ok,false)
+})

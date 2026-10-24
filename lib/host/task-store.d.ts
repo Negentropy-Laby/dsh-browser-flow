@@ -148,7 +148,9 @@ export declare class TaskStore {
     /** @param {TaskAccess} access - owner. @param {Record<string,unknown>} result - trusted validator result. @param {string} proofRef - private original reference. @returns {Promise<string>} independently checked current verdict. */
     verdict(access: TaskAccess, result: Record<string, unknown>, proofRef: string): Promise<string>;
     /** @param {TaskAccess} access - capability. @param {string} kind - code-owned asset kind. @param {Record<string,unknown>} data - safe facts; raw personnel remain in private evidence. @param {'host'|'code_verified'} [source] - factual authority. @returns {Promise<string>} unique task-local reference, never deduplicated by name or content. */
-    asset(access: TaskAccess, kind: string, value: Record<string, unknown>, source?: 'host' | 'code_verified'): Promise<string>;
+    asset(access: TaskAccess, kind: string, value: Record<string, unknown>, source?: 'host' | 'code_verified', options?: {
+        persistOriginal?: boolean;
+    }): Promise<string>;
     private assetOwned;
     /** Read only a Host-registered immutable observation/file in this exact run. */
     private originalSource;
@@ -158,6 +160,7 @@ export declare class TaskStore {
     explore(access: TaskAccess, command: unknown, requestId: unknown, expectedVersion: unknown, beforeComplete?: (completed: boolean) => void): Promise<Record<string, unknown>>;
     /** Semantic queries stay available when Go is unavailable; explicit reads recheck evidence. */
     queryExploration(access: TaskAccess, query: unknown, budget?: number): Promise<Record<string, unknown>>;
+    private semanticProjection;
     fileView(access: TaskAccess, id: string, offset: number, budget: number, projectionId?: string): Promise<object>;
     /** @param {TaskAccess} access - capability. @param {string} from - existing task asset. @param {string} to - existing task asset. @param {string} relation - fixed relation. @returns {Promise<string>} journaled relation after both ownership checks. */
     relate(access: TaskAccess, from: string, to: string, relation: string): Promise<string>;

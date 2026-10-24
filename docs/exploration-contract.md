@@ -36,3 +36,16 @@ character limit; their expanded journal payload has a 200,000 character and
 256-edge limit. These aggregate limits are checked before evidence I/O or
 writes. Oversized batches are rejected atomically with their measured use; split
 or shorten them and use new request IDs with the latest contextVersion.
+
+File controls use the Host's `fileMode` capability (`generic`, `legacy_import`,
+`none`), not the workflow name. `view:file` reads originals only in generic
+exploration tasks; legacy tasks can read snapshot metadata using `view:task`.
+New `set_file` envelopes name their mode; compatible old envelopes are normalized
+at the shared protocol boundary. Conflicting mode metadata is refused.
+
+Origin facts have a separate `originRef` and do not count as recorded findings.
+Goal lists, overview and node details use the same proof status. When a node query
+is too large, its summary and relation counts remain visible, and `continuation`
+contains the exact `ref`, `offset` and `projectionId` for the task detail channel.
+Page originals are persisted only when the Host observation call explicitly
+requests it; a context snapshot does not carry an observation original.

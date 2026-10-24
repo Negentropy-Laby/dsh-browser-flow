@@ -19,7 +19,7 @@ async function setup(t:import('node:test').TestContext,criteria:string[]=[],grap
  let counter=0
  const run=(command:Record<string,unknown>,id='r-'+(++counter))=>store.explore(access,command,id,store.openTask(access).events.length)
  const start=async()=>{const made=await run({op:'add_intent',summary:'Inspect and establish the requested outcome'});await run({op:'claim_intent'});return (made.ids as string[])[0]}
- const observe=()=>store.asset(access,'page',{contextOnly:false,documentToken:'document-a',result:{status:'settled',items:['A','B']}})
+ const observe=()=>store.asset(access,'page',{contextOnly:false,documentToken:'document-a',result:{status:'settled',items:['A','B']}},'host',{persistOriginal:true})
  const checked=async(ref:string)=>{const r=await run({op:'check_evidence',assertion:{op:'equals',left:{ref,path:['result','status']},right:{value:'settled'}}});return String(r.check_ref)}
  const record=async(ref:string,check:string)=>{const r=await run({op:'record_fact',summary:'Observed the requested outcome',confidence:'observed',evidence_refs:[ref],check_refs:[check],asset_ids:[...currentResources(store.openTask(access)).keys()]});return (r.ids as string[])[0]}
  return {root,store,get access(){return access},set access(a){access=a},run,start,observe,checked,record,worker,config}
@@ -238,7 +238,7 @@ test('normal tools replay a lost completion acknowledgement without reacquiring 
   assert.equal(result.ok,true,JSON.stringify(result));return result.value
  }
  await run({op:'add_intent',summary:'Inspect result'});await run({op:'claim_intent'})
- const ref=await store.asset(access,'page',{contextOnly:false,result:'ok'})
+ const ref=await store.asset(access,'page',{contextOnly:false,result:'ok'},'host',{persistOriginal:true})
  const check=await run({op:'check_evidence',assertion:{op:'equals',left:{ref,path:['result']},right:{value:'ok'}}})
  const fact=await run({op:'record_fact',summary:'Observed result',confidence:'observed',evidence_refs:[ref],check_refs:[check.check_ref]})
  await run({op:'finish_intent'})
@@ -308,4 +308,46 @@ test('semantic append and recovery reject missing and foreign endpoints at the v
  const recovered=restored.openTask(await restored.forSession('owner'))
  assert.equal(recovered.events.length,last.seq);assert.equal(recovered.unhealthy,true);assert.match(recovered.storageIssue!,/seq=/)
  assert.deepEqual(await readFile(path),bytes)
+})
+
+test('origin is separately addressable and fact counts agree before and after recording',async t=>{
+ const h=await setup(t),overview=await h.store.queryExploration(h.access,{op:'graph_overview'}) as any
+ const facts=await h.store.queryExploration(h.access,{op:'list_facts'}) as any
+ assert.equal(overview.value.facts_total,0);assert.equal(facts.value.total,0)
+ assert.equal((JSON.parse((await h.store.detail(h.access,overview.value.originRef,0,8000) as any).text)).state,'origin')
+ await h.start();await h.run({op:'record_fact',summary:'Potential method',confidence:'inferred'})
+ assert.equal((await h.store.queryExploration(h.access,{op:'list_facts'}) as any).value.total,1)
+ assert.equal((await h.store.queryExploration(h.access,{op:'graph_overview'}) as any).value.facts_total,1)
+})
+test('truncated semantic query preserves context and supplies a complete projection-bound continuation',async t=>{
+ const h=await setup(t);await h.start()
+ const r=await h.run({op:'record_fact',summary:'Summary retained',detail:'中文😀'.repeat(1200),confidence:'inferred'}),id=(r.ids as string[])[0]
+ const query=await h.store.queryExploration(h.access,{op:'node_detail',id},1200) as any
+ assert.equal(query.value.truncated,true);assert.equal(query.value.data.confidence,'inferred');assert.equal(query.value.data.summary,'Summary retained')
+ assert.equal(query.value.relationCount,1);assert.equal(query.value.relations[0].relation,'yields')
+ let text='',offset=query.value.continuation.offset,complete=false
+ while(!complete){const part=await h.store.detail(h.access,id,offset,600,query.value.continuation.projectionId) as any;text+=part.text;offset+=part.text.length;complete=part.complete}
+ assert.equal(JSON.parse(text).data.detail,'中文😀'.repeat(1200));assert.equal(JSON.parse(text).relations.length,1)
+ await h.run({op:'add_hint',text:'Changed input'})
+ await assert.rejects(h.store.detail(h.access,id,offset,600,query.value.continuation.projectionId),/changed/)
+})
+test('all goal readers report the same proof validity and ordinary edges cannot add authority',async t=>{
+ const h=await setup(t,['Another goal']);await h.start();const ref=await h.observe(),check=await h.checked(ref),fact=await h.record(ref,check)
+ await h.run({op:'finish_intent'});const data=h.store.openTask(h.access),goal=[...explorationState(data).nodes.values()].find(n=>n.kind==='goal')!
+ await h.run({op:'prove_goal',goal_id:goal.id,evidence_id:fact,reason:'Observed'})
+ for(const expected of ['host_checked','unavailable']){
+  const overview=(await h.store.queryExploration(h.access,{op:'graph_overview'}) as any).value.goals.find((n:any)=>n.id===goal.id)
+  const detail=(await h.store.queryExploration(h.access,{op:'node_detail',id:goal.id}) as any).value
+  const refDetail=JSON.parse((await h.store.detail(h.access,goal.id,0,8000) as any).text)
+  for(const value of [overview,detail,refDetail])assert.equal(value.evidenceVerification,expected)
+  if(expected==='host_checked'){
+   const row=data.events.find(e=>e.data.id===ref)!;await writeFile(join(data.dir,(row.data.data as any).original.path),'changed')
+   await h.store.relate(h.access,fact,goal.id,'proves')
+  }
+ }
+})
+test('page originals require an explicit Host option and context snapshots never persist originals',async t=>{
+ const h=await setup(t),ref=await h.store.asset(h.access,'page',{contextOnly:false,result:'unregistered'})
+ await assert.rejects(h.checked(ref),/original snapshot/)
+ await assert.rejects(h.store.asset(h.access,'page',{contextOnly:true},'host',{persistOriginal:true}),/ordinary page observation/)
 })

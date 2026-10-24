@@ -58,7 +58,7 @@ import { resolveConfig } from './config.ts'
 import { validUserWait } from './task-wait.ts'
 import { trustedCriterion, validArtifact } from './task-criteria.ts'
 import {EXPLORATION_GUIDE} from './exploration-instructions.ts'
-import { isExploration, explorationState, explorationRun, seedExploration, planExploration, explorationOverview, currentResources, resourceAnchors, canonical, validateExplorationCommand, assertExplorationChange,assertExplorationCapacity, ExplorationError } from './task-exploration.ts'
+import { isExploration, explorationState, explorationRun, seedExploration, planExploration, explorationOverview, currentResources, resourceAnchors, proofAvailable, explorationNodeView, originId, canonical, validateExplorationCommand, assertExplorationChange,assertExplorationCapacity, ExplorationError } from './task-exploration.ts'
 import {EXPLORATION_LIMITS} from './exploration-limits.ts'
 import { validateAssertion, assertionRefs, evaluateAssertion } from './exploration-checks.ts'
 import { parseWorkbookData } from './workbook-core.ts'
@@ -559,14 +559,15 @@ tail: Promise<void>;
     return taskFacts(this.openTask(access)).verdict
   }
   /** @param {TaskAccess} access - capability. @param {string} kind - code-owned asset kind. @param {Record<string,unknown>} data - safe facts; raw personnel remain in private evidence. @param {'host'|'code_verified'} [source] - factual authority. @returns {Promise<string>} unique task-local reference, never deduplicated by name or content. */
-  async asset(access:TaskAccess,kind:string,value:Record<string,unknown>,source:'host'|'code_verified'='host'):Promise<string> {
-    return this.serial(()=>this.assetOwned(access,kind,value,source))
+  async asset(access:TaskAccess,kind:string,value:Record<string,unknown>,source:'host'|'code_verified'='host',options:{persistOriginal?:boolean}={}):Promise<string> {
+    return this.serial(()=>this.assetOwned(access,kind,value,source,undefined,options))
   }
-  private async assetOwned(access:TaskAccess,kind:string,value:Record<string,unknown>,source:'host'|'code_verified'='host',id='asset-'+randomUUID()):Promise<string> {
+  private async assetOwned(access:TaskAccess,kind:string,value:Record<string,unknown>,source:'host'|'code_verified'='host',id='asset-'+randomUUID(),options:{persistOriginal?:boolean}={}):Promise<string> {
     if(!['page','file','unit_check','import_result','evidence'].includes(kind))throw new TaskError('invalid_request','unsupported task asset')
     const data=this.openTask(access)
     let payload=value
-    if(isExploration(data.manifest)&&kind==='page'&&value.contextOnly!==true){
+    if(options.persistOriginal){
+      if(kind!=='page'||value.contextOnly===true)throw new TaskError('invalid_request','only an ordinary page observation can persist an original')
       const path=`evidence/${access.run.runId}/${id}.json`,bytes=Buffer.from(JSON.stringify(value)+'\n')
       await this.directory(join(data.dir,'evidence',access.run.runId));await this.writeNew(join(data.dir,path),value)
       payload={...value,original:{role:id,path,sha256:hash(bytes),bytes:bytes.length}}
@@ -643,8 +644,7 @@ tail: Promise<void>;
           if(taskFacts(data).criteria.some(c=>c.source==='code_verified'&&c.status!=='passed'))throw new TaskError('invalid_request','required trusted conditions remain unverified')
           const state=explorationState(data)
           for(const goal of state.nodes.values())if(goal.kind==='goal'&&goal.id!==command.goal_id){
-            const facts=state.edges.filter(e=>e.to===goal.id&&e.relation==='proves').map(e=>state.nodes.get(e.from))
-            if(!facts.some(f=>f?.data.confidence==='observed'&&Array.isArray(f.data.check_refs)&&f.data.check_refs.length&&Array.isArray(f.data.evidence_refs)&&f.data.check_refs.every(id=>typeof id==='string'&&this.checkPassed(data,id,f.data.evidence_refs as string[]))))throw new TaskError('invalid_request','an earlier goal proof is no longer available; re-establish it before completion')
+            if(!proofAvailable(state,goal.id,(id,refs)=>this.checkPassed(data,id,refs)))throw new TaskError('invalid_request','an earlier goal proof is no longer available; re-establish it before completion')
           }
           beforeComplete(true)
         }
@@ -675,14 +675,10 @@ tail: Promise<void>;
       while(items.length>1&&JSON.stringify(items.map(serialize)).length>Math.max(200,budget-800))items.pop()
       return {items:items.map(serialize),total:matches.length,has_more:remaining.length>items.length,next_before:remaining.length>items.length?items.at(-1)?.id:null}
     }
-    const decorate=(n:import('./task-exploration.ts').ExplorationNode)=>{
-      if(n.kind!=='goal'||n.state!=='met')return n
-      const facts=state.edges.filter(e=>e.to===n.id&&e.relation==='proves').map(e=>state.nodes.get(e.from)).filter((f):f is import('./task-exploration.ts').ExplorationNode=>!!f)
-      const available=facts.some(f=>Array.isArray(f.data.check_refs)&&f.data.check_refs.length&&Array.isArray(f.data.evidence_refs)&&f.data.check_refs.every(id=>typeof id==='string'&&this.checkPassed(data,id,f.data.evidence_refs as string[])))
-      return {...n,proofSource:'agent',evidenceVerification:available?'host_checked':'unavailable'}
-    }
+    const checked=(id:string,refs:string[])=>this.checkPassed(data,id,refs)
+    const decorate=(n:import('./task-exploration.ts').ExplorationNode)=>explorationNodeView(n,state,checked)
     let value:unknown
-    if(query.op==='graph_overview')value={...explorationOverview(data),goals:[...state.nodes.values()].filter(n=>n.kind==='goal').slice(0,8).map(n=>{const v=decorate(n);return {id:n.id,state:n.state,text:String(n.data.text).slice(0,160),proofSource:'proofSource'in v?v.proofSource:null,evidenceVerification:'evidenceVerification'in v?v.evidenceVerification:null}}),verification:'rechecked'}
+    if(query.op==='graph_overview')value={...explorationOverview(data,state,resources,checked),verification:'rechecked'}
     else if(query.op==='node_detail'){
       const n=state.nodes.get(String(query.id));if(!n)throw new TaskError('task_not_bound','exploration node is unavailable; assets have a different namespace')
       value={...decorate(n),relations:state.edges.filter(e=>e.from===n.id||e.to===n.id)}
@@ -692,15 +688,25 @@ tail: Promise<void>;
       const neighbors=resourceAnchors(state,resources).get(resource.id)!
       value={resource:{...resource,snapshots:resource.snapshots.slice(-8),snapshotCount:resource.snapshots.length},nodes:[...state.nodes.values()].filter(n=>neighbors.has(n.id)).slice(-20).map(n=>({id:n.id,kind:n.kind,state:n.state,details:n.id})),snapshots:resource.snapshots.slice(-8),truncated:resource.snapshots.length>8||neighbors.size>20}
     }else{
-      const matches=[...state.nodes.values()].filter(n=>n.kind===(query.op==='list_goals'?'goal':'fact')&&(!query.q||JSON.stringify(n.data).toLowerCase().includes(String(query.q).toLowerCase()))).reverse()
-      value=page(matches,n=>({...decorate(n),data:{summary:String(n.data.summary??n.data.text??'').slice(0,240),...(typeof n.data.confidence==='string'?{confidence:n.data.confidence}:{})},details:n.id}))
+      const matches=[...state.nodes.values()].filter(n=>n.kind===(query.op==='list_goals'?'goal':'fact')&&n.id!==originId(data.manifest)&&(!query.q||JSON.stringify(n.data).toLowerCase().includes(String(query.q).toLowerCase()))).reverse()
+      value=page(matches,n=>explorationNodeView(n,state,checked,true))
     }
     if(data.events.length!==version)throw new TaskError('task_busy','task changed during query; read again')
-    if(JSON.stringify(value).length>budget&&query.op==='node_detail'){const n=state.nodes.get(String(query.id))!;{const {data:omitted,...meta}=decorate(n);void omitted;value={...meta,details:n.id,truncated:true}}}
+    if(JSON.stringify(value).length>budget&&query.op==='node_detail'){
+      const n=state.nodes.get(String(query.id))!,relations=state.edges.filter(e=>e.from===n.id||e.to===n.id),counts:Record<string,number>={}
+      for(const e of relations)counts[e.relation]=(counts[e.relation]??0)+1
+      const projectionId=this.semanticProjection(data,access.run,value)
+      value={...explorationNodeView(n,state,checked,true),relations:relations.slice(0,2),relationCount:relations.length,relationCounts:counts,details:n.id,continuation:{ref:n.id,offset:0,projectionId},truncated:true}
+    }
     return {task:access.run,contextVersion:version,projectionId:identity,value}
   }
+  private semanticProjection(data:TaskData,run:RunScope,value:unknown):string {
+    return graphProjectionId(hash(canonical([{run,version:data.events.length,tail:data.events.at(-1)?.hash},value,data.evidenceIssues??[]])))
+  }
   async fileView(access:TaskAccess,id:string,offset:number,budget:number,projectionId?:string):Promise<object> {
-    const data=this.openTask(access),version=data.events.length,source=this.originalSource(data,id)
+    const data=this.openTask(access)
+    if(!isExploration(data.manifest))throw new TaskError('unsupported','file view requires a generic exploration task; use view:task with the snapshot ref for legacy metadata')
+    const version=data.events.length,source=this.originalSource(data,id)
     if(source.kind!=='file')throw new TaskError('invalid_request','file view requires a file snapshot')
     const bytes=await this.readArtifact(data,source.artifact),value=this.sourceValue(source,bytes)
     await this.readArtifact(data,source.artifact)
@@ -747,7 +753,12 @@ tail: Promise<void>;
       if(data.events.length!==position.version||data.events.at(-1)?.hash!==position.tail)throw new TaskError('task_busy','task history changed during detail verification; read the current task again')
       facts=taskFacts(data);criterion=facts.criteria.find(item=>item.id===id)
     }
-    if(semantic){const state=explorationState(data),proofs=state.edges.filter(e=>e.to===id&&e.relation==='proves').map(e=>state.nodes.get(e.from));const available=proofs.some(f=>f?.data.confidence==='observed'&&Array.isArray(f.data.check_refs)&&f.data.check_refs.length&&Array.isArray(f.data.evidence_refs)&&f.data.check_refs.every(ref=>typeof ref==='string'&&this.checkPassed(data,ref,f.data.evidence_refs as string[])));value={...semantic,relations:state.edges.filter(e=>e.from===id||e.to===id),...(semantic.kind==='goal'&&semantic.state==='met'?{proofSource:'agent',evidenceVerification:available?'host_checked':'unavailable'}:{})};currentProjection=graphProjectionId(hash(canonical([position,value,data.evidenceIssues??[]])));if((offset>0&&!projectionId)||(projectionId!==undefined&&projectionId!==currentProjection))throw new TaskError('task_not_bound','semantic detail changed; restart from zero')}
+    if(semantic){
+      const state=explorationState(data)
+      value={...explorationNodeView(semantic,state,(ref,refs)=>this.checkPassed(data,ref,refs)),relations:state.edges.filter(e=>e.from===id||e.to===id)}
+      currentProjection=this.semanticProjection(data,access.run,value)
+      if((offset>0&&!projectionId)||(projectionId!==undefined&&projectionId!==currentProjection))throw new TaskError('task_not_bound','semantic detail changed; restart from zero')
+    }
     else if(asset)value=asset.kind==='evidence'?{...asset,data:{sha256:asset.data.sha256,bytes:asset.data.bytes,originalAvailable:data.checkedProofs?.has(asset.id)??false}}:asset
     else if(id==='exploration:guide'&&isExploration(data.manifest))value={text:EXPLORATION_GUIDE,source:'plugin_instructions'}
     else if(id==='waiting')value={current:data.state==='active'?data.waiting??null:null,history:data.events.filter(event=>['wait_requested','wait_input','wait_resolved'].includes(event.type)).map(event=>({sourceSeq:event.seq,type:event.type,...event.data}))}

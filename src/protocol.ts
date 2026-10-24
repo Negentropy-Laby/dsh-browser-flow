@@ -1,3 +1,4 @@
+import {operationFileMode} from './file-mode.ts'
 export type ErrorCode = (typeof ERROR_CODES)[number];
 /** Canonical success/failure union used inside the Host. */
 export type Result<T> = { ok: true; value: T } | ReturnType<typeof failure>
@@ -294,7 +295,11 @@ function validateImportExtension(op: Record<string, unknown>) : {
     if(!isRecord(policy)||policy.adapter!=='bjrsj'||!['navigation','import'].includes(String(policy.workflow))||Object.keys(policy).some(key=>!['adapter','workflow','kind'].includes(key))||(policy.kind!==undefined&&!['add','modify','reduce'].includes(String(policy.kind))))return {ok:false,reason:'unsupported site action policy'}
     fields.pagePolicy={...policy}
   }
-  const legacy=op.importScope!==undefined||(isRecord(op.pagePolicy)&&op.pagePolicy.adapter==='bjrsj')
+  if(op.fileMode!==undefined&&op.action!=='set_file')return {ok:false,reason:'file mode is only valid for set_file'}
+  let mode:'generic'|'legacy_import'
+  try{mode=operationFileMode(op)}catch{return {ok:false,reason:'file mode conflicts with its envelope'}}
+  const legacy=mode==='legacy_import'
+  if(op.action==='set_file')fields.fileMode=mode
   const required = (op.action === 'set_file'&&legacy) || op.view === 'bjrsj_import'
   if (op.importScope !== undefined || required) {
     const scope = op.importScope
