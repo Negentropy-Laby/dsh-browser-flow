@@ -1,3 +1,4 @@
+import {isRecord as taskRecord} from './object.ts'
 /** Versioned disk vocabulary. Unknown events cannot be interpreted as harmless history. */
 import { validRunScope, sameRunScope } from './task-scope.ts'
 import { validExplorationEvent, isExploration } from './task-exploration.ts'
@@ -14,7 +15,7 @@ export function validTaskTransition(manifest:import('./task-store.ts').Manifest,
     ||!['revise','attempt','exploration','status','wait_requested','wait_input','wait_resolved'].includes(type)
 }
 /** @param {unknown} value - JSON. @returns {value is Record<string, unknown>} object. */
-export const taskRecord = (value: unknown) : value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value)
+export {taskRecord}
 /** @param {unknown} value - text. @param {number} max - maximum length. @returns {value is string} bounded text. */
 const text = (value: unknown,max: number=1000) : value is string => typeof value==='string' && value.length>0 && value.length<=max
 /** @param {unknown} value - declared conditions. @returns {value is string[]} bounded conditions. */

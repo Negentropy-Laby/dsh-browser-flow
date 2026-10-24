@@ -1,3 +1,4 @@
+import {isRecord as object} from './object.ts'
 /** ARTEX-compatible task semantics. Host facts, never graph output, drive transitions. */
 import { randomUUID } from 'node:crypto'
 import { sameRunScope, validRunScope } from './task-scope.ts'
@@ -22,7 +23,7 @@ export interface ExplorationState {
 export class ExplorationError extends Error {
   constructor(readonly code:string,message:string){super(message)}
 }
-export const object=(v:unknown):v is Record<string,unknown>=>v!==null&&typeof v==='object'&&!Array.isArray(v)
+export {object}
 const text=(v:unknown,max=2000):v is string=>typeof v==='string'&&v.trim().length>0&&v.length<=max
 const refs=(v:unknown,max:number=LIMIT.refs):v is string[]=>Array.isArray(v)&&v.length<=max&&v.every(x=>text(x,200))&&new Set(v).size===v.length
 export const isExploration=(m:Manifest)=>m.schemaVersion===2&&m.adapter==='generic'&&m.workflowRef==='exploration'

@@ -1,15 +1,6 @@
-export type FileLease = {
-    id: string;
-    state: string;
-    agent: object;
-    sessionId: string;
-    connectionInstanceId: string;
-    connectionGeneration: number;
-    epoch: number;
-    documentToken: string;
-    task?: import("./task-scope.ts").RunScope;
-    evidenceRoot?: string;
-};
+import type {FileLease} from './file-core.ts'
+export type {FileLease} from './file-core.ts'
+import {FileGrants} from './file-grants.ts'
 export type Prepared = {
     id: string;
     lease: FileLease;
@@ -38,33 +29,8 @@ import { digest, privateDirectory, bindingKey, localPath, readBounded } from './
 export { digest, privateDirectory } from './file-core.ts'
 
 /** One instance owns all private grant state; revoked objects are pruned, never restored. */
-export class ImportFiles {
-root: string | undefined;
-entries: Map<string, Prepared>;
-preparing: Set<FileLease>;
-closed: boolean;
-tasks: Set<Promise<unknown>>;
-
-  /** @param {string | undefined} root - profile-private root; absence disables preparation. */
-  constructor(root: string | undefined) {
-    this.root = root
-     this.entries = new Map()
-     this.preparing = new Set()
-    this.closed = false
-     this.tasks = new Set()
-  }
-  /** @param {Prepared} entry - retained preparation. @param {FileLease} lease - current exact lease. @returns {void} validates ownership. */
-  assertLive(entry: Prepared, lease: FileLease) : void {
-    if (this.closed || lease.state !== 'active' || entry.lease !== lease || entry.binding !== bindingKey(lease)) throw new Error('file-binding-changed')
-  }
-  /** @returns {void} release references for retired leases. */
-  prune() : void {
-    for (const [id, entry] of this.entries) {
-      if (entry.lease.state !== 'active' || entry.binding !== bindingKey(entry.lease)) this.entries.delete(id)
-    }
-  }
-  /** @param {FileLease} lease - current lease. @returns {Prepared | undefined} same-document preparation. */
-  current(lease: FileLease) : Prepared | undefined { this.prune(); return [...this.entries.values()].find(entry => entry.lease === lease) }
+export class ImportFiles extends FileGrants<Prepared> {
+  constructor(readonly root:string|undefined){super()}
   /** @param {FileLease} lease - exact page grant. @param {unknown} path - panel-supplied path. @param {unknown} rawScope - panel scope. @returns {Promise<{ fileGrantId: string, path: string, name: string, sha256: string, bytes: number, rows: number, kind: string, boundary: string }>} private panel preview. */
   prepare(lease: FileLease, path: unknown, rawScope: unknown) : Promise<{
     fileGrantId: string;
@@ -76,8 +42,7 @@ tasks: Set<Promise<unknown>>;
     kind: string;
     boundary: string;
 }> {
-    const task=this.prepareOwned(lease,path,rawScope);this.tasks.add(task)
-    return task.finally(()=>this.tasks.delete(task))
+    return this.own(()=>this.prepareOwned(lease,path,rawScope))
   }
   /** @param {FileLease} lease - exact page grant. @param {unknown} path - panel path. @param {unknown} rawScope - raw scope. @returns {Promise<{fileGrantId:string,path:string,name:string,sha256:string,bytes:number,rows:number,kind:string,boundary:string}>} owned preparation. */
   async prepareOwned(lease: FileLease, path: unknown, rawScope: unknown) : Promise<{
@@ -92,12 +57,11 @@ tasks: Set<Promise<unknown>>;
 }> {
     const privateRoot=lease.evidenceRoot ?? this.root
     if (!privateRoot) throw new Error('private-root-required')
-    this.prune()
-    if (this.closed || lease.state !== 'active' || this.preparing.has(lease) || this.current(lease)) throw new Error('file-preparation-unavailable')
+
     const source = localPath(path); const scope = importScope(rawScope)
     if (extname(source).toLowerCase() !== '.xlsx') throw new Error('xlsx-required')
     const binding = bindingKey(lease)
-    this.preparing.add(lease)
+    this.beginPrepare(lease)
     try {
       const bytes = await readBounded(source, FILE_LIMIT)
       const input = parseWorkbook(bytes)
@@ -118,14 +82,6 @@ tasks: Set<Promise<unknown>>;
       return { fileGrantId: entry.id, path: source, name: basename(source), sha256, bytes: bytes.length, rows: input.people.length, kind: scope.kind, boundary: 'import_confirmed' }
     } finally { this.preparing.delete(lease) }
   }
-  /** @param {FileLease} lease - current lease. @param {string} id - preview reference. @returns {void} confirms exactly the previewed preparation. */
-  confirm(lease: FileLease, id: string) : void {
-    const entry = this.entries.get(id)
-    if (!entry) throw new Error('file-grant-missing')
-    this.assertLive(entry, lease)
-    if (entry.state !== 'prepared') throw new Error('file-grant-already-confirmed')
-    entry.state = 'confirmed'
-  }
   /** @param {FileLease} lease - current lease. @param {string} id - confirmed reference. @returns {Promise<{ fileGrantId: string, name: string, expectedIdentity: {unitId:string,legalIdentity:string}, sha256: string, base64: string, bytes: number, kind: import('./import-rules.ts').BatchKind }>} one-attempt wire payload. */
   dispatch(lease: FileLease, id: string) : Promise<{
     fileGrantId: string;
@@ -139,8 +95,7 @@ tasks: Set<Promise<unknown>>;
     bytes: number;
     kind: import('./import-rules.ts').BatchKind;
 }> {
-    const task=this.dispatchOwned(lease,id);this.tasks.add(task)
-    return task.finally(()=>this.tasks.delete(task))
+    return this.own(()=>this.dispatchOwned(lease,id))
   }
   /** @param {FileLease} lease - exact grant. @param {string} id - confirmed file. @returns {Promise<{fileGrantId:string,name:string,expectedIdentity:{unitId:string,legalIdentity:string},sha256:string,base64:string,bytes:number,kind:import('./import-rules.ts').BatchKind}>} owned single delivery. */
   async dispatchOwned(lease: FileLease, id: string) : Promise<{
@@ -155,12 +110,7 @@ tasks: Set<Promise<unknown>>;
     bytes: number;
     kind: import('./import-rules.ts').BatchKind;
 }> {
-    const entry = this.entries.get(id)
-    if (!entry) throw new Error('file-grant-missing')
-    this.assertLive(entry, lease)
-    if (entry.state !== 'confirmed') throw new Error(entry.state === 'consumed' ? 'file-grant-consumed' : 'file-grant-not-confirmed')
-    // Consume before asynchronous reads, so concurrent calls cannot both acquire it.
-    entry.state = 'consumed'
+    const entry=this.consume(lease,id)
     const source = await readBounded(entry.path, FILE_LIMIT)
     const snapshot = await readBounded(entry.snapshot, FILE_LIMIT)
     this.assertLive(entry, lease)
@@ -178,6 +128,4 @@ tasks: Set<Promise<unknown>>;
     const handle = await open(path, 'r')
     try { if (digest(await handle.readFile()) !== digest(bytes)) throw new Error('evidence-readback-mismatch') } finally { await handle.close() }
   }
-  /** @returns {Promise<void>} detach grants and await owned file I/O without deleting evidence. */
-  async close() : Promise<void> { this.closed = true; this.entries.clear();await Promise.allSettled([...this.tasks]) }
 }

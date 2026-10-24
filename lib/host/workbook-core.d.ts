@@ -27,6 +27,30 @@ export interface WorkbookSheet {
     }[];
     merges: string[];
 }
+export interface RawWorkbookCell {
+    ref: string;
+    column: string;
+    rawType: string | undefined;
+    text: string;
+    formula?: string;
+}
+export interface WorkbookReadPolicy {
+    singleVisible?: boolean;
+    noFormulas?: boolean;
+    noHiddenColumns?: boolean;
+    noHiddenRows?: boolean;
+}
+/** One package/relationship/row/cell walk retains lexical values for policy layers. */
+export declare function walkWorkbook(bytes: Uint8Array, policy?: WorkbookReadPolicy): {
+    name: string;
+    visibility: string;
+    rows: {
+        index: number;
+        hidden: boolean;
+        cells: RawWorkbookCell[];
+    }[];
+    merges: string[];
+}[];
 export declare function parseWorkbookData(bytes: Uint8Array): {
     format: 'xlsx';
     sheets: WorkbookSheet[];

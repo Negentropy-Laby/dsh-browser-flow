@@ -1,3 +1,4 @@
+import { isRecord as object } from './object.ts';
 import type { Manifest, TaskData, TaskEvent } from './task-store.ts';
 export type ExplorationKind = 'goal' | 'intent' | 'fact' | 'hint';
 export interface ExplorationNode {
@@ -36,7 +37,7 @@ export declare class ExplorationError extends Error {
     readonly code: string;
     constructor(code: string, message: string);
 }
-export declare const object: (v: unknown) => v is Record<string, unknown>;
+export { object };
 export declare const isExploration: (m: Manifest) => boolean;
 export declare const explorationRun: (task: TaskData) => {
     runId: import("./task-scope.ts").RunId;
@@ -208,4 +209,3 @@ export declare function explorationOverview(task: TaskData, state?: ExplorationS
     verification: string;
     details: string;
 };
-export {};

@@ -1,3 +1,4 @@
+import {nativeToolPump} from './helpers/native-tool-pump.ts'
 /** Native Chromium qualification through the six-tool service; separate from autonomous Agent acceptance. */
 import assert from 'node:assert/strict'
 import {createServer} from 'node:http'
@@ -6,10 +7,7 @@ import {join,resolve} from 'node:path'
 import {randomUUID,createHash} from 'node:crypto'
 import {BrowserFlowService} from '../src/index.ts'
 import {resolveConfig} from '../src/config.ts'
-import {programFor} from '../src/clientcore.ts'
-import {PAGE_CODE} from '../src/panel.ts'
 import {identityProgram} from '../src/pagecode.ts'
-import {validateCommand} from '../src/protocol.ts'
 import {attachInspector} from './helpers/inspector.ts'
 import {expectOk,expectRecord,expectString,expectNumber,present} from './helpers/assertions.ts'
 
@@ -41,20 +39,7 @@ try{
   assert.equal((await post({})).ok,true)
   const preview=await post({fileOperation:'prepare',path:file});assert.equal(preview.ok,true,JSON.stringify(preview));const prepared=expectRecord(preview.value)
   assert.equal((await post({fileOperation:'confirm',fileGrantId:prepared.fileGrantId})).ok,true)
-  const tool=async(name:string,args:Record<string,unknown>)=>{
-   let ready!:()=>void;const signal=new Promise<void>(r=>{ready=r}),original=service.state.run
-   service.state.run=(...args)=>{const p=original(...args);ready();return p}
-   try{
-    const result=present(service.tools.get(name)).execute(args,{agent,signal:new AbortController().signal})
-    const first=await Promise.race([signal.then(()=>({queued:true as const})),result.then(value=>({queued:false as const,value}))])
-    if(!first.queued)return first.value
-    const command=expectOk(service.state.takeCommands('panel',1,service.config)).commands[0];assert.ok(command)
-    const checked=validateCommand({...command,kind:'command'});assert.ok(checked.ok)
-    const value=expectRecord(await page(programFor(PAGE_CODE,checked.command.op as import('../src/clientcore.ts').PageOperation))),error=expectRecord(value.error??{})
-    service.state.settle({task:command.task,id:command.id,leaseId:command.leaseId,instanceId:'panel',connectionGeneration:1,epoch:command.epoch,sequence:command.sequence,...(value.ok?{outcome:'ok',payload:expectRecord(value.value)}:{outcome:'failed',error:{code:expectString(error.code),message:expectString(error.message)}})},service.config)
-    return result
-   }finally{service.state.run=original}
-  }
+  const tool=nativeToolPump(service,agent,page)
   let counter=0
   const explore=async(command:Record<string,unknown>)=>expectRecord(expectOk(await tool('browser_act',{action:'explore',explore:command,requestId:'native-'+(++counter),expectedVersion:service.tasks.openTask(access).events.length})))
   await explore({op:'add_intent',summary:'Read the selected file and observe native upload'})

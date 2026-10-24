@@ -60,3 +60,11 @@ reads continue checking full bytes. A new structured check reads each source at
 initial evaluation, immediately before persistence and before publication, and
 reads back the written proof. File continuation reuses parsing and serialization
 while rechecking source contents on every request.
+
+The generic and legacy file paths share grant binding, confirmation, single-use
+consumption, retirement and pending-I/O cleanup. Their preparation policies remain
+distinct: generic selection records Host source and `selected_file_only`; legacy
+import retains trusted identity checks and `import_confirmed`. Both paths share
+XLSX traversal and page file materialization. Legacy workbook restrictions,
+lexical personnel values, upload MIME/events and observer lifecycle are preserved;
+only the generic page strategy requires a secure-context digest.

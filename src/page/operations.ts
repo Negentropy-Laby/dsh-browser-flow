@@ -1,3 +1,4 @@
+import type {materializeFile} from './file.ts'
 import type {PageRuntime} from './runtime.ts'
 import type {PageActionInput,PageWaitInput,PagePolicy,PageResult} from './types.ts'
 /** Fixed page operation; parameters are serialized as JSON by the Host/Client builder. */
@@ -190,7 +191,7 @@ const {mintRef,visible,tagOf,roleOf,textOf,describe,documentToken}=runtime;
 
 }
 /** Fixed page operation; parameters are serialized as JSON by the Host/Client builder. */
-export function action(runtime: PageRuntime, input: PageActionInput, policy: (runtime:PageRuntime,scope:PagePolicy|undefined,element:Element,action:string)=>PageResult|undefined) {
+export function action(runtime: PageRuntime, input: PageActionInput, policy: (runtime:PageRuntime,scope:PagePolicy|undefined,element:Element,action:string)=>PageResult|undefined,materialize:typeof materializeFile) {
 const {elementOf,visible,operable,isPasswordField,documentToken}=runtime;
 
     if (documentToken() !== input.documentToken) {
@@ -209,18 +210,8 @@ const {elementOf,visible,operable,isPasswordField,documentToken}=runtime;
     const refused=policy(runtime,input.pagePolicy??input.importScope,element,input.action);if(refused)return refused;
     if(input.action==='set_file'){
       if(!(element instanceof HTMLInputElement)||element.type!=='file'||!operable(element))return {ok:false,error:{code:'not_operable',message:'target must be a visible enabled file input'}};
-      return (async()=>{
-        const file=input.file,raw=atob(file.base64),bytes=Uint8Array.from(raw,c=>c.charCodeAt(0));
-        if(bytes.length!==file.bytes)return {ok:false,error:{code:'invalid_request',message:'file size mismatch'}};
-        if(!globalThis.crypto?.subtle)return {ok:false,error:{code:'unsupported',message:'secure file digest is unavailable in this document'}};
-        const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(b=>b.toString(16).padStart(2,'0')).join('');
-        if(hash!==file.sha256)return {ok:false,error:{code:'invalid_request',message:'file digest mismatch'}};
-        if(documentToken()!==input.documentToken||elementOf(input.elementRef)!==element||!visible(element)||!operable(element))return {ok:false,error:{code:'stale_observation',message:'file target changed before dispatch'}};
-        const transfer=new DataTransfer();transfer.items.add(new File([bytes],file.name,{type:'application/octet-stream'}));
-        element.files=transfer.files;
-        element.dispatchEvent(new Event('input',{bubbles:true,composed:true}));element.dispatchEvent(new Event('change',{bubbles:true}));
-        return {ok:true,value:{action:'set_file',fileGrantId:file.fileGrantId,dispatched:true,elementRef:input.elementRef}};
-      })();
+      return materialize(element,input.file,{mime:'application/octet-stream',digest:true,inputComposed:true,changeComposed:false,elementRef:input.elementRef,
+        recheck:()=>documentToken()!==input.documentToken||elementOf(input.elementRef)!==element||!visible(element)||!operable(element)?{ok:false,error:{code:'stale_observation',message:'file target changed before dispatch'}}:undefined});
     }
     if (input.action === 'click') {
       if (!operable(element)) {

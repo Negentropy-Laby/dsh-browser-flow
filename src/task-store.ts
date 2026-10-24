@@ -1,3 +1,4 @@
+import {isRecord as record} from './object.ts'
 import {DerivedCache,immutableValue} from './derived-cache.ts'
 export type TaskScope = import("./task-scope.ts").TaskScope;
 export type RunScope = import("./task-scope.ts").RunScope;
@@ -85,7 +86,6 @@ code: string;
 /** @param {string | Uint8Array} value - complete content. @returns {string} digest. */
 const hash = (value: string | Uint8Array) : string => createHash('sha256').update(value).digest('hex')
 /** @param {unknown} value - JSON value. @returns {value is Record<string, unknown>} record. */
-const record = (value: unknown) : value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value)
 /** @param {unknown} value - bounded user text. @param {number} max - limit. @returns {value is string} safe nonempty text. */
 const text = (value: unknown,max: number) : value is string => typeof value === 'string' && value.length > 0 && value.length <= max
 /** @param {unknown} value - list of conditions. @returns {value is string[]} bounded list. */

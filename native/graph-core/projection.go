@@ -428,7 +428,7 @@ func (p *Projection) View(budget int) map[string]any {
 		edges = edges[len(edges)-12:]
 	}
 	for _, a := range p.Attempts {
-		if a.Status == "pending" || a.Status == "unknown_outcome" {
+		if !p.Input.Exploration && (a.Status == "pending" || a.Status == "unknown_outcome") {
 			frontier = append(frontier, a)
 		}
 		if !p.covered[a.ID] {
@@ -446,12 +446,7 @@ func (p *Projection) View(budget int) map[string]any {
 	for _, count := range counts {
 		totalAssets += count
 	}
-	value := map[string]any{
-		"procedural_law_index": map[string]any{"goal": map[string]any{"text": p.Input.Goal, "source": "user_declared"}, "constraints": p.Input.Constraints, "criteria": p.Input.Criteria, "intents": intents, "frontier": frontier},
-		"technical_law_index":  map[string]any{"assets": assets, "total": totalAssets, "byKind": counts},
-		"knowledge_graph":      map[string]any{"nodes": graphNodes, "edges": edges, "totalEdges": len(p.Edges), "totalNodes": len(p.Nodes), "digests": digests, "digestCount": len(p.Digests), "details": "graph"},
-		"active_context":       map[string]any{"recentAssets": assets, "round": p.Round, "complete": true},
-	}
+	procedural := map[string]any{"goal": map[string]any{"text": p.Input.Goal, "source": "user_declared"}, "constraints": p.Input.Constraints, "criteria": p.Input.Criteria, "intents": intents, "frontier": frontier}
 	if p.Input.Exploration {
 		semanticIntents, semanticFrontier := []any{}, []any{}
 		for _, n := range p.Nodes {
@@ -465,17 +460,22 @@ func (p *Projection) View(budget int) map[string]any {
 		if len(semanticIntents) > 8 {
 			semanticIntents = semanticIntents[len(semanticIntents)-8:]
 		}
-		value["procedural_law_index"].(map[string]any)["attempts"] = intents
-		value["procedural_law_index"].(map[string]any)["intents"] = semanticIntents
-		value["procedural_law_index"].(map[string]any)["frontier"] = semanticFrontier
+		procedural["attempts"] = intents
+		procedural["intents"] = semanticIntents
+		procedural["frontier"] = semanticFrontier
 	}
-	value["knowledge_graph"].(map[string]any)["views"] = p.graphSummary()
+	value := map[string]any{
+		"procedural_law_index": procedural,
+		"technical_law_index":  map[string]any{"assets": assets, "total": totalAssets, "byKind": counts},
+		"knowledge_graph":      map[string]any{"nodes": graphNodes, "edges": edges, "totalEdges": len(p.Edges), "totalNodes": len(p.Nodes), "digests": digests, "digestCount": len(p.Digests), "details": "graph", "views": p.graphSummary()},
+		"active_context":       map[string]any{"recentAssets": assets, "round": p.Round, "complete": true},
+	}
+
 	b, _ := json.Marshal(value)
 	if len(b) > budget {
 		value["procedural_law_index"] = map[string]any{"details": "goal", "criteriaRef": "criteria"}
 		value["technical_law_index"] = map[string]any{"total": totalAssets}
-		value["knowledge_graph"] = map[string]any{"details": "graph", "totalEdges": len(p.Edges), "digestCount": len(p.Digests)}
-		value["knowledge_graph"].(map[string]any)["views"] = p.graphSummary()
+		value["knowledge_graph"] = map[string]any{"details": "graph", "totalEdges": len(p.Edges), "digestCount": len(p.Digests), "views": p.graphSummary()}
 		value["active_context"] = map[string]any{"recentAssets": []any{}, "round": p.Round, "complete": false, "truncated": true}
 	}
 	return value

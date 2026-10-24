@@ -1,7 +1,8 @@
+import type {materializeFile} from './file.ts'
 import type {PageRuntime} from './runtime.ts'
 import type {ImportInput,ImportConfig,ImportState,ObservedRequest,ImportFacts,PageResult} from './types.ts'
 /** Fixed page operation; parameters are serialized as JSON by the Host/Client builder. */
-export function passiveImport(runtime:PageRuntime,input:ImportInput,config:ImportConfig) {
+export function passiveImport(runtime:PageRuntime,input:ImportInput,config:ImportConfig,materialize:typeof materializeFile) {
 const {registry,elementOf,visible,operable,textOf,documentToken}=runtime;
 const {origin,paths,tabs,knowledge,limit}=config;
 
@@ -169,15 +170,15 @@ const {origin,paths,tabs,knowledge,limit}=config;
         }
       }catch{return refusal('not_operable','the unit observation is unreadable');}}
       if(state.unitPending!==0||unitIds.size===0||legalIds.size===0||[...unitIds].some(id=>id!==file.expectedIdentity.unitId)||[...legalIds].some(id=>id!==file.expectedIdentity.legalIdentity))return refusal('not_operable','both current identity anchors must match before selection');
-      let bytes;
-      try{const binary=atob(file.base64);bytes=Uint8Array.from(binary,ch=>ch.charCodeAt(0));if(bytes.length!==file.bytes)throw new Error('size');}catch{return refusal('invalid_request','file encoding is invalid');}
-      const node=candidates[0];const transfer=new DataTransfer();transfer.items.add(new File([bytes],file.name,{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
-      if(!node.isConnected||elementOf(input.target.elementRef)!==target||document.querySelectorAll<HTMLInputElement>('input.el-upload__input[type="file"]').length!==1||registry().importState!==state||state.closed)return refusal('revoked','file authorization changed before selection');
-      state.fileGrantId=file.fileGrantId;state.selectedNode=node;state.selectedAt=performance.now();state.acceptedChange=-1;state.rejectedChange=-1;state.summary=null;state.summaryAt=-1;
-      if(state.timer!==null)clearTimeout(state.timer);
-      state.timer=setTimeout(()=>{state.cache=state.snapshot();state.expired=true;state.dispose();},input.windowMs);
-      try{node.files=transfer.files;node.dispatchEvent(new Event('input',{bubbles:true,composed:true}));node.dispatchEvent(new Event('change',{bubbles:true,composed:true}));}catch{return refusal('unknown_outcome','file selection may have run');}
-      return {ok:true,value:{action:'set_file',dispatched:true,fileGrantId:file.fileGrantId}};
+      const node=candidates[0],selectedState=state;
+      return materialize(node,file,{mime:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',digest:false,inputComposed:true,changeComposed:true,
+        recheck:()=>!node.isConnected||elementOf(input.target.elementRef)!==target||document.querySelectorAll<HTMLInputElement>('input.el-upload__input[type="file"]').length!==1||registry().importState!==selectedState||selectedState.closed?refusal('revoked','file authorization changed before selection'):undefined,
+        beforeAssign:()=>{
+          selectedState.fileGrantId=file.fileGrantId;selectedState.selectedNode=node;selectedState.selectedAt=performance.now();selectedState.acceptedChange=-1;selectedState.rejectedChange=-1;selectedState.summary=null;selectedState.summaryAt=-1;
+          if(selectedState.timer!==null)clearTimeout(selectedState.timer);
+          selectedState.timer=setTimeout(()=>{selectedState.cache=selectedState.snapshot();selectedState.expired=true;selectedState.dispose();},input.windowMs);
+        }});
+
     }
     const collected=state.snapshot();
     if(!state.closed&&collected.response?.complete&&collected.tables?.fresh&&collected.tables?.complete&&collected.summary){state.cache=collected;state.dispose();}

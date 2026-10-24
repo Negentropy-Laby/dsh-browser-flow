@@ -69,6 +69,7 @@ export declare class BrowserFlowService {
     tasks: TaskStore;
     importFiles: ImportFiles;
     genericFiles: GenericFiles;
+    private fileGrants;
     instanceTokens: WeakMap<object, string>;
     now: typeof monotonicNow;
     state: ControlStore;

@@ -1,3 +1,4 @@
+import { isRecord as taskRecord } from './object.ts';
 /** The first explicit task storage generation; unversioned predecessors are read-only. */
 export declare const TASK_FORMAT_VERSION = 1;
 export declare const EXPLORATION_FORMAT_VERSION = 2;
@@ -5,7 +6,7 @@ export declare const supportedTaskFormat: (v: unknown) => v is 2 | 1;
 /** Generation 2 terminal history is absorbing; pending receipts can still settle. */
 export declare function validTaskTransition(manifest: import('./task-store.ts').Manifest, state: string, type: string): boolean;
 /** @param {unknown} value - JSON. @returns {value is Record<string, unknown>} object. */
-export declare const taskRecord: (value: unknown) => value is Record<string, unknown>;
+export { taskRecord };
 /** @param {unknown} raw - manifest from disk. @param {boolean} [legacy] - accept the predecessor's missing version only for inspection. @returns {raw is import('./task-store.ts').Manifest} supported manifest fields. */
 export declare function validTaskManifest(raw: unknown, legacy?: boolean): raw is import('./task-store.ts').Manifest;
 /** @param {string} type - event discriminator. @param {Record<string,unknown>} row - disk payload. @param {import('./task-store.ts').Manifest} manifest - preceding manifest. @param {string | undefined} pending - original pending write. @param {import('./task-wait.ts').UserWait} [waiting] - active human dependency. @param {{kind:string,inputRef:string}} [waitInput] - input observed after the wait. @returns {boolean} understood event semantics. */

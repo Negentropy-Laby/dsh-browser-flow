@@ -1,3 +1,4 @@
+import {isRecord as isRecord} from './object.ts'
 import {operationFileMode} from './file-mode.ts'
 export type ErrorCode = (typeof ERROR_CODES)[number];
 /** Canonical success/failure union used inside the Host. */
@@ -176,9 +177,7 @@ export function success<T>(value: T) : {
  * @param {unknown} value - candidate.
  * @returns {value is Record<string, unknown>} whether it is a plain object.
  */
-export function isRecord(value: unknown) : value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
+export {isRecord}
 
 /**
  * Read a required string field with a length bound.

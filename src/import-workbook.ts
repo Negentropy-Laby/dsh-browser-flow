@@ -1,7 +1,5 @@
 export type {XmlNode} from './workbook-core.ts'
-import type {XmlNode} from './workbook-core.ts'
-import {workbookParts,xml,descendants,one} from './workbook-core.ts'
-import {posix} from 'node:path'
+import {walkWorkbook} from './workbook-core.ts'
 import {personKeys,FILE_LIMIT} from './import-rules.ts'
 function reject(reason:string):never {throw new Error(reason)}
 /** @param {string} value - header. @returns {string} normalized header. */
@@ -15,58 +13,11 @@ export function parseWorkbook(bytes: Uint8Array) : {
     people: import('./import-rules.ts').Person[];
 } {
   if(bytes.byteLength===0||bytes.byteLength>FILE_LIMIT)reject('file-size-invalid')
-  const files=workbookParts(bytes)
-  /** @param {string} name - package part. @returns {XmlNode} parsed part. */
-  const part = (name: string) : XmlNode => xml(files.get(name) ?? reject('missing-workbook-part'))
-  if (!descendants(part('[Content_Types].xml'), 'Override').some(node => node.attrs.PartName === '/xl/workbook.xml' && node.attrs.ContentType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml')) reject('unsupported-workbook-format')
-  const sheets = descendants(part('xl/workbook.xml'), 'sheet')
-  if (sheets.length !== 1 || (sheets[0].attrs.state && sheets[0].attrs.state !== 'visible')) reject('ambiguous-or-hidden-sheets')
-  const sheet = sheets[0]
-  const relations = descendants(part('xl/_rels/workbook.xml.rels'), 'Relationship')
-  if (relations.some(row => row.attrs.TargetMode === 'External')) reject('external-workbook-relationship')
-  const links = relations.filter(row => row.attrs.Id === sheet.attrs['r:id'] && row.attrs.Type?.endsWith('/worksheet'))
-  if (links.length !== 1) reject('ambiguous-sheet-relationship')
-  const target = links[0].attrs.Target ?? reject('missing-sheet-target')
-  const sheetPath = target.startsWith('/') ? target.slice(1) : posix.normalize(posix.join('xl', target))
-  if (!sheetPath.startsWith('xl/worksheets/')) reject('unsupported-sheet-target')
-  const doc = part(sheetPath)
-  if (descendants(doc, 'f').length) reject('formula-workbook')
-  if (descendants(doc, 'col').some(col => ['1', 'true'].includes(col.attrs.hidden))) reject('hidden-workbook-columns')
-  const strings = files.has('xl/sharedStrings.xml') ? descendants(part('xl/sharedStrings.xml'), 'si').map(si => descendants(si, 't').map(t => t.text).join('')) : []
-   const rows: {
-    index: number;
-    cells: Map<string, {
-        value: string;
-        text: boolean;
-    }>;
-}[] = []
-  for (const row of one(doc, 'sheetData').children) {
-    if (row.name !== 'row' || ['1', 'true'].includes(row.attrs.hidden)) reject('unsupported-or-hidden-row')
-    const index = Number(row.attrs.r)
-    if (!Number.isSafeInteger(index) || index < 1 || index > 1_048_576 || (rows.length && rows[rows.length - 1].index >= index)) reject('ambiguous-row-order')
-     const cells: Map<string, {
-    value: string;
-    text: boolean;
-}> = new Map()
-    for (const cell of row.children) {
-      const match = /^([A-Z]{1,3})([1-9]\d*)$/u.exec(cell.attrs.r ?? '')
-      if (cell.name !== 'c' || !match || Number(match[2]) !== index || cells.has(match[1])) reject('ambiguous-cell-address')
-      const type = cell.attrs.t
-      let value
-      if (type === 'inlineStr') value = descendants(one(cell, 'is'), 't').map(t => t.text).join('')
-      else if (type === 's') {
-        const reference = one(cell, 'v').text; const si = Number(reference)
-        if (!/^\d+$/u.test(reference) || !Number.isSafeInteger(si) || strings[si] === undefined) reject('invalid-shared-string')
-        value = strings[si]
-      } else if (type === undefined || type === 'n' || type === 'str') {
-        const values = cell.children.filter(child => child.name === 'v')
-        if (values.length > 1) reject('ambiguous-cell-value')
-        value = values[0]?.text ?? ''
-      } else return reject('unsupported-cell-type')
-      cells.set(match[1], { value, text: ['s', 'inlineStr', 'str'].includes(type) })
-    }
-    rows.push({ index, cells })
-  }
+  const [sheet]=walkWorkbook(bytes,{singleVisible:true,noFormulas:true,noHiddenColumns:true,noHiddenRows:true})
+  const rows=sheet.rows.map(row=>({index:row.index,cells:new Map(row.cells.map(cell=>{
+    if(cell.rawType!==undefined&&!['inlineStr','s','n','str'].includes(cell.rawType))reject('unsupported-cell-type')
+    return [cell.column,{value:cell.text,text:['inlineStr','s','str'].includes(cell.rawType??'')}] as const
+  }))}))
   const idHeaders = new Set(['证件号码', '身份证号码', '身份证号'])
   const headers = rows.filter(row => [...row.cells.values()].some(cell => idHeaders.has(headerText(cell.value))) && [...row.cells.values()].some(cell => headerText(cell.value) === '姓名'))
   if (headers.length !== 1) reject('ambiguous-personnel-header')
@@ -83,8 +34,8 @@ export function parseWorkbook(bytes: Uint8Array) : {
     top: number;
     bottom: number;
 }[] = []
-  for (const merge of descendants(doc, 'mergeCell')) {
-    const match = /^([A-Z]{1,3})([1-9]\d*):([A-Z]{1,3})([1-9]\d*)$/.exec(merge.attrs.ref ?? '')
+  for (const merge of sheet.merges) {
+    const match = /^([A-Z]{1,3})([1-9]\d*):([A-Z]{1,3})([1-9]\d*)$/.exec(merge)
     if (!match) reject('merged-personnel-data')
     const range = { left: columnNumber(match[1]), right: columnNumber(match[3]), top: Number(match[2]), bottom: Number(match[4]) }
     if (range.left > range.right || range.top > range.bottom || range.bottom > header.index || ranges.some(prior => range.left <= prior.right && range.right >= prior.left && range.top <= prior.bottom && range.bottom >= prior.top)) reject('merged-personnel-data')
@@ -98,5 +49,5 @@ export function parseWorkbook(bytes: Uint8Array) : {
     return { name: name.value.trim(), certificateNumber: id.value.normalize('NFKC').trim().toUpperCase() }
   })
   if (!people.length || !personKeys(people) || dataRows.some((row, index) => row.index !== header.index + index + 1)) reject('incomplete-or-duplicate-personnel')
-  return { sheetName: sheet.attrs.name ?? reject('missing-sheet-name'), firstRow: dataRows[0].index, lastRow: dataRows[dataRows.length - 1].index, people }
+  return { sheetName: sheet.name, firstRow: dataRows[0].index, lastRow: dataRows[dataRows.length - 1].index, people }
 }

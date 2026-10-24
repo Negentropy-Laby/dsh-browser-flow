@@ -21,6 +21,8 @@ export type RunScope = TaskScope & {
 export declare function runIdentity(run: RunScope): readonly [ProfileId, TaskId, string, number, RunId, string];
 /** Go's Scope struct field order for the separate direct-IPC fallback encoding. */
 export declare function orderedRunScope(run: RunScope): RunScope;
+/** Browser Flow v3 task and run identifiers, shared by Host and Client. */
+/** @param {unknown} value - JSON value. @returns {value is Record<string, unknown>} object. */
 /** @param {unknown} value - scope from disk/wire. @returns {value is TaskScope} validated public identifiers. */
 export declare function validTaskScope(value: unknown): value is TaskScope;
 /** @param {unknown} value - run scope. @returns {value is RunScope} complete run identity. */

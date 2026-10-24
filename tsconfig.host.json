@@ -30,6 +30,7 @@
     "src/page/policy.ts",
     "src/page/import.ts",
     "src/client-wire.ts",
-    "src/page/types.ts"
+    "src/page/types.ts",
+    "src/page/file.ts"
   ]
 }

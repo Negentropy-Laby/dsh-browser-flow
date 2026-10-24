@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
 
 const root=join(dirname(fileURLToPath(import.meta.url)),'..')
-const entries={PAGE_RUNTIME_SOURCE:['runtime','createRuntime'],PAGE_IDENTITY_SOURCE:['operations','identity'],PAGE_OBSERVE_SOURCE:['operations','observe'],PAGE_FIND_SOURCE:['operations','find'],PAGE_ACTION_SOURCE:['operations','action'],PAGE_WAIT_SOURCE:['operations','wait'],PAGE_POLICY_SOURCE:['policy','policy'],PASSIVE_IMPORT_SOURCE:['import','passiveImport']} as const
+const entries={PAGE_FILE_SOURCE:['file','materializeFile'],PAGE_RUNTIME_SOURCE:['runtime','createRuntime'],PAGE_IDENTITY_SOURCE:['operations','identity'],PAGE_OBSERVE_SOURCE:['operations','observe'],PAGE_FIND_SOURCE:['operations','find'],PAGE_ACTION_SOURCE:['operations','action'],PAGE_WAIT_SOURCE:['operations','wait'],PAGE_POLICY_SOURCE:['policy','policy'],PASSIVE_IMPORT_SOURCE:['import','passiveImport']} as const
 
 /** @param file - tsc-emitted module. @param symbol - fixed function name. @returns Self-contained JavaScript function text. */
 export function compiledFunction(file:string,symbol:string): string {

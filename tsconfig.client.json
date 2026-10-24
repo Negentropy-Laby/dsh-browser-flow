@@ -15,7 +15,8 @@
     "src/page/input.ts",
     "src/page/program-sources.d.ts",
     "src/client-wire.ts",
-    "src/file-mode.ts"
+    "src/file-mode.ts",
+    "src/object.ts"
   ],
   "compilerOptions": {
     "noEmit": false,

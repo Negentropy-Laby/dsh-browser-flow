@@ -1,5 +1,6 @@
+import {isRecord as object} from './object.ts'
 /** Bounded source-backed assertions. No eval, executable paths, or business ontology. */
-import {canonical, object, ExplorationError} from './task-exploration.ts'
+import {canonical, ExplorationError} from './task-exploration.ts'
 import {EXPLORATION_LIMITS as LIMIT} from './exploration-limits.ts'
 export interface SourceOperand {ref:string;path:(string|number)[]}
 type Operand=SourceOperand|{value:unknown}

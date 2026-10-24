@@ -1,3 +1,4 @@
+import { FileGrants } from './file-grants.ts';
 import { type FileLease } from './file-core.ts';
 export interface GenericPrepared {
     id: string;
@@ -12,15 +13,7 @@ export interface GenericPrepared {
     state: 'prepared' | 'confirmed' | 'consumed';
     assetRef?: string;
 }
-export declare class GenericFiles {
-    private entries;
-    private preparing;
-    private pending;
-    private closed;
-    private live;
-    prune(): void;
-    current(lease: FileLease): GenericPrepared | undefined;
-    private own;
+export declare class GenericFiles extends FileGrants<GenericPrepared> {
     prepare(lease: FileLease, path: unknown): Promise<{
         fileGrantId: string;
         path: string;
@@ -32,7 +25,6 @@ export declare class GenericFiles {
         format: string;
         boundary: string;
     }>;
-    confirm(lease: FileLease, id: string): void;
     dispatch(lease: FileLease, id: string): Promise<{
         fileGrantId: string;
         name: string;
@@ -40,5 +32,4 @@ export declare class GenericFiles {
         bytes: number;
         base64: string;
     }>;
-    close(): Promise<void>;
 }

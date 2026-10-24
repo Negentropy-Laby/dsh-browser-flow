@@ -1,3 +1,4 @@
+import { isRecord as isRecord } from './object.ts';
 export type ErrorCode = (typeof ERROR_CODES)[number];
 /** Canonical success/failure union used inside the Host. */
 export type Result<T> = {
@@ -154,7 +155,7 @@ export declare function success<T>(value: T): {
  * @param {unknown} value - candidate.
  * @returns {value is Record<string, unknown>} whether it is a plain object.
  */
-export declare function isRecord(value: unknown): value is Record<string, unknown>;
+export { isRecord };
 /**
  * Read a required string field with a length bound.
  * @param {Record<string, unknown>} row - source object.

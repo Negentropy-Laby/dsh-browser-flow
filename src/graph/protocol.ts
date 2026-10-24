@@ -1,3 +1,4 @@
+import {isRecord as record} from '../object.ts'
 /** Internal graph protocol v2. Page control remains Browser Flow v3. */
 import type { Readable, Writable } from 'node:stream'
 import type { RunScope } from '../task-scope.ts'
@@ -47,7 +48,7 @@ export interface GraphRequest {
 /** A sanitized record decoded from a worker. */
 export type JsonRecord = Record<string, unknown>
 /** @param value - wire value. @returns Whether it is a non-array JSON record. */
-export function record(value: unknown): value is JsonRecord { return value !== null && typeof value === 'object' && !Array.isArray(value) }
+export {record}
 /** Expected component failures are safe to expose without raw stderr or paths. */
 export class GraphError extends Error {
   /** @param code - bounded code, never original process diagnostics. */

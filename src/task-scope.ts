@@ -1,3 +1,4 @@
+import {isRecord as scopeRecord} from './object.ts'
 export type TaskId = string & {
     readonly __browserTaskId: "TaskId";
 };
@@ -31,7 +32,6 @@ export function orderedRunScope(run: RunScope): RunScope {
 /** Browser Flow v3 task and run identifiers, shared by Host and Client. */
 
 /** @param {unknown} value - JSON value. @returns {value is Record<string, unknown>} object. */
-const scopeRecord = (value: unknown) : value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value)
 /** @param {unknown} value - scope from disk/wire. @returns {value is TaskScope} validated public identifiers. */
 export function validTaskScope(value: unknown) : value is TaskScope {
   return scopeRecord(value) && typeof value.profileId === 'string' && /^profile-[a-f0-9]{32}$/.test(value.profileId)

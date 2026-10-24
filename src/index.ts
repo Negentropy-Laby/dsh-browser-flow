@@ -1,3 +1,4 @@
+import {FileGrantCollection} from './file-grants.ts'
 import {taskAsset} from './task-exploration.ts'
 import {taskFileMode} from './task-scope.ts'
 import { pageIdentity, fileIdentity, eventResourceDescriptor } from './task-resources.ts'
@@ -122,6 +123,7 @@ config: import("./config.ts").BrowserFlowConfig;
 tasks: TaskStore;
 importFiles: ImportFiles;
 genericFiles: GenericFiles;
+private fileGrants:FileGrantCollection;
 instanceTokens: WeakMap<object, string>;
 now: typeof monotonicNow;
 state: ControlStore;
@@ -145,6 +147,7 @@ closing: Promise<void> | undefined;
     this.tasks=new TaskStore(tasksRoot(config.localTasksDir,profile),profile,config.commandBudgetMs,graph,config)
     this.importFiles = new ImportFiles(undefined)
     this.genericFiles=new GenericFiles()
+    this.fileGrants=new FileGrantCollection([this.importFiles,this.genericFiles])
      this.instanceTokens=new WeakMap()
     this.now=monotonicNow
     this.state =  createControlState({now:()=>this.now()})
@@ -476,7 +479,7 @@ closing: Promise<void> | undefined;
       if(signal?.aborted)return failure('deadline_exceeded','exploration command was cancelled')
       try{return success(await this.tasks.explore(access,input.explore,input.requestId,input.expectedVersion,(completed)=>{
         if(this.ctx.agents?.get(caller.sessionId)!==caller.agent)throw new TaskError('agent_mismatch','Agent changed while preparing the exploration command')
-        if(completed){this.state.revoke({sessionId:caller.sessionId},'all task goals proved');this.importFiles.prune();this.genericFiles.prune()}
+        if(completed){this.state.revoke({sessionId:caller.sessionId},'all task goals proved');this.fileGrants.prune()}
       }))}catch(error){return this.taskFailure(error)}
     }
     if(input.action==='await_user'){
@@ -602,7 +605,7 @@ closing: Promise<void> | undefined;
     const lease = this.state.leaseFor(caller.agent, caller.agentInstanceToken, caller.sessionId)
     if (lease === undefined) return failure('not_authorized', 'no page is authorized for this Agent')
     const revoked = this.state.revoke({ controlLeaseId: lease.id }, 'released by the Agent')
-    this.importFiles.prune();this.genericFiles.prune()
+    this.fileGrants.prune()
     if (!revoked.ok) return revoked
     return success({ released: revoked.value.revoked, pageRetained: true })
   }
@@ -694,7 +697,7 @@ closing: Promise<void> | undefined;
     const hello = validateHello(await this.bodyOf(request))
     if (!hello.ok) return Response.json(failure('protocol_violation', hello.reason), { status: 400 })
     const registered = this.state.registerConnection(hello.hello)
-    this.importFiles.prune();this.genericFiles.prune()
+    this.fileGrants.prune()
     if (!registered.ok) return Response.json(registered, { status: 409 })
     return Response.json(success({
       protocolVersion: PROTOCOL_VERSION,
@@ -740,7 +743,7 @@ closing: Promise<void> | undefined;
     const agent = live === undefined || live === null
       ? null
       : { id: sessionId, instance: instanceDigest(this.tokenOf(live)) }
-    this.importFiles.prune();this.genericFiles.prune()
+    this.fileGrants.prune()
     const listed=this.state.listPages(instanceId,connectionGeneration)
     const controls=listed.ok?listed.value.pages.filter(( page: { authorized: boolean; controlLeaseId?: string })=>page.authorized).map(( page: { authorized: boolean; controlLeaseId?: string })=>page.controlLeaseId):[]
     const task=this.tasks.current(sessionId)
@@ -782,7 +785,7 @@ closing: Promise<void> | undefined;
       return Response.json(failure('protocol_violation', 'documentToken must be a string when present'), { status: 400 })
     }
     const applied = this.state.reportInvalidation(instanceId, connectionGeneration, lease, event, documentToken)
-    this.importFiles.prune();this.genericFiles.prune()
+    this.fileGrants.prune()
     return Response.json(applied, { status: applied.ok ? 200 : 409 })
   }
 
@@ -814,7 +817,7 @@ closing: Promise<void> | undefined;
       const connected=this.state.connectionsFor(sessionId).some(( connection: import('./state.ts').PanelConnection)=>connection.instanceId===instanceId&&connection.generation===connectionGeneration)
       if(!connected)return Response.json(failure('connection_stale','task operation requires the current authenticated panel connection'),{status:409})
       // Permission withdrawal precedes disk access, including when the task scope is stale.
-      if(typeof body.taskOperation==='string'&&['revise','cancel','finish'].includes(body.taskOperation)){this.state.revoke({sessionId},'task scope or lifecycle changed');this.importFiles.prune();this.genericFiles.prune()}
+      if(typeof body.taskOperation==='string'&&['revise','cancel','finish'].includes(body.taskOperation)){this.state.revoke({sessionId},'task scope or lifecycle changed');this.fileGrants.prune()}
       try {
         const access=body.taskOperation==='create' ? await this.tasks.create(sessionId,body.spec) : await this.tasks.forSession(sessionId,body.task)
         let current=access
@@ -840,56 +843,41 @@ closing: Promise<void> | undefined;
       const held=this.state.leaseFor(agent,this.tokenOf(agent),sessionId)
       if(!held||held.connectionInstanceId!==instanceId||held.connectionGeneration!==connectionGeneration||held.lease!==lease||held.partition!==partition||held.documentToken!==documentToken)return Response.json(failure('not_authorized','the current page must be explicitly authorized first'),{status:409})
       if(!held.task||!sameRunScope(held.task,access.run))return Response.json(failure('task_scope_mismatch','file preparation requires this task/run'),{status:409})
-      if(isExploration(this.tasks.openTask(access).manifest)){
+      const mode=taskFileMode(this.tasks.openTask(access).manifest)
+      if(mode==='none')return Response.json(failure('task_scope_mismatch','this task does not support file preparation'),{status:409})
+      try{
+        if(!['prepare','confirm'].includes(String(body.fileOperation)))throw new TaskError('invalid_request','unsupported file operation')
+        if(mode==='generic'&&body.scope!==undefined)throw new TaskError('invalid_request','generic file preparation takes no business scope')
+        const scope=mode==='legacy_import'&&body.fileOperation==='prepare'?importScope(body.scope):undefined
+        if(scope)held.importKind=scope.kind
+        const stamp=this.leaseStamp(held),caller={agent,sessionId,agentInstanceToken:this.tokenOf(agent)},files=mode==='generic'?this.genericFiles:this.importFiles
+        const attempt=await this.tasks.beginAttempt(access,body.fileOperation==='prepare'?'prepare_file':'confirm_file')
+        let preview:unknown
         try{
-          const stamp=this.leaseStamp(held),caller={agent,sessionId,agentInstanceToken:this.tokenOf(agent)}
-          const attempt=await this.tasks.beginAttempt(access,body.fileOperation==='prepare'?'prepare_file':'confirm_file')
-          let preview
-          try{
+          this.assertCurrent(caller,access,held,stamp)
+          if(body.fileOperation==='prepare'){
+            preview=mode==='generic'?await this.genericFiles.prepare(held,body.path):await this.importFiles.prepare(held,body.path,scope)
             this.assertCurrent(caller,access,held,stamp)
-            if(body.fileOperation==='prepare'){
-              if(body.scope!==undefined)throw new TaskError('invalid_request','generic file preparation takes no business scope')
-              preview=await this.genericFiles.prepare(held,body.path)
-              const entry=this.genericFiles.current(held)!
-              this.assertCurrent(caller,access,held,stamp)
-              entry.assetRef=await this.tasks.asset(access,'file',{sha256:entry.sha256,bytes:entry.bytes,format:entry.format,original:await this.tasks.artifact(access,entry.snapshot,'original'),resourceIdentity:fileIdentity(access.run,entry.path)})
-              await this.tasks.relate(access,attempt,entry.assetRef,'yields');await this.tasks.noteWaitInput(access,'file_input',entry.id)
-              preview={...preview,assetRef:entry.assetRef}
-            }else if(body.fileOperation==='confirm'&&typeof body.fileGrantId==='string'){
-              this.genericFiles.confirm(held,body.fileGrantId);await this.tasks.noteWaitInput(access,'file_confirmation',body.fileGrantId)
-              preview={confirmed:true,fileGrantId:body.fileGrantId,boundary:'selected_file_only'}
-            }else throw new TaskError('invalid_request','unsupported file operation')
-            this.assertCurrent(caller,access,held,stamp)
-          }finally{await this.tasks.receipt(access,attempt,'not_dispatched')}
-          return Response.json(success(preview))
-        }catch(error){if(error instanceof TaskError)return Response.json(this.taskFailure(error),{status:409});return Response.json(failure('invalid_request',error instanceof Error&&/^[a-z-]+$/.test(error.message)?error.message:'file-preparation-failed'),{status:409})}
-      }
-      if(!held.task||!sameRunScope(held.task,access.run)||(this.tasks.openTask(access).manifest.adapter!=='bjrsj'||this.tasks.openTask(access).manifest.workflowRef!=='import'))return Response.json(failure('task_scope_mismatch','file preparation requires the current Beijing task/run'),{status:409})
-      try {
-        if(body.fileOperation==='prepare'){
-          const scope=importScope(body.scope)
-          held.importKind=scope.kind
-          const stamp=this.leaseStamp(held)
-          const attempt=await this.tasks.beginAttempt(access,'prepare_file')
-          let preview
-          try{this.assertCurrent({agent,sessionId,agentInstanceToken:this.tokenOf(agent)},access,held,stamp);preview=await this.importFiles.prepare(held,body.path,scope);this.assertCurrent({agent,sessionId,agentInstanceToken:this.tokenOf(agent)},access,held,stamp)}finally{await this.tasks.receipt(access,attempt,'not_dispatched')}
-          this.assertCurrent({agent,sessionId,agentInstanceToken:this.tokenOf(agent)},access,held,stamp)
-          if(this.ctx.agents?.get(sessionId)!==agent){this.state.retireLeasesOfReplacedAgents(sessionId,this.ctx.agents?.get(sessionId)??{});this.importFiles.prune();this.genericFiles.prune();throw new Error('agent-replaced')}
-          const entry=this.importFiles.current(held)
-          if(entry){entry.assetRef=await this.tasks.asset(access,'file',{sha256:entry.sha256,bytes:entry.bytes.length,rows:entry.input.people.length,kind:entry.scope.kind,resourceIdentity:fileIdentity(access.run,entry.path)},'code_verified');await this.tasks.relate(access,attempt,entry.assetRef,'yields');await this.tasks.noteWaitInput(access,'file_input',entry.id)}
-          this.assertCurrent({agent,sessionId,agentInstanceToken:this.tokenOf(agent)},access,held,stamp)
-          return Response.json(success(preview))
-        }
-        if(body.fileOperation==='confirm'&&typeof body.fileGrantId==='string'){
-          const stamp=this.leaseStamp(held)
-          const attempt=await this.tasks.beginAttempt(access,'confirm_file')
-          try{this.assertCurrent({agent,sessionId,agentInstanceToken:this.tokenOf(agent)},access,held,stamp);this.importFiles.confirm(held,body.fileGrantId)}finally{await this.tasks.receipt(access,attempt,'not_dispatched')}
-          this.assertCurrent({agent,sessionId,agentInstanceToken:this.tokenOf(agent)},access,held,stamp)
-          await this.tasks.noteWaitInput(access,'file_confirmation',body.fileGrantId)
-          return Response.json(success({confirmed:true,fileGrantId:body.fileGrantId,boundary:'import_confirmed'}))
-        }
-        throw new Error('file-operation-invalid')
-      } catch(error){if(error instanceof TaskError)return Response.json(this.taskFailure(error),{status:409});const reason=error instanceof Error&&/^[a-z][a-z0-9-]{0,100}$/.test(error.message)?error.message:'file-preparation-failed';return Response.json(failure('invalid_request',reason),{status:409})}
+            let entry:import('./generic-files.ts').GenericPrepared|import('./import-files.ts').Prepared|undefined
+            if(mode==='generic'){
+              const e=this.genericFiles.current(held);if(!e)throw new Error('file-grant-missing');entry=e
+              e.assetRef=await this.tasks.asset(access,'file',{sha256:e.sha256,bytes:e.bytes,format:e.format,original:await this.tasks.artifact(access,e.snapshot,'original'),resourceIdentity:fileIdentity(access.run,e.path)})
+              preview={...preview as object,assetRef:e.assetRef}
+            }else{
+              const e=this.importFiles.current(held);if(!e)throw new Error('file-grant-missing');entry=e
+              e.assetRef=await this.tasks.asset(access,'file',{sha256:e.sha256,bytes:e.bytes.length,rows:e.input.people.length,kind:e.scope.kind,resourceIdentity:fileIdentity(access.run,e.path)},'code_verified')
+            }
+            await this.tasks.relate(access,attempt,entry.assetRef!,'yields');await this.tasks.noteWaitInput(access,'file_input',entry.id)
+          }else{
+            if(typeof body.fileGrantId!=='string')throw new TaskError('invalid_request','file grant ID required')
+            files.confirm(held,body.fileGrantId);await this.tasks.noteWaitInput(access,'file_confirmation',body.fileGrantId)
+            preview={confirmed:true,fileGrantId:body.fileGrantId,boundary:mode==='generic'?'selected_file_only':'import_confirmed'}
+          }
+          this.assertCurrent(caller,access,held,stamp)
+        }finally{await this.tasks.receipt(access,attempt,'not_dispatched')}
+        return Response.json(success(preview as Record<string,unknown>))
+      }catch(error){if(error instanceof TaskError)return Response.json(this.taskFailure(error),{status:409});const reason=error instanceof Error&&/^[a-z][a-z0-9-]{0,100}$/.test(error.message)?error.message:'file-preparation-failed';return Response.json(failure('invalid_request',reason),{status:409})}
+
     }
     // A replaced Agent object can never use its leases again, so retire them
     // first: otherwise they occupy the page and refuse the re-authorization the
@@ -912,7 +900,7 @@ closing: Promise<void> | undefined;
       documentToken,
       ...(typeof tabId === 'string' ? { tabId } : {}),
     })
-    this.importFiles.prune();this.genericFiles.prune()
+    this.fileGrants.prune()
     if(authorized.ok){const selected=this.state.leaseFor(agent,this.tokenOf(agent),sessionId);if(selected){delete selected.importKind;selected.evidenceRoot=join(this.tasks.openTask(access).dir,'evidence',access.run.runId);await this.tasks.noteWaitInput(access,'page_authorization',this.leaseStamp(selected))}}
     return Response.json(authorized.ok ? success({...authorized.value,task:access.run,origins:taskData.manifest.origins,...(pagePolicy(taskData.manifest)?{pagePolicy:pagePolicy(taskData.manifest)}:{})}) : authorized, { status: authorized.ok ? 200 : 409 })
   }
@@ -938,7 +926,7 @@ closing: Promise<void> | undefined;
       { ...(controlLeaseId === undefined ? {} : { controlLeaseId }), ...(sessionId === undefined ? {} : { sessionId }) },
       'revoked by the user',
     )
-    this.importFiles.prune();this.genericFiles.prune()
+    this.fileGrants.prune()
     return Response.json(revoked, { status: revoked.ok ? 200 : 409 })
   }
 
@@ -973,7 +961,7 @@ closing: Promise<void> | undefined;
     const timer = setInterval(() => {
       if (this.closed) return
       this.state.expireIdleConnections(this.config.connectionIdleMs)
-      this.importFiles.prune();this.genericFiles.prune()
+      this.fileGrants.prune()
     }, interval)
     timer.unref?.()
     this.idleTimer = () => {
@@ -992,7 +980,7 @@ closing: Promise<void> | undefined;
     this.closing = (async () => {
       this.state.close()
       const graphClosed=this.graph.close().then(()=>true,()=>false)
-      const filesClosed=Promise.all([this.importFiles.close(),this.genericFiles.close()])
+      const filesClosed=this.fileGrants.close()
       await Promise.allSettled([...this.pending])
       await filesClosed
       await this.tasks.close()
