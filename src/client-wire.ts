@@ -6,7 +6,7 @@ import type {PagePolicy} from './page/input.ts'
 
 export interface PanelError {code:string;message:string}
 export interface TaskSummary extends Record<string,unknown> {
-  task:RunScope;state:string;goal:string;adapter:string;writeBlocked:boolean;origins:string[];contextVersion?:number
+  fileMode?:import('./task-scope.ts').FileMode;task:RunScope;state:string;goal:string;adapter:string;writeBlocked:boolean;origins:string[];contextVersion?:number
   active_context?:{waiting?:{id:string;reason:string;resumeCondition:string}|null}
 }
 export interface DefinitionOption {id:string;workflows:{id:string;description:string}[]}
@@ -25,6 +25,7 @@ const strings=(value:unknown):value is string[]=>Array.isArray(value)&&value.eve
 export function isTaskSummary(value:unknown):value is TaskSummary {
   if(!isRecord(value)||!validRunScope(value.task)||typeof value.state!=='string'||typeof value.goal!=='string'||typeof value.adapter!=='string'||typeof value.writeBlocked!=='boolean')return false
   if(!strings(value.origins)||value.origins.length===0||value.origins.some(origin=>{try{return new URL(origin).origin!==origin||!['http:','https:'].includes(new URL(origin).protocol)}catch{return true}}))return false
+  if(value.fileMode!==undefined&&!['generic','legacy_import','none'].includes(String(value.fileMode)))return false
   if(value.contextVersion!==undefined&&(typeof value.contextVersion!=='number'||!Number.isSafeInteger(value.contextVersion)||value.contextVersion<0))return false
   if(value.active_context!==undefined){
     if(!isRecord(value.active_context))return false

@@ -20,4 +20,4 @@ export declare function localPath(path: unknown): string;
 /** @param {string} path - owned directory. @returns {Promise<void>} private ACL verified before raw writes. */
 export declare function privateDirectory(path: string): Promise<void>;
 /** @param {string} path - local regular file. @returns {Promise<Buffer>} bounded owned bytes. */
-export declare function readBounded(path: string): Promise<Buffer>;
+export declare function readBounded(path: string, limit?: number): Promise<Buffer>;

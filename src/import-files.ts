@@ -99,7 +99,7 @@ tasks: Set<Promise<unknown>>;
     const binding = bindingKey(lease)
     this.preparing.add(lease)
     try {
-      const bytes = await readBounded(source)
+      const bytes = await readBounded(source, FILE_LIMIT)
       const input = parseWorkbook(bytes)
       if (input.firstRow !== scope.firstRow || input.lastRow !== scope.lastRow) throw new Error('input-row-range-mismatch')
       const sha256 = digest(bytes)
@@ -109,7 +109,7 @@ tasks: Set<Promise<unknown>>;
       await privateDirectory(runDir)
       const snapshot = join(runDir, 'input.xlsx')
       await writeFile(snapshot, bytes, { flag: 'wx', mode: 0o600 })
-      if (digest(await readBounded(snapshot)) !== sha256) throw new Error('snapshot-readback-mismatch')
+      if (digest(await readBounded(snapshot, FILE_LIMIT)) !== sha256) throw new Error('snapshot-readback-mismatch')
        const entry: Prepared = { id: randomUUID(), lease, binding, path: source, runDir, snapshot, bytes, sha256, scope, input, state: 'prepared' }
       this.assertLive(entry, lease)
       await this.write(entry, 'prepared.json', { sha256, bytes: bytes.length, scope, rows: input.people.length, binding })
@@ -161,8 +161,8 @@ tasks: Set<Promise<unknown>>;
     if (entry.state !== 'confirmed') throw new Error(entry.state === 'consumed' ? 'file-grant-consumed' : 'file-grant-not-confirmed')
     // Consume before asynchronous reads, so concurrent calls cannot both acquire it.
     entry.state = 'consumed'
-    const source = await readBounded(entry.path)
-    const snapshot = await readBounded(entry.snapshot)
+    const source = await readBounded(entry.path, FILE_LIMIT)
+    const snapshot = await readBounded(entry.snapshot, FILE_LIMIT)
     this.assertLive(entry, lease)
     if (digest(source) !== entry.sha256) throw new Error('source-changed')
     if (digest(snapshot) !== entry.sha256 || digest(entry.bytes) !== entry.sha256) throw new Error('snapshot-changed')

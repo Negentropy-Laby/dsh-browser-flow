@@ -1,3 +1,4 @@
+import {taskFileMode} from './task-scope.ts'
 import { pageIdentity, fileIdentity, eventResourceDescriptor } from './task-resources.ts'
 
 export type LiveAgent = {
@@ -241,7 +242,7 @@ closing: Promise<void> | undefined;
     const instructions=(workflow?.instructions ?? []).map(name=>({name,ref:definitionRef(name),text:data.snapshot?.files[name] ?? ''}))
     if(isExploration(data.manifest))instructions.push({name:'exploration',ref:'exploration:guide',text:EXPLORATION_GUIDE})
     const instructionBudget=Math.floor(this.config.observeMaxChars/2/Math.max(1,instructions.length))
-    return {task:access.run,state:data.readOnly?'read_only':data.blocked?'write_blocked':data.waiting&&data.state==='active'?'awaiting_user':data.state,contextVersion:data.events.length,goal:data.manifest.goal,origins:data.manifest.origins,adapter:data.manifest.adapter,
+    return {task:access.run,state:data.readOnly?'read_only':data.blocked?'write_blocked':data.waiting&&data.state==='active'?'awaiting_user':data.state,contextVersion:data.events.length,goal:data.manifest.goal,origins:data.manifest.origins,adapter:data.manifest.adapter,fileMode:taskFileMode(data.manifest),
       definition:data.manifest.definitionId ? {id:data.manifest.definitionId,version:data.manifest.definitionVersion,digest:data.manifest.definitionDigest} : null,
       workflow:workflow ? {id:workflow.id,stopBoundary:workflow.stopBoundary} : null,
       ...(exploration?{exploration,assetCoverage:exploration.assetCoverage,usage:'Read graph_overview; add_intent; claim_intent; observe/act; check_evidence; record_fact; finish_intent; prove_goal. Intent is an exploration direction, not a click. Business interpretation is Agent-authored.'}:{}),

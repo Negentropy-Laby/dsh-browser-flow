@@ -63,8 +63,8 @@ export function renderPanelView({h,ui,t,model:m,actions:a}:{h:ReactLike['createE
    button({variant:isAuthorized?'outline':'primary','data-browser-flow-action':'authorize',disabled:m.busy||!m.supported||!m.connected||!m.liveAgent||!canProvide,onClick:()=>a.authorize(page),'aria-busy':m.pending==='authorize'},m.pending==='authorize'?label('authorize'):t(isAuthorized?'reauthorize':'authorize')))
  })
  const pagePanel=h('section',{className:'bf-section'},h('div',{className:'bf-section-heading'},h('h4',null,t('pagesTitle')),h('span',{className:'bf-secondary'},String(m.pages.length))),m.supported?(pageRows.length?h('ul',{className:'bf-pages'},...pageRows):h('div',{className:'bf-empty'},t('empty'))):null)
- const genericFile=task?.adapter==='generic'&&task.task.workflowRef==='exploration'
- const canFile=m.authorized&&((task?.adapter==='bjrsj'&&task.task.workflowRef==='import')||genericFile)&&canProvide
+ const genericFile=task?.fileMode==='generic'
+ const canFile=m.authorized&&(task?.fileMode==='legacy_import'||genericFile)&&canProvide
  const filePanel=canFile?h('section',{'data-browser-flow-import':'',className:'bf-section'},h('h4',null,t(genericFile?'genericFileTitle':'importTitle')),h('p',{className:'bf-secondary'},t(genericFile?'genericFileHint':'importHint')),
   field('path',t(genericFile?'genericFilePath':'file_path'),ui.input({'data-browser-flow-input':'path',value:m.fileForm.path,disabled:m.busy,onChange:e=>a.changeFile('path',e.target.value),autoComplete:'off'})),
   ...(!genericFile?[field('kind',t('file_kind'),h('select',{'data-browser-flow-input':'kind',value:m.fileForm.kind,disabled:m.busy,onChange:(e:{target:HTMLSelectElement})=>a.changeFile('kind',e.target.value)},...['add','modify','reduce'].map(kind=>h('option',{key:kind,value:kind},t('file_'+kind))))),

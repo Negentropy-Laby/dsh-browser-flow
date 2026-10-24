@@ -322,6 +322,7 @@ export declare class BrowserFlowService {
         goal: string;
         origins: string[];
         adapter: string;
+        fileMode: import("./task-scope.ts").FileMode;
         definition: {
             id: string;
             version: string | undefined;
@@ -505,6 +506,7 @@ export declare class BrowserFlowService {
         goal: string;
         origins: string[];
         adapter: string;
+        fileMode: import("./task-scope.ts").FileMode;
         definition: {
             id: string;
             version: string | undefined;

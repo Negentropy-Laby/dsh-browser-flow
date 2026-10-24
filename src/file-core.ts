@@ -46,23 +46,27 @@ export async function privateDirectory(path: string) : Promise<void> {
 }
 
 /** @param {string} path - local regular file. @returns {Promise<Buffer>} bounded owned bytes. */
-export async function readBounded(path: string) : Promise<Buffer> {
+export async function readBounded(path: string, limit:number=FILE_LIMIT) : Promise<Buffer> {
   const info = await lstat(path)
-  if (!info.isFile() || info.isSymbolicLink() || info.size <= 0 || info.size > FILE_LIMIT) throw new Error('file-size-or-type-invalid')
+  if (!info.isFile() || info.isSymbolicLink() || info.size <= 0 || info.size > limit) throw new Error('file-size-or-type-invalid')
   const resolved = await realpath(path)
   if ((process.platform === 'win32' ? resolved.toLowerCase() !== path.toLowerCase() : resolved !== path)) throw new Error('file-link-refused')
   const handle = await open(path, 'r')
   try {
     const current = await handle.stat()
     if (!current.isFile() || current.dev !== info.dev || current.ino !== info.ino) throw new Error('file-replaced')
-    const bytes = Buffer.alloc(FILE_LIMIT + 1)
+    if(current.size<=0||current.size>limit)throw new Error('file-size-or-type-invalid')
+    const bytes = Buffer.alloc(current.size + 1)
     let length = 0
     while (length < bytes.length) {
       const read = await handle.read(bytes, length, bytes.length - length, length)
       if (read.bytesRead === 0) break
       length += read.bytesRead
     }
-    if (length === 0 || length > FILE_LIMIT || length !== current.size) throw new Error('file-size-invalid')
-    return Buffer.from(bytes.subarray(0, length))
+    if (length === 0 || length > limit || length !== current.size) throw new Error('file-size-invalid')
+    const after=await handle.stat(),named=await lstat(path)
+    if(after.size>limit||named.size>limit)throw new Error('file-size-or-type-invalid')
+    if(!named.isFile()||named.isSymbolicLink()||named.dev!==current.dev||named.ino!==current.ino||after.size!==current.size||after.mtimeMs!==current.mtimeMs||after.ctimeMs!==current.ctimeMs||named.size!==after.size||named.mtimeMs!==after.mtimeMs)throw new Error('file-replaced')
+    return bytes.subarray(0, length)
   } finally { await handle.close() }
 }

@@ -50,3 +50,10 @@ export function sameTaskScope(left: TaskScope, right: TaskScope) : boolean {
 }
 /** @param {RunScope} left - one run. @param {RunScope} right - another run. @returns {boolean} exact task/run. */
 export function sameRunScope(left: RunScope, right: RunScope) : boolean { return sameTaskScope(left,right) && left.runId === right.runId && left.workflowRef === right.workflowRef }
+
+/** Host capability; a workflow name alone never selects file authority. */
+export type FileMode='generic'|'legacy_import'|'none'
+export function taskFileMode(m:{schemaVersion?:number;adapter:string;workflowRef:string}):FileMode {
+  if(m.schemaVersion===2&&m.adapter==='generic'&&m.workflowRef==='exploration')return 'generic'
+  return m.adapter==='bjrsj'&&m.workflowRef==='import'?'legacy_import':'none'
+}

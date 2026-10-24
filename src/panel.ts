@@ -657,6 +657,7 @@ export function createPanel({ React, t, ui, core = CORE, pageCode = PAGE_CODE }:
     }, [elementOf, instanceId, pages, post, sessionId, taskSummary])
 
     const fileOperation = async (operation: 'prepare' | 'confirm') => {
+      if(!['generic','legacy_import'].includes(taskSummary?.fileMode??''))return
       const binding=bound.current,version=authorizationVersion.current,owner=uiGeneration.current
       if(!binding)return
       const token=startOperation(operation==='prepare'?'prepare-file':'confirm-file')
@@ -664,7 +665,7 @@ export function createPanel({ React, t, ui, core = CORE, pageCode = PAGE_CODE }:
         const answer=await post(ROUTES.authorize,{
           instanceId,connectionGeneration:generation.current,sessionId,task:binding.task,lease:binding.lease,partition:binding.partition,tabId:binding.tabId,documentToken:binding.documentToken,
           fileOperation:operation,
-          ...(operation==='prepare'?{path:fileForm.path,...(binding.task.workflowRef==='exploration'?{}:{scope:{kind:fileForm.kind,unitId:fileForm.unitId,legalIdentity:fileForm.legalIdentity,firstRow:Number(fileForm.firstRow),lastRow:Number(fileForm.lastRow)}})}:{fileGrantId:filePreview?.fileGrantId}),
+          ...(operation==='prepare'?{path:fileForm.path,...(taskSummary?.fileMode==='generic'?{}:{scope:{kind:fileForm.kind,unitId:fileForm.unitId,legalIdentity:fileForm.legalIdentity,firstRow:Number(fileForm.firstRow),lastRow:Number(fileForm.lastRow)}})}:{fileGrantId:filePreview?.fileGrantId}),
         })
         if(!alive.current||uiGeneration.current!==owner||bound.current!==binding||version!==authorizationVersion.current)return
         if(answer?.ok!==true){setOperationError(answer?.error);return}

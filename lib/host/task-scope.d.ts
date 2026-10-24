@@ -29,3 +29,10 @@ export declare function validRunScope(value: unknown): value is RunScope;
 export declare function sameTaskScope(left: TaskScope, right: TaskScope): boolean;
 /** @param {RunScope} left - one run. @param {RunScope} right - another run. @returns {boolean} exact task/run. */
 export declare function sameRunScope(left: RunScope, right: RunScope): boolean;
+/** Host capability; a workflow name alone never selects file authority. */
+export type FileMode = 'generic' | 'legacy_import' | 'none';
+export declare function taskFileMode(m: {
+    schemaVersion?: number;
+    adapter: string;
+    workflowRef: string;
+}): FileMode;
