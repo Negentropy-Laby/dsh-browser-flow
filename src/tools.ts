@@ -31,7 +31,7 @@ export type ToolDefinition = ReturnType<typeof createTools>[number]
  * @module @negentropy/dsh-browser-flow/tools
  */
 
-import {validateExplorationCommand} from './task-exploration.ts'
+import {validateExplorationCommand,ExplorationError} from './task-exploration.ts'
 import { validUserWait, USER_WAIT_KINDS } from './task-wait.ts'
 import { failure, success } from './protocol.ts'
 
@@ -190,7 +190,7 @@ function actTool(service: ToolService) {
       + 'fails with stale_observation rather than choosing another element. Actions are never retried automatically: '
       + 'page events and saves can have side effects, so confirm the result with browser_observe. Password fields are refused. '
       + 'await_user records a bounded human dependency in the current task without page authorization or dispatch. It takes only action and wait; the user must supply the condition and resume in the panel. It cannot grant control or prove success. '
-      + 'explore records ARTEX-style semantic operations without entering the page: set_goals, add_hint, add_intent, claim_intent, finish_intent, record_fact, check_evidence and prove_goal. It requires requestId and expectedVersion. Claim one intent before page mutations, write observed/inferred facts, finish it, then prove goals using observed facts with passing original-backed checks. Business interpretation remains Agent-authored. '
+      + 'explore records ARTEX-style semantic operations without entering the page: set_goals, add_hint, add_intent, claim_intent, finish_intent, record_fact, check_evidence and prove_goal. It requires requestId and expectedVersion. Commands are limited to 100000 characters, resulting events to 200000 characters and 256 edges; split oversized fact batches into separate requests. Claim one intent before page mutations, write observed/inferred facts, finish it, then prove goals using observed facts with passing original-backed checks. Business interpretation remains Agent-authored. '
       + LOG_NOTICE,
     parameters: {
       type: 'object',
@@ -198,12 +198,12 @@ function actTool(service: ToolService) {
         explore:{type:'object',properties:{
           op:{type:'string',enum:['set_goals','add_hint','add_intent','claim_intent','finish_intent','record_fact','check_evidence','prove_goal']},
           text:{type:'string',description:'New goal or planning hint.'},goals:{type:'array',maxItems:32,items:{type:'object',properties:{text:{type:'string'}},required:['text'],additionalProperties:false}},
-          summary:{type:'string',description:'Intent direction or integrated fact conclusion.'},detail:{type:'string'},evidence:{type:'string'},
+          summary:{type:'string',description:'Intent direction or integrated fact conclusion.'},detail:{type:'string',maxLength:8000},evidence:{type:'string',maxLength:2000},
           confidence:{type:'string',enum:['observed','inferred']},intent_id:{type:'string',description:'Current semantic intent, not a browser attempt.'},
           asset_ids:{type:'array',items:{type:'string'},maxItems:32,description:'Current resource-* IDs.'},parent_ids:{type:'array',items:{type:'string'},maxItems:32,description:'Existing fact IDs; empty uses origin.'},priority:{type:'integer',minimum:0,maximum:10},
-          evidence_refs:{type:'array',items:{type:'string'},maxItems:32,description:'Exact original page/file asset-* snapshots.'},check_refs:{type:'array',items:{type:'string'},maxItems:32,description:'Passing check_evidence references for the same snapshots.'},
-          intents:{type:'array',maxItems:4,items:{type:'object',properties:{summary:{type:'string'},asset_ids:{type:'array',items:{type:'string'}},parent_ids:{type:'array',items:{type:'string'}},priority:{type:'integer',minimum:0,maximum:10}},required:['summary'],additionalProperties:false}},
-          facts:{type:'array',maxItems:32,items:{type:'object',properties:{summary:{type:'string'},detail:{type:'string'},evidence:{type:'string'},confidence:{type:'string',enum:['observed','inferred']},intent_id:{type:'string'},asset_ids:{type:'array',items:{type:'string'}},evidence_refs:{type:'array',items:{type:'string'}},check_refs:{type:'array',items:{type:'string'}}},required:['summary','confidence'],additionalProperties:false}},
+          evidence_refs:{type:'array',items:{type:'string'},maxItems:64,description:'Exact original page/file asset-* snapshots.'},check_refs:{type:'array',items:{type:'string'},maxItems:32,description:'Passing check_evidence references for the same snapshots.'},
+          intents:{type:'array',maxItems:4,items:{type:'object',properties:{summary:{type:'string',maxLength:2000},asset_ids:{type:'array',items:{type:'string'},maxItems:32},parent_ids:{type:'array',items:{type:'string'},maxItems:32},priority:{type:'integer',minimum:0,maximum:10}},required:['summary'],additionalProperties:false}},
+          facts:{type:'array',maxItems:32,items:{type:'object',properties:{summary:{type:'string',maxLength:2000},detail:{type:'string',maxLength:8000},evidence:{type:'string',maxLength:2000},confidence:{type:'string',enum:['observed','inferred']},intent_id:{type:'string'},asset_ids:{type:'array',items:{type:'string'},maxItems:32},evidence_refs:{type:'array',items:{type:'string'},maxItems:64},check_refs:{type:'array',items:{type:'string'},maxItems:32}},required:['summary','confidence'],additionalProperties:false}},
           state:{type:'string',enum:['done','blocked','exhausted','stopped']},reason:{type:'string'},goal_id:{type:'string'},evidence_id:{type:'string'},
           assertion:{type:'object',description:'Source-backed atom {op,left:{ref,path},right:{value} or {ref,path}}; op exists, equals, contains, count or setEquals. exists omits right. Or {op:all|any,checks:[atoms]}, maximum 32 atoms; paths are arrays of keys/indices. No scripts or nested composition.',additionalProperties:true}
         },required:['op'],additionalProperties:false},
@@ -223,7 +223,7 @@ function actTool(service: ToolService) {
     async execute( args: Record<string, unknown>,  exec: ToolExec) {
       if(args.action==='explore'){
         if(Object.keys(args).some(k=>!['action','explore','requestId','expectedVersion'].includes(k)))return failure('invalid_request','explore takes only its command, requestId and expectedVersion')
-        try{validateExplorationCommand(args.explore)}catch{return failure('invalid_request','invalid exploration command')}
+        try{validateExplorationCommand(args.explore)}catch(error){return failure('invalid_request',error instanceof ExplorationError?error.message:'invalid exploration command')}
         const caller=service.resolveCaller(exec)
         return caller.ok?service.act(caller.value,{action:'explore',explore:args.explore,requestId:args.requestId,expectedVersion:args.expectedVersion},exec.signal):caller
       }

@@ -29,3 +29,10 @@ The implementation contains no new site routes, business field names, recipes or
 success labels. No new database, execution engine, dependencies or tools are needed.
 P2/P3 work never blocks the P0/P1 delivery. Live business acceptance is separate
 from technical and synthetic acceptance and uses the same candidate.
+
+Structured checks allow 32 atoms and 64 distinct original sources. A fact may
+reference 64 original snapshots and 32 checks/resources. Commands have a 100,000
+character limit; their expanded journal payload has a 200,000 character and
+256-edge limit. These aggregate limits are checked before evidence I/O or
+writes. Oversized batches are rejected atomically with their measured use; split
+or shorten them and use new request IDs with the latest contextVersion.

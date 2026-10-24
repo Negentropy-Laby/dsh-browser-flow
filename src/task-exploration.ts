@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { sameRunScope, validRunScope } from './task-scope.ts'
 import { eventResourceDescriptor } from './task-resources.ts'
 import type { Manifest, TaskData } from './task-store.ts'
+import {EXPLORATION_LIMITS as LIMIT} from './exploration-limits.ts'
 
 export type ExplorationKind = 'goal'|'intent'|'fact'|'hint'
 export interface ExplorationNode {
@@ -23,7 +24,7 @@ export class ExplorationError extends Error {
 }
 export const object=(v:unknown):v is Record<string,unknown>=>v!==null&&typeof v==='object'&&!Array.isArray(v)
 const text=(v:unknown,max=2000):v is string=>typeof v==='string'&&v.trim().length>0&&v.length<=max
-const refs=(v:unknown):v is string[]=>Array.isArray(v)&&v.length<=32&&v.every(x=>text(x,200))&&new Set(v).size===v.length
+const refs=(v:unknown,max:number=LIMIT.refs):v is string[]=>Array.isArray(v)&&v.length<=max&&v.every(x=>text(x,200))&&new Set(v).size===v.length
 export const isExploration=(m:Manifest)=>m.schemaVersion===2&&m.adapter==='generic'&&m.workflowRef==='exploration'
 export const explorationRun=(task:TaskData)=>({...task.manifest.scope,runId:task.manifest.runId,workflowRef:task.manifest.workflowRef})
 export function canonical(value:unknown):string {
@@ -62,15 +63,23 @@ export function validExplorationEvent(row:Record<string,unknown>):boolean {
   try{validateExplorationCommand(row.command)}catch{return false}
   const c=row.changes
   if(c.completed===true&&row.command.op!=='prove_goal')return false
-  if(Object.keys(c).some(k=>!['nodes','edges','updates','round','completed'].includes(k))||!Array.isArray(c.nodes)||!Array.isArray(c.edges)||!Array.isArray(c.updates)||c.nodes.length>32||c.edges.length>256||c.updates.length>33||typeof c.round!=='boolean'||typeof c.completed!=='boolean')return false
+  if(Object.keys(c).some(k=>!['nodes','edges','updates','round','completed'].includes(k))||!Array.isArray(c.nodes)||!Array.isArray(c.edges)||!Array.isArray(c.updates)||c.nodes.length>LIMIT.nodes||c.edges.length>LIMIT.edges||c.updates.length>33||typeof c.round!=='boolean'||typeof c.completed!=='boolean')return false
   if(!c.nodes.every(n=>object(n)&&Object.keys(n).every(k=>['id','kind','source','state','data','asset_ids'].includes(k))&&text(n.id,200)&&['goal','intent','fact','hint'].includes(String(n.kind))&&n.source==='agent'&&text(n.state,30)&&object(n.data)&&refs(n.asset_ids)))return false
   if(!c.edges.every(e=>object(e)&&Object.keys(e).every(k=>['id','from','to','relation'].includes(k))&&text(e.id,200)&&text(e.from,200)&&text(e.to,200)&&['spawns','derived_from','yields','proves','observed_on','validated_by'].includes(String(e.relation))))return false
   if(!c.updates.every(u=>object(u)&&Object.keys(u).every(k=>['id','state'].includes(k))&&text(u.id,200)&&['running','done','blocked','exhausted','stopped','met'].includes(String(u.state))))return false
-  return JSON.stringify(row).length<=200_000
+  return JSON.stringify(row).length<=LIMIT.eventChars
+}
+/** Reject an entire planned batch before evidence reads or any durable effects. */
+export function assertExplorationCapacity(row:Record<string,unknown>&{changes:ExplorationChange}):void {
+  const edges=row.changes.edges.length,size=JSON.stringify(row).length
+  if(edges>LIMIT.edges)fail(`exploration batch has ${edges} edges; maximum ${LIMIT.edges}; split facts into smaller requests`)
+  if(size>LIMIT.eventChars)fail(`exploration event has ${size} characters; maximum ${LIMIT.eventChars}; split or shorten facts`)
 }
 export const EXPLORATION_OPS=['set_goals','add_hint','add_intent','claim_intent','finish_intent','record_fact','check_evidence','prove_goal'] as const
 export function validateExplorationCommand(command:unknown):asserts command is Record<string,unknown> {
-  if(!object(command)||!EXPLORATION_OPS.includes(command.op as typeof EXPLORATION_OPS[number])||JSON.stringify(command).length>100_000)fail('provide a bounded exploration operation')
+  if(!object(command)||!EXPLORATION_OPS.includes(command.op as typeof EXPLORATION_OPS[number]))fail('provide a bounded exploration operation')
+  const size=JSON.stringify(command).length
+  if(size>LIMIT.commandChars)fail(`exploration command has ${size} characters; maximum ${LIMIT.commandChars}; split or shorten the request`)
   const fields:Record<string,string[]>={set_goals:['text','goals'],add_hint:['text','asset_ids'],add_intent:['summary','asset_ids','parent_ids','priority','intents'],claim_intent:['intent_id'],finish_intent:['intent_id','state','reason'],record_fact:['summary','detail','evidence','confidence','intent_id','asset_ids','evidence_refs','check_refs','facts'],check_evidence:['assertion'],prove_goal:['goal_id','evidence_id','reason']}
   if(Object.keys(command).some(k=>k!=='op'&&!fields[String(command.op)].includes(k)))fail('unknown exploration argument')
 }
@@ -140,7 +149,7 @@ export function planExploration(task:TaskData,command:Record<string,unknown>,che
     result.ids=items.map(item=>{
       if(!object(item)||Object.keys(item).some(k=>!['summary','detail','evidence','confidence','intent_id','asset_ids','evidence_refs','check_refs'].includes(k))||!text(item.summary)||!['observed','inferred'].includes(String(item.confidence))||(item.detail!==undefined&&!text(item.detail,8000))||(item.evidence!==undefined&&!text(item.evidence,2000))||(item.intent_id!==undefined&&item.intent_id!==intent.id))fail('provide a fact summary and observed/inferred confidence')
       const evidenceRefs=item.evidence_refs??[],checks=item.check_refs??[]
-      if(!refs(evidenceRefs)||!refs(checks)||(item.confidence==='observed'&&!evidenceRefs.length))fail('observed facts require original snapshot references')
+      if(!refs(evidenceRefs,LIMIT.sources)||!refs(checks)||(item.confidence==='observed'&&!evidenceRefs.length))fail('observed facts require at most 64 original snapshots and at most 32 check references')
       for(const id of evidenceRefs){const e=task.events.find(e=>e.type==='asset'&&e.data.id===id&&validRunScope(e.data.run)&&sameRunScope(e.data.run,explorationRun(task)));if(!e||!['page','file'].includes(String(e.data.kind))||!object(e.data.data)||e.data.data.contextOnly===true)fail('fact evidence must be current original observations or files','task_not_bound')}
       for(const id of checks)if(!checkPassed(id,evidenceRefs))fail('check is unavailable, failed or bound to different evidence')
       const n=add('fact','confirmed',{summary:item.summary,...(item.detail?{detail:item.detail}:{}),...(item.evidence?{evidence:item.evidence}:{}),confidence:item.confidence,intent_id:intent.id,evidence_refs:evidenceRefs,check_refs:checks},anchors(item.asset_ids))
@@ -152,7 +161,7 @@ export function planExploration(task:TaskData,command:Record<string,unknown>,che
     planner();const goal=one(command.goal_id,'goal'),fact=one(command.evidence_id,'fact')
     if(!text(command.reason))fail('explain why this fact meets the goal')
     const checks=fact.data.check_refs,evidenceRefs=fact.data.evidence_refs
-    if(fact.data.confidence!=='observed'||!refs(checks)||!checks.length||!refs(evidenceRefs)||!evidenceRefs.length||!checks.every(id=>checkPassed(id,evidenceRefs)))fail('goal proof requires an observed fact and currently passing source-backed checks')
+    if(fact.data.confidence!=='observed'||!refs(checks)||!checks.length||!refs(evidenceRefs,LIMIT.sources)||!evidenceRefs.length||!checks.every(id=>checkPassed(id,evidenceRefs)))fail('goal proof requires an observed fact and currently passing source-backed checks')
     changes.updates.push({id:goal.id,state:'met'});edge(fact.id,goal.id,'proves');result.goal_id=goal.id;result.evidence_id=fact.id;result.proofSource='agent';result.evidenceVerification='host_checked'
     changes.completed=[...state.nodes.values()].filter(n=>n.kind==='goal').every(n=>n.id===goal.id||n.state==='met')&&!task.pendingWrite&&!task.waiting&&!task.blocked&&!task.unhealthy
 

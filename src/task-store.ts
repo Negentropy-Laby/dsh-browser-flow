@@ -58,7 +58,8 @@ import { resolveConfig } from './config.ts'
 import { validUserWait } from './task-wait.ts'
 import { trustedCriterion, validArtifact } from './task-criteria.ts'
 import {EXPLORATION_GUIDE} from './exploration-instructions.ts'
-import { isExploration, explorationState, explorationRun, seedExploration, planExploration, explorationOverview, currentResources, resourceAnchors, canonical, validateExplorationCommand, ExplorationError } from './task-exploration.ts'
+import { isExploration, explorationState, explorationRun, seedExploration, planExploration, explorationOverview, currentResources, resourceAnchors, canonical, validateExplorationCommand, assertExplorationCapacity, ExplorationError } from './task-exploration.ts'
+import {EXPLORATION_LIMITS} from './exploration-limits.ts'
 import { validateAssertion, assertionRefs, evaluateAssertion } from './exploration-checks.ts'
 import { parseWorkbookData } from './workbook-core.ts'
 import { TASK_FORMAT_VERSION, EXPLORATION_FORMAT_VERSION, supportedTaskFormat, validTaskManifest, validTaskEvent, validTaskTransition } from './task-journal.ts'
@@ -460,13 +461,13 @@ tail: Promise<void>;
   async proof(access: TaskAccess,value: Record<string, unknown>) : Promise<string> {
     return this.serial(()=>this.proofOwned(access,value))
   }
-  private async proofOwned(access:TaskAccess,value:Record<string,unknown>):Promise<string> {
+  private async proofOwned(access:TaskAccess,value:Record<string,unknown>,id?:string):Promise<string> {
     const data=this.openTask(access)
     const path=join('evidence',access.run.runId,'proof-'+randomUUID()+'.json').replaceAll('\\','/')
     await this.directory(join(data.dir,'evidence',access.run.runId))
     await this.writeNew(join(data.dir,path),value)
     const bytes=await this.readArtifact(data,{role:'proof',path,sha256:'',bytes:0},false)
-    return this.assetOwned(access,'evidence',{artifact:path,sha256:hash(bytes),bytes:bytes.length},'code_verified')
+    return this.assetOwned(access,'evidence',{artifact:path,sha256:hash(bytes),bytes:bytes.length},'code_verified',id)
   }
   /** @param {TaskAccess} access - owner. @param {string} path - existing private original. @param {string} role - fixed evidence role. @returns {Promise<import('./task-criteria.ts').Artifact>} bound artifact without exposing its bytes. */
   async artifact(access: TaskAccess,path: string,role: string) : Promise<import('./task-criteria.ts').Artifact> {
@@ -526,7 +527,7 @@ tail: Promise<void>;
         if(!record(value))throw new Error('task-evidence-object')
         const files=new Map<string,Buffer>()
         if(value.files!==undefined){
-          if(!Array.isArray(value.files)||value.files.length>(value.kind==='structured_check'?32:2))throw new Error('task-evidence-files')
+          if(!Array.isArray(value.files)||value.files.length>(value.kind==='structured_check'?EXPLORATION_LIMITS.sources:2))throw new Error('task-evidence-files')
           for(const item of value.files){if(!validArtifact(item)||!item.path.startsWith('evidence/'+access.run.runId+'/')||files.has(item.role))throw new Error('task-evidence-file');files.set(item.role,await read(item,used))}
         }
         checked.set(row.id,{value,files})
@@ -560,9 +561,9 @@ tail: Promise<void>;
   async asset(access:TaskAccess,kind:string,value:Record<string,unknown>,source:'host'|'code_verified'='host'):Promise<string> {
     return this.serial(()=>this.assetOwned(access,kind,value,source))
   }
-  private async assetOwned(access:TaskAccess,kind:string,value:Record<string,unknown>,source:'host'|'code_verified'='host'):Promise<string> {
+  private async assetOwned(access:TaskAccess,kind:string,value:Record<string,unknown>,source:'host'|'code_verified'='host',id='asset-'+randomUUID()):Promise<string> {
     if(!['page','file','unit_check','import_result','evidence'].includes(kind))throw new TaskError('invalid_request','unsupported task asset')
-    const data=this.openTask(access),id='asset-'+randomUUID()
+    const data=this.openTask(access)
     let payload=value
     if(isExploration(data.manifest)&&kind==='page'&&value.contextOnly!==true){
       const path=`evidence/${access.run.runId}/${id}.json`,bytes=Buffer.from(JSON.stringify(value)+'\n')
@@ -617,9 +618,15 @@ tail: Promise<void>;
         this.openTask(access,true)
         if(data.events.length!==expectedVersion)throw new TaskError('task_busy','task changed; read its current contextVersion before a new command')
         if(data.pendingWrite||data.waiting)throw new TaskError('task_busy','settle the current write or user dependency before changing exploration state')
+        let checkRef=command.op==='check_evidence'?'asset-'+randomUUID():undefined
+        if(checkRef)validateAssertion(command.assertion)
+        const requiredChecks:{id:string;refs:string[]}[]=[]
+        const planned=planExploration(data,command,(id,refs)=>{requiredChecks.push({id,refs});return true},checkRef)
+        const payload=(result:Record<string,unknown>)=>({requestId,expectedVersion,command,changes:planned.changes,result,run:access.run})
+        assertExplorationCapacity(payload({...planned.result,requestId,...(planned.changes.completed?{state:'completed'}:{}),...(checkRef?{status:'unavailable',ruleSource:'agent',evaluation:{passed:false,atoms:Array(EXPLORATION_LIMITS.atoms).fill(false)}}:{})}))
         await this.refreshEvidence(access)
         beforeComplete(false)
-        let checkRef:string|undefined
+        for(const check of requiredChecks)if(!this.checkPassed(data,check.id,check.refs))throw new TaskError('invalid_request','check is unavailable, failed or bound to different evidence; goal proof requires currently passing checks')
         if(command.op==='check_evidence'){
           validateAssertion(command.assertion)
           const sources=assertionRefs(command.assertion).map(id=>this.originalSource(data,id)),values=new Map<string,unknown>()
@@ -627,10 +634,9 @@ tail: Promise<void>;
           // Re-read all sources before persisting; reads cannot mix source versions.
           for(const source of sources)await this.readArtifact(data,source.artifact)
           const evaluation=evaluateAssertion(command.assertion,values)
-          checkRef=await this.proofOwned(access,{schemaVersion:2,kind:'structured_check',run:access.run,assertion:command.assertion,sources,files:sources.map(s=>s.artifact),evaluation,ruleSource:'agent'})
+          checkRef=await this.proofOwned(access,{schemaVersion:2,kind:'structured_check',run:access.run,assertion:command.assertion,sources,files:sources.map(s=>s.artifact),evaluation,ruleSource:'agent'},checkRef)
           await this.refreshEvidence(access)
         }
-        const planned=planExploration(data,command,(id,refs)=>this.checkPassed(data,id,refs),checkRef)
         if(checkRef){const available=data.checkedProofs?.get(checkRef);planned.result.status=available?this.checkPassed(data,checkRef,assertionRefs(command.assertion as import('./exploration-checks.ts').Assertion))?'passed':'failed':'unavailable';planned.result.ruleSource='agent';planned.result.evaluation=available?.value.evaluation??null}
         if(planned.changes.completed){
           if(taskFacts(data).criteria.some(c=>c.source==='code_verified'&&c.status!=='passed'))throw new TaskError('invalid_request','required trusted conditions remain unverified')
@@ -642,7 +648,8 @@ tail: Promise<void>;
           beforeComplete(true)
         }
         const result={...planned.result,requestId,...(planned.changes.completed?{state:'completed'}:{})}
-        const event=await this.appendOwned(data,'exploration',{requestId,expectedVersion,command,changes:planned.changes,result,run:access.run})
+        assertExplorationCapacity(payload(result))
+        const event=await this.appendOwned(data,'exploration',payload(result))
         if(planned.changes.completed)void this.graph?.retire(access.scope.taskId).catch(()=>{})
         return {...result,contextVersion:event.seq}
       }catch(error){if(error instanceof ExplorationError)throw new TaskError(error.code,error.message);throw error}

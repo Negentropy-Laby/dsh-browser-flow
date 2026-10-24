@@ -50,6 +50,10 @@ export declare function canonical(value: unknown): string;
 export declare function seedExploration(manifest: Manifest): ExplorationChange;
 export declare function explorationState(task: TaskData): ExplorationState;
 export declare function validExplorationEvent(row: Record<string, unknown>): boolean;
+/** Reject an entire planned batch before evidence reads or any durable effects. */
+export declare function assertExplorationCapacity(row: Record<string, unknown> & {
+    changes: ExplorationChange;
+}): void;
 export declare const EXPLORATION_OPS: readonly ["set_goals", "add_hint", "add_intent", "claim_intent", "finish_intent", "record_fact", "check_evidence", "prove_goal"];
 export declare function validateExplorationCommand(command: unknown): asserts command is Record<string, unknown>;
 export declare function currentResources(task: TaskData): Map<string, {

@@ -114,9 +114,11 @@ export declare function createTools(service: ToolService, config: import('./conf
                     };
                     detail: {
                         type: string;
+                        maxLength: number;
                     };
                     evidence: {
                         type: string;
+                        maxLength: number;
                     };
                     confidence: {
                         type: string;
@@ -171,18 +173,21 @@ export declare function createTools(service: ToolService, config: import('./conf
                             properties: {
                                 summary: {
                                     type: string;
+                                    maxLength: number;
                                 };
                                 asset_ids: {
                                     type: string;
                                     items: {
                                         type: string;
                                     };
+                                    maxItems: number;
                                 };
                                 parent_ids: {
                                     type: string;
                                     items: {
                                         type: string;
                                     };
+                                    maxItems: number;
                                 };
                                 priority: {
                                     type: string;
@@ -202,12 +207,15 @@ export declare function createTools(service: ToolService, config: import('./conf
                             properties: {
                                 summary: {
                                     type: string;
+                                    maxLength: number;
                                 };
                                 detail: {
                                     type: string;
+                                    maxLength: number;
                                 };
                                 evidence: {
                                     type: string;
+                                    maxLength: number;
                                 };
                                 confidence: {
                                     type: string;
@@ -221,18 +229,21 @@ export declare function createTools(service: ToolService, config: import('./conf
                                     items: {
                                         type: string;
                                     };
+                                    maxItems: number;
                                 };
                                 evidence_refs: {
                                     type: string;
                                     items: {
                                         type: string;
                                     };
+                                    maxItems: number;
                                 };
                                 check_refs: {
                                     type: string;
                                     items: {
                                         type: string;
                                     };
+                                    maxItems: number;
                                 };
                             };
                             required: string[];

@@ -1,5 +1,6 @@
 /** Bounded source-backed assertions. No eval, executable paths, or business ontology. */
 import {canonical, object, ExplorationError} from './task-exploration.ts'
+import {EXPLORATION_LIMITS as LIMIT} from './exploration-limits.ts'
 export interface SourceOperand {ref:string;path:(string|number)[]}
 type Operand=SourceOperand|{value:unknown}
 export type Assertion={op:'all'|'any';checks:Atom[]}|Atom
@@ -13,7 +14,7 @@ function operand(v:unknown,sourceOnly=false):v is Operand {
 export function validateAssertion(v:unknown):asserts v is Assertion {
   const atom=(a:unknown)=>object(a)&&Object.keys(a).every(k=>['op','left','right'].includes(k))&&['exists','equals','contains','count','setEquals'].includes(String(a.op))&&operand(a.left,true)&&(a.op==='exists'?a.right===undefined:operand(a.right))
   if(!object(v))return bad()
-  if(['all','any'].includes(String(v.op))){if(Object.keys(v).some(k=>!['op','checks'].includes(k))||!Array.isArray(v.checks)||!v.checks.length||v.checks.length>32||!v.checks.every(atom))bad()}
+  if(['all','any'].includes(String(v.op))){if(Object.keys(v).some(k=>!['op','checks'].includes(k))||!Array.isArray(v.checks)||!v.checks.length||v.checks.length>LIMIT.atoms||!v.checks.every(atom))bad()}
   else if(!atom(v))bad()
 }
 export function assertionRefs(assertion:Assertion):string[] {

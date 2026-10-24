@@ -4,7 +4,7 @@ import {mkdtemp,rm,writeFile,readFile,rename,mkdir} from 'node:fs/promises'
 import {join} from 'node:path'
 import {tmpdir} from 'node:os'
 import {TaskStore} from '../src/task-store.ts'
-import {explorationState,currentResources} from '../src/task-exploration.ts'
+import {explorationState,currentResources,assertExplorationCapacity} from '../src/task-exploration.ts'
 import {graphInput} from '../src/task-projections.ts'
 import {resolveConfig} from '../src/config.ts'
 import {GraphWorkers} from '../src/graph/worker.ts'
@@ -256,4 +256,38 @@ test('normal tools replay a lost completion acknowledgement without reacquiring 
  assert.equal((await h.post('authorize',{...binding,taskOperation:'cancel'})).body.value.state,'completed')
  assert.equal((await h.authorize('a')).body.error.code,'task_write_blocked')
  assert.equal(data.events.length,count)
+})
+
+for(const count of [32,33,64])test(`${count} original sources support check, fact and final goal proof`,async t=>{
+ const h=await setup(t);await h.start();const refs:string[]=[]
+ for(let i=0;i<count;i++)refs.push(await h.observe())
+ const checks=[]
+ for(let i=0;i<count;i+=2)checks.push({op:'equals',left:{ref:refs[i],path:['result','status']},right:i+1<count?{ref:refs[i+1],path:['result','status']}:{value:'settled'}})
+ const check=await h.run({op:'check_evidence',assertion:{op:'all',checks}})
+ assert.equal(check.status,'passed')
+ const fact=await h.run({op:'record_fact',summary:'All sources agree',confidence:'observed',evidence_refs:refs,check_refs:[check.check_ref]})
+ await h.run({op:'finish_intent'})
+ const goal=[...explorationState(h.store.openTask(h.access)).nodes.values()].find(n=>n.kind==='goal')!
+ assert.equal((await h.run({op:'prove_goal',goal_id:goal.id,evidence_id:(fact.ids as string[])[0],reason:'Checked all sources'})).state,'completed')
+})
+test('batch edge and expanded payload limits reject atomically before evidence IO',async t=>{
+ const h=await setup(t);await h.start();const refs:string[]=[]
+ for(let i=0;i<29;i++)refs.push(await h.observe())
+ const data=h.store.openTask(h.access),anchors=[...currentResources(data).keys()]
+ let reads=0;const refresh=h.store.refreshEvidence.bind(h.store)
+ h.store.refreshEvidence=async(...args)=>{reads++;return refresh(...args)}
+ const before=await readFile(join(data.dir,'basic_law_index/events.jsonl'))
+ const fact={summary:'Observed',confidence:'observed',evidence_refs:refs,check_refs:refs,asset_ids:anchors}
+ await assert.rejects(h.run({op:'record_fact',facts:[fact,fact,fact]}),/264 edges; maximum 256; split/)
+ const large={summary:'s'.repeat(2000),detail:'d'.repeat(8000),evidence:'e'.repeat(2000),confidence:'observed',evidence_refs:refs.slice(0,4),asset_ids:[anchors[0]]}
+ await assert.rejects(h.run({op:'record_fact',facts:Array(8).fill(large)}),/exploration event has .* maximum 200000; split/)
+ assert.equal(reads,0);assert.deepEqual(await readFile(join(data.dir,'basic_law_index/events.jsonl')),before)
+})
+test('aggregate edge and payload capacities include the entire serialized event',()=>{
+ const changes={nodes:[],edges:Array(256).fill({id:'e',from:'a',to:'b',relation:'yields'}),updates:[],round:false,completed:false}
+ assert.doesNotThrow(()=>assertExplorationCapacity({changes}))
+ assert.throws(()=>assertExplorationCapacity({changes:{...changes,edges:[...changes.edges,changes.edges[0]]}}),/257 edges/)
+ const row={changes:{...changes,edges:[]},padding:''};row.padding='x'.repeat(200000-JSON.stringify(row).length)
+ assert.doesNotThrow(()=>assertExplorationCapacity(row))
+ assert.throws(()=>assertExplorationCapacity({...row,padding:row.padding+'x'}),/200001 characters/)
 })
